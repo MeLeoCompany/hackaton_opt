@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Backend: FastAPI (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["src.main:app", "--host", "0.0.0.0", "--port", "8000"],
+            "cwd": "${workspaceFolder}/backend",
+            "env": {
+                "DATABASE_URL": "postgresql+asyncpg://routing:routing@localhost:5432/routing"
+            },
+            "envFile": "${workspaceFolder}/backend/.env",
+            "justMyCode": true
+        },
+        {
+            "name": "Backend: FastAPI (reload, no debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+            "cwd": "${workspaceFolder}/backend",
+            "env": {
+                "DATABASE_URL": "postgresql+asyncpg://routing:routing@localhost:5432/routing"
+            },
+            "envFile": "${workspaceFolder}/backend/.env",
+            "justMyCode": false,
+            "subProcess": true
+        }
+    ]
+}

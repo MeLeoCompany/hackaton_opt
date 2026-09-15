@@ -1,10 +1,13 @@
 # hackaton_opt
 
-БД сервиса планирования маршрутов выездных инженеров (PostgreSQL).
+Сервис планирования маршрутов выездных инженеров: PostgreSQL + FastAPI-бэкенд.
 
 ```
 docker compose up
 ```
 
-Схема, миграции и допущения при наполнении — см. [db/README.md](db/README.md).
+Поднимет БД (порт 5432) и API (порт 8000, `GET /api/v1/health/db` для проверки).
+
+- Схема БД, миграции и допущения при наполнении — [db/README.md](db/README.md).
+- Структура бэкенда — [backend/README.md](backend/README.md).
 
