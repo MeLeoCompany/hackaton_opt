@@ -61,3 +61,13 @@ PostgreSQL 16, поднимается через `docker compose up` из кор
 ```
 docker exec -i routing_db psql -U routing -d routing < db/init/004_request_is_active.sql
 ```
+
+## День и решатель плана (`plan.plan_date`, `plan.solver`)
+
+Добавлено миграцией `init/005_plan_day.sql`: `plan_date DATE` — день, на который построен план
+(по московскому времени), `solver TEXT` — чем посчитан (`cuopt`, в будущем `baseline` и т.п.).
+У уже существующих планов дата проставляется из их заявок.
+
+```
+docker exec -i routing_db psql -U routing -d routing < db/init/005_plan_day.sql
+```

@@ -39,6 +39,16 @@
             "justMyCode": true
         },
         {
+            "name": "Tests: решение cuOpt (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["tests/planner", "-v"],
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/backend/.env",
+            "justMyCode": true
+        },
+        {
             "name": "Tests: открытый файл (debug)",
             "type": "debugpy",
             "request": "launch",

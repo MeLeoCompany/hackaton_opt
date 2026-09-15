@@ -1,7 +1,7 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, DateTime, Enum, func
+from sqlalchemy import BigInteger, Date, DateTime, Enum, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
@@ -18,6 +18,15 @@ class Plan(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     run_type: Mapped[PlanRunType] = mapped_column(
-        Enum(PlanRunType, name="plan_run_type", create_type=False, values_callable=lambda cls: [e.value for e in cls])
+        Enum(
+            PlanRunType,
+            name="plan_run_type",
+            create_type=False,
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        )
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # день, на который построен план (по московскому времени)
+    plan_date: Mapped[date | None] = mapped_column(Date)
+    # чем посчитан план: cuopt, baseline и т.п.
+    solver: Mapped[str | None] = mapped_column(Text)

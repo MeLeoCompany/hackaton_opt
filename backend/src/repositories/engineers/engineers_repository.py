@@ -4,6 +4,8 @@
 «догрузить потом» при обращении к engineer.skills нельзя.
 """
 
+from datetime import datetime
+
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,6 +15,19 @@ from src.models import Assignment, Engineer, Event, Skill
 
 async def list_engineers(session: AsyncSession) -> list[Engineer]:
     result = await session.execute(select(Engineer).options(selectinload(Engineer.skills)).order_by(Engineer.id))
+    return list(result.scalars().all())
+
+
+async def list_engineers_in_period(
+    session: AsyncSession, period_start: datetime, period_end: datetime
+) -> list[Engineer]:
+    """Исполнители, смена которых пересекается с периодом [period_start, period_end)."""
+    result = await session.execute(
+        select(Engineer)
+        .options(selectinload(Engineer.skills))
+        .where(Engineer.shift_start < period_end, Engineer.shift_end > period_start)
+        .order_by(Engineer.id)
+    )
     return list(result.scalars().all())
 
 

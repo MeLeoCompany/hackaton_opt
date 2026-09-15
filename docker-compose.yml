@@ -49,6 +49,14 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://routing:routing@postgres:5432/routing
       VALHALLA_URL: http://valhalla:8002
+    # решатель cuOpt работает внутри бэкенда и считает на видеокарте NVIDIA
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     ports:
       - "8000:8000"
     volumes:

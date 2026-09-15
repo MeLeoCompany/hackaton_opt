@@ -26,6 +26,7 @@ const FIELD_LABELS = {
   shift_start: 'Начало смены',
   shift_end: 'Конец смены',
   skill_ids: 'Навыки',
+  plan_date: 'День плана',
   file: 'Файл',
 }
 

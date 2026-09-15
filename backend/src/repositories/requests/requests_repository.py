@@ -1,5 +1,7 @@
 """Чтение и запись заявок в БД. Коммит делает сервис — здесь только запросы."""
 
+from datetime import datetime
+
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +11,29 @@ from src.models import Assignment, Event, Request
 async def list_requests(session: AsyncSession) -> list[Request]:
     """Все заявки, ближайшие по времени окна — первыми."""
     result = await session.execute(select(Request).order_by(Request.window_start, Request.id))
+    return list(result.scalars().all())
+
+
+async def list_active_requests(session: AsyncSession) -> list[Request]:
+    result = await session.execute(
+        select(Request).where(Request.is_active.is_(True)).order_by(Request.window_start, Request.id)
+    )
+    return list(result.scalars().all())
+
+
+async def list_active_requests_in_period(
+    session: AsyncSession, period_start: datetime, period_end: datetime
+) -> list[Request]:
+    """Активные заявки, окно которых пересекается с периодом [period_start, period_end)."""
+    result = await session.execute(
+        select(Request)
+        .where(
+            Request.is_active.is_(True),
+            Request.window_start < period_end,
+            Request.window_end > period_start,
+        )
+        .order_by(Request.window_start, Request.id)
+    )
     return list(result.scalars().all())
 
 

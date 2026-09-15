@@ -53,6 +53,34 @@ core/        — конфигурация (настройки из переме�
 Будущие доменные эндпоинты (заявки, инженеры, планы) будут использовать общие
 `models/`, `schemas/`, `services/`, `repositories/` — эти папки сейчас пустые.
 
+## Планы (`plans`) и решатель cuOpt
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| GET | `/api/v1/plans/days` | дни, на которые есть активные заявки |
+| GET | `/api/v1/plans?plan_date=2026-08-17` | планы дня, новые первыми, со сводкой |
+| POST | `/api/v1/plans` | `{"plan_date": ...}` — построить план на день через cuOpt |
+| GET | `/api/v1/plans/{id}` | план: маршруты исполнителей с пробегом и линией, неназначенные с причиной |
+
+Цепочка построения (`services/planner/`):
+
+1. `planner_loader.py` — **БД -> ProblemInstance** на день: активные заявки с окном в этот день,
+   исполнители со сменой в этот день, время — минуты от 00:00 по Москве, матрицы из Valhalla
+   по типам транспорта. Если Valhalla недоступна — 503, план по оценке «по прямой» не строится.
+2. `cuopt_solver.py` — **ProblemInstance -> cuOpt Python SDK** (`cuopt.routing.DataModel`,
+   `routing.Solve`) -> визиты по исполнителям. Заявки, которые не подходят никому, в решатель
+   не уходят.
+3. `planning_service.py` — **результат -> `plan` / `assignment`**: порядок визитов, время начала
+   работ, у неназначенных — причина.
+
+Пробег и линия маршрута в `GET /plans/{id}` считаются через Valhalla `/route` по порядку визитов,
+а не из матрицы (матрица занижает длинные плечи).
+
+**cuOpt считает на видеокарте NVIDIA прямо в процессе бэкенда.** Пакет ставится с отдельного
+индекса NVIDIA (extra `solver`, см. «Локальная разработка»); в Docker бэкенду выдаётся GPU
+(`deploy.resources` в `docker-compose.yml`). Без пакета бэкенд работает, но построение плана
+отвечает 503.
+
 ## Исполнители (`engineers`)
 
 | Метод | Путь | Что делает |
@@ -101,6 +129,8 @@ Postgres всё равно нужен — поднимите его отдель
 cd backend
 python -m venv .venv
 ./.venv/bin/pip install -e ".[dev]"
+# решатель cuOpt (нужна видеокарта NVIDIA), пакеты с индекса NVIDIA:
+./.venv/bin/pip install -e ".[solver]" --extra-index-url https://pypi.nvidia.com
 cp .env.example .env   # DATABASE_URL для локального запуска
 ```
 
@@ -111,6 +141,23 @@ cp .env.example .env   # DATABASE_URL для локального запуска
 
 Без VS Code — просто `./.venv/bin/uvicorn src.main:app --reload` из `backend/`
 (переменные подтянутся из `.env`).
+
+### Тесты планировщика
+
+```
+./.venv/bin/python -m pytest tests/planner -v
+```
+
+- `tests/planner/test_cuopt_inputs.py` — что уходит в cuOpt и как разбирается ответ; работает
+  без видеокарты.
+- `tests/planner/test_cuopt_solve.py` — настоящие расчёты cuOpt на маленьких задачах с понятным
+  ответом (навыки, транспорт, окна, конец смены, срочность, число исполнителей, скорость
+  транспорта). Без пакета `cuopt` файл пропускается.
+- `tests/planner/planner_test_helpers.py` — сборка задач и `constraint_violations`, независимая
+  проверка решения по всем ограничениям ТЗ.
+
+Отладка: F5 → "Tests: решение cuOpt (debug)" или "Tests: открытый файл (debug)", брейкпоинты —
+в `src/services/planner/cuopt_solver.py`.
 
 ## В связке с БД
 

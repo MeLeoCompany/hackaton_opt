@@ -2,12 +2,14 @@
 import { ref } from 'vue'
 
 import EngineersPage from './pages/EngineersPage.vue'
+import PlansPage from './pages/PlansPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
 
 const TABS = [
   { key: 'requests', label: 'Заявки' },
   { key: 'engineers', label: 'Исполнители' },
+  { key: 'plans', label: 'Планы' },
   { key: 'routes', label: 'Маршруты (стенд)' },
 ]
 
@@ -31,6 +33,7 @@ const activeTab = ref('requests')
     <div class="page">
       <RequestsPage v-if="activeTab === 'requests'" />
       <EngineersPage v-else-if="activeTab === 'engineers'" />
+      <PlansPage v-else-if="activeTab === 'plans'" />
       <RouteStandPage v-else />
     </div>
   </div>

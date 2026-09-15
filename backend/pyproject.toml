@@ -15,11 +15,15 @@ dependencies = [
     "pydantic-settings==2.6.0",
     "httpx==0.27.2",
     "numpy==2.1.3",
-    "scipy==1.14.1",
     "python-multipart==0.0.20",
 ]
 
 [project.optional-dependencies]
+# решатель cuOpt на видеокарте NVIDIA; ставится с дополнительного индекса:
+#   pip install -e ".[solver]" --extra-index-url https://pypi.nvidia.com
+solver = [
+    "cuopt-cu12==26.8.0",
+]
 dev = [
     "ruff>=0.7.0",
     "mypy>=1.13.0",
