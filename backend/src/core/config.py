@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str
     valhalla_url: str = "http://localhost:8002"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # диспетчер вводит время по Москве; перехода на летнее время там нет, поэтому хватает сдвига
+    local_utc_offset_hours: int = 3
 
 
 settings = Settings()

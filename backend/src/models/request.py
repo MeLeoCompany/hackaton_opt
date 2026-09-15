@@ -1,7 +1,18 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, SmallInteger, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    SmallInteger,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
@@ -22,6 +33,8 @@ class Request(Base):
     priority_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("priority.id"))
     skill_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("skill.id"))
     transport_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("transport.id"))
+    # выключенная заявка хранится, но в сборку задачи планирования не попадает
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
 
     priority: Mapped["Priority"] = relationship()
     skill: Mapped["Skill"] = relationship()

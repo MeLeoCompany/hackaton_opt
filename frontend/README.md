@@ -1,16 +1,25 @@
 # frontend
 
-Vue 3 + Vite + Leaflet поверх тайлов OpenStreetMap. Сейчас это стенд для проверки
-расчёта расстояний и времени в пути: кликаете точки на карте, получаете маршрут.
+Vue 3 + Vite + Leaflet поверх тайлов OpenStreetMap. Две вкладки:
+
+- **Заявки** — рабочее место диспетчера: таблица с фильтрами (поиск, приоритет, навык,
+  транспорт, день, время начала окна), сортировкой по клику на заголовок и страницами.
+  Переключатель «Таблица / Карта»: фильтры общие, на карте — все заявки, прошедшие фильтры,
+  и карточка выбранной точки с кнопкой «Показать в таблице». Строка, выделенная в таблице,
+  выделена и на карте. Добавление, изменение прямо в строке, удаление, загрузка из CSV и
+  шаблон. Время везде московское.
+- **Маршруты (стенд)** — кликаете точки на карте, получаете маршрут.
 
 ## Структура (`src/`)
 
 ```
-api/         — HTTP-клиент к бэкенду (travelApi.js)
-components/  — RouteMap (карта и отрисовка), RouteControls (выбор транспорта и кнопки),
-               RouteSummary (пробег, время, провайдер)
-composables/ — useRoutePlanner: состояние точек, запросы, ошибки
-utils/       — polyline.js: декодер encoded polyline
+pages/       — RequestsPage (вкладка «Заявки»), RouteStandPage (вкладка «Маршруты»)
+api/         — httpClient.js (общий клиент и разбор ошибок), requestsApi.js,
+               referencesApi.js, travelApi.js
+components/  — RequestsTable, RequestEditCells (строка в режиме правки), RequestsCsvImport,
+               RouteMap, RouteControls, RouteSummary
+composables/ — useRequestsTable (заявки: загрузка, правка, CSV), useRoutePlanner (стенд маршрутов)
+utils/       — moscowTime.js (перевод времени UTC <-> Москва), polyline.js (декодер линии маршрута)
 ```
 
 ## Запуск

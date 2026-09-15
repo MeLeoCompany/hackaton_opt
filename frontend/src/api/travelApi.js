@@ -1,17 +1,4 @@
-const BASE_URL = '/api/v1/travel'
-
-async function post(path, body) {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({}))
-    throw new Error(detail.detail || `Запрос не прошёл: ${response.status}`)
-  }
-  return response.json()
-}
+import { apiRequest } from './httpClient.js'
 
 export const TRANSPORTS = [
   { id: 1, label: 'Автомобиль' },
@@ -21,9 +8,9 @@ export const TRANSPORTS = [
 ]
 
 export function fetchRoute(points, transport) {
-  return post('/route', { points, transport })
+  return apiRequest('POST', '/travel/route', { json: { points, transport } })
 }
 
 export function fetchMatrix(points, transport) {
-  return post('/matrix', { points, transport })
+  return apiRequest('POST', '/travel/matrix', { json: { points, transport } })
 }

@@ -1,52 +1,26 @@
 <script setup>
-import RouteControls from './components/RouteControls.vue'
-import RouteMap from './components/RouteMap.vue'
-import RouteSummary from './components/RouteSummary.vue'
-import { useRoutePlanner } from './composables/useRoutePlanner.js'
+import { ref } from 'vue'
 
-const {
-  points,
-  transport,
-  route,
-  matrix,
-  error,
-  loading,
-  canBuild,
-  addPoint,
-  removeLastPoint,
-  clear,
-  buildRoute,
-  buildMatrix,
-} = useRoutePlanner()
+import RequestsPage from './pages/RequestsPage.vue'
+import RouteStandPage from './pages/RouteStandPage.vue'
+
+const activeTab = ref('requests')
 </script>
 
 <template>
-  <div class="layout">
-    <aside class="panel">
-      <header>
-        <h1>Маршруты</h1>
-        <p>Стенд для проверки расчёта расстояний и времени в пути</p>
-      </header>
+  <div class="app">
+    <nav class="tabs">
+      <span class="brand">Планирование маршрутов</span>
+      <button :class="{ active: activeTab === 'requests' }" @click="activeTab = 'requests'">Заявки</button>
+      <button :class="{ active: activeTab === 'routes' }" @click="activeTab = 'routes'">
+        Маршруты (стенд)
+      </button>
+    </nav>
 
-      <RouteControls
-        v-model:transport="transport"
-        :point-count="points.length"
-        :can-build="canBuild"
-        :loading="loading"
-        @build-route="buildRoute"
-        @build-matrix="buildMatrix"
-        @undo="removeLastPoint"
-        @clear="clear"
-      />
-
-      <p v-if="error" class="error">{{ error }}</p>
-
-      <RouteSummary :route="route" :matrix="matrix" />
-    </aside>
-
-    <main class="map-area">
-      <RouteMap :points="points" :route="route" @add-point="addPoint" />
-    </main>
+    <div class="page">
+      <RequestsPage v-if="activeTab === 'requests'" />
+      <RouteStandPage v-else />
+    </div>
   </div>
 </template>
 
@@ -61,42 +35,103 @@ body {
   color: #0f172a;
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: 320px 1fr;
+input,
+select,
+button {
+  font: inherit;
+  font-size: 13px;
+}
+
+input,
+select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+button.danger:hover:not(:disabled) {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+/* кнопки действий в строке таблицы: одинаковой ширины, чтобы при переходе
+   «Изменить/Удалить» -> «Сохранить/Отмена» колонка не прыгала */
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.row-actions button {
+  min-width: 96px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
   height: 100vh;
 }
 
-.panel {
-  padding: 16px;
-  border-right: 1px solid #e2e8f0;
-  overflow-y: auto;
+.tabs {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+  height: 46px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 
-.panel header h1 {
-  margin: 0;
-  font-size: 18px;
+.tabs .brand {
+  font-weight: 600;
+  margin-right: 16px;
 }
 
-.panel header p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: #94a3b8;
+.tabs button {
+  border: none;
+  border-radius: 0;
+  height: 46px;
+  background: none;
+  border-bottom: 2px solid transparent;
 }
 
-.map-area {
-  position: relative;
+.tabs button.active {
+  border-bottom-color: #2563eb;
+  color: #2563eb;
 }
 
-.error {
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: #fef2f2;
-  color: #b91c1c;
-  font-size: 12px;
+.page {
+  flex: 1;
+  min-height: 0;
 }
 </style>
