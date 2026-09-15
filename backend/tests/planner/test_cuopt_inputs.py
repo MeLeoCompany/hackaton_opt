@@ -79,9 +79,10 @@ def test_matrices_per_transport():
 
 def test_route_table_becomes_ordered_visits():
     route_records = [
-        {"vehicle_id": 1, "route": 0, "arrival_stamp": 540.0, "location": 1, "type": "Depot"},
-        {"vehicle_id": 1, "route": 1, "arrival_stamp": 900.0, "location": 3, "type": "Delivery"},
-        {"vehicle_id": 1, "route": 0, "arrival_stamp": 970.0, "location": 2, "type": "Delivery"},
+        # так выглядит get_route() у cuOpt 26.8
+        {"truck_id": 1, "route": 0, "arrival_stamp": 540.0, "location": 1, "type": "Depot"},
+        {"truck_id": 1, "route": 1, "arrival_stamp": 900.0, "location": 3, "type": "Delivery"},
+        {"truck_id": 1, "route": 0, "arrival_stamp": 970.0, "location": 2, "type": "Delivery"},
     ]
     solution = parse_route_records(route_records, task_request_indices=[0, 1])
 

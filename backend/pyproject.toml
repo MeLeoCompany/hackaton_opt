@@ -22,7 +22,7 @@ dependencies = [
 # решатель cuOpt на видеокарте NVIDIA; ставится с дополнительного индекса:
 #   pip install -e ".[solver]" --extra-index-url https://pypi.nvidia.com
 solver = [
-    "cuopt-cu12==26.8.0",
+    "cuopt-cu13==26.8.*",
 ]
 dev = [
     "ruff>=0.7.0",

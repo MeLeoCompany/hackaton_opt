@@ -10,7 +10,7 @@
 
 Заявки, которые не подходят ни одному исполнителю, в cuOpt не отправляются.
 
-Решатель считает на видеокарте NVIDIA прямо в процессе бэкенда. Пакет cuopt-cu12 ставится
+Решатель считает на видеокарте NVIDIA прямо в процессе бэкенда. Пакет cuopt-cu13 ставится
 с https://pypi.nvidia.com и импортируется только при решении, поэтому остальной бэкенд
 и тесты сборки задачи работают и без него.
 """
@@ -129,7 +129,7 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
         from cuopt import routing
     except ImportError as error:
         raise ExternalServiceError(
-            "Решатель cuOpt не установлен: pip install cuopt-cu12 --extra-index-url https://pypi.nvidia.com"
+            "Решатель cuOpt не установлен: pip install cuopt-cu13 --extra-index-url https://pypi.nvidia.com"
         ) from error
 
     vehicle_count = len(inputs.vehicle_locations)
@@ -171,15 +171,16 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
 def parse_route_records(route_records: list[dict], task_request_indices: list[int]) -> DaySolution:
     """Таблица маршрутов cuOpt -> визиты по исполнителям в порядке объезда.
 
-    Каждая строка — одна остановка: vehicle_id (номер исполнителя), route (номер заявки
+    Каждая строка — одна остановка: truck_id (номер исполнителя), route (номер заявки
     в списке отправленных), arrival_stamp (время начала работ в минутах от начала дня),
-    type (Depot — старт, Delivery — заявка). Строки одного исполнителя идут по порядку объезда.
+    location (номер точки), type (Depot — старт, Delivery — заявка).
+    Строки одного исполнителя идут по порядку объезда.
     """
     solution = DaySolution()
     for record in route_records:
         if record["type"] != "Delivery":
             continue
-        engineer_index = int(record["vehicle_id"])
+        engineer_index = int(record["truck_id"])
         visit = PlannedVisit(
             request_index=task_request_indices[int(record["route"])],
             work_start_minute=float(record["arrival_stamp"]),
