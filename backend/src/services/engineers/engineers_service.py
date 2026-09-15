@@ -45,6 +45,7 @@ async def get_engineer(session: AsyncSession, engineer_id: int) -> EngineerRead:
 
 
 async def create_engineer(session: AsyncSession, payload: EngineerCreate) -> EngineerRead:
+    await engineers_repository.lock_engineer_ids(session)
     skills = await check_references(session, payload)
 
     if payload.id is not None and await engineers_repository.get_engineer(session, payload.id) is not None:

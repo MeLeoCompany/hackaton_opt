@@ -12,6 +12,8 @@ from sqlalchemy.orm import selectinload
 
 from src.models import Assignment, Engineer, Event, Skill
 
+ENGINEER_ID_LOCK_KEY = 7419822
+
 
 async def list_engineers(session: AsyncSession) -> list[Engineer]:
     result = await session.execute(select(Engineer).options(selectinload(Engineer.skills)).order_by(Engineer.id))
@@ -82,4 +84,11 @@ async def sync_engineer_id_sequence(session: AsyncSession) -> None:
             "SELECT setval(pg_get_serial_sequence('engineer', 'id'), "
             "GREATEST((SELECT MAX(id) FROM engineer), 1))"
         )
+    )
+
+
+async def lock_engineer_ids(session: AsyncSession) -> None:
+    """Serialize explicit and automatic engineer IDs until commit/rollback."""
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"), {"key": ENGINEER_ID_LOCK_KEY}
     )

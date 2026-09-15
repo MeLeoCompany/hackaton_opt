@@ -16,6 +16,8 @@
 """
 
 import asyncio
+import logging
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -76,8 +78,16 @@ async def solve_day(instance: ProblemInstance) -> DaySolution:
 
     inputs = build_solver_inputs(instance, task_request_indices)
     # решение занимает секунды — считаем в отдельном потоке, чтобы не блокировать остальные запросы
-    route_records = await asyncio.to_thread(run_cuopt, inputs, settings.cuopt_time_limit_seconds)
-    return parse_route_records(route_records, task_request_indices)
+    try:
+        route_records = await asyncio.to_thread(run_cuopt, inputs, settings.cuopt_time_limit_seconds)
+        solution = parse_route_records(route_records, task_request_indices)
+    except ExternalServiceError:
+        raise
+    except (RuntimeError, ValueError, KeyError, IndexError, OSError) as error:
+        logging.getLogger(__name__).exception("Ошибка выполнения cuOpt")
+        raise ExternalServiceError("Не удалось выполнить расчёт cuOpt; подробности в журнале backend") from error
+    validate_solution(instance, solution)
+    return solution
 
 
 def schedulable_request_indices(instance: ProblemInstance) -> list[int]:
@@ -86,6 +96,7 @@ def schedulable_request_indices(instance: ProblemInstance) -> list[int]:
         request_index
         for request_index in range(instance.n_requests)
         if instance.compatible[request_index].any()
+        and instance.requests[request_index].window_start_min <= instance.requests[request_index].window_end_min
     ]
 
 
@@ -187,3 +198,29 @@ def parse_route_records(route_records: list[dict], task_request_indices: list[in
         )
         solution.routes.setdefault(engineer_index, []).append(visit)
     return solution
+
+
+def validate_solution(instance: ProblemInstance, solution: DaySolution) -> None:
+    """Reject invalid solver output before persisting a plan."""
+    seen = set()
+    for engineer_index, visits in solution.routes.items():
+        if not 0 <= engineer_index < instance.n_engineers:
+            raise ExternalServiceError("cuOpt вернул неизвестного исполнителя")
+        engineer = instance.engineers[engineer_index]
+        previous_node = instance.start_node(engineer_index)
+        available = engineer.shift_start_min
+        for visit in visits:
+            index = visit.request_index
+            if not 0 <= index < instance.n_requests or index in seen:
+                raise ExternalServiceError("cuOpt вернул неизвестную или повторную заявку")
+            seen.add(index)
+            request = instance.requests[index]
+            start = visit.work_start_minute
+            arrival = available + instance.travel_min[engineer.transport_id][previous_node, instance.request_node(index)]
+            if (not math.isfinite(start) or not instance.compatible[index, engineer_index]
+                    or start < max(arrival, request.window_start_min) - 1e-4
+                    or start > request.window_end_min + 1e-4
+                    or start + request.duration_min > engineer.shift_end_min + 1e-4):
+                raise ExternalServiceError("Результат cuOpt нарушает ограничения заявки или смены")
+            available = start + request.duration_min
+            previous_node = instance.request_node(index)

@@ -9,6 +9,7 @@
 транспорта, который есть у отобранных исполнителей.
 """
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -48,9 +49,10 @@ class PlanningDay:
     day_start: datetime  # 00:00 этого дня по Москве
     day_end: datetime  # 00:00 следующего дня
 
-    def to_minutes(self, moment: datetime) -> int:
+    def to_minutes(self, moment: datetime, *, round_up: bool = False) -> int:
         """Момент времени -> минуты от начала дня, обрезанные границами дня."""
-        minutes = int((moment - self.day_start).total_seconds() // 60)
+        offset = (moment - self.day_start).total_seconds() / 60
+        minutes = math.ceil(offset) if round_up else math.floor(offset)
         return min(max(minutes, 0), MINUTES_IN_DAY)
 
     def from_minutes(self, minutes: float) -> datetime:
@@ -85,6 +87,8 @@ def local_date_of(moment: datetime) -> date:
 async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
     requests = await requests_repository.list_active_requests_in_period(session, day.day_start, day.day_end)
     engineers = await engineers_repository.list_engineers_in_period(session, day.day_start, day.day_end)
+    engineers = [e for e in engineers
+                 if day.to_minutes(e.shift_start, round_up=True) <= day.to_minutes(e.shift_end)]
     skills = await references_repository.list_skills(session)
     transports = await references_repository.list_transports(session)
     priorities = await references_repository.list_priorities(session)
@@ -98,7 +102,7 @@ async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
                 engineer_id=engineer.id,
                 name=engineer.name,
                 transport_id=engineer.transport_id,
-                shift_start_min=day.to_minutes(engineer.shift_start),
+                shift_start_min=day.to_minutes(engineer.shift_start, round_up=True),
                 shift_end_min=day.to_minutes(engineer.shift_end),
             )
             for engineer in engineers
@@ -107,7 +111,7 @@ async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
             RequestSpec(
                 request_id=request.id,
                 duration_min=request.duration_minutes,
-                window_start_min=day.to_minutes(request.window_start),
+                window_start_min=day.to_minutes(request.window_start, round_up=True),
                 window_end_min=day.to_minutes(request.window_end),
                 skill_id=request.skill_id,
                 required_transport_id=request.transport_id,

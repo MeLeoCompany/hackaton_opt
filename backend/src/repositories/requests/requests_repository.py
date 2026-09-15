@@ -7,6 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Assignment, Event, Request
 
+# Shared by request creation and CSV import; independent from engineer ID allocation.
+REQUEST_ID_LOCK_KEY = 7419821
+
 
 async def list_requests(session: AsyncSession) -> list[Request]:
     """Все заявки, ближайшие по времени окна — первыми."""
@@ -91,4 +94,4 @@ async def sync_request_id_sequence(session: AsyncSession) -> None:
 
 async def lock_request_ids(session: AsyncSession) -> None:
     """Serialize API inserts/imports until the transaction ends."""
-    await session.execute(text("SELECT pg_advisory_xact_lock(7419821)"))
+    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": REQUEST_ID_LOCK_KEY})
