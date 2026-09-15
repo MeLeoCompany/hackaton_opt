@@ -92,8 +92,8 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="requests-page">
-    <header class="title">
+  <div class="workspace">
+    <header class="workspace-title">
       <h1>Заявки</h1>
       <p>
         Всего {{ requests.length }} · активных {{ activeTotal }}<template v-if="activeFilterCount">
@@ -120,10 +120,12 @@ onMounted(load)
       </ul>
     </div>
 
-    <p v-if="loading" class="loading">Загружаю заявки…</p>
+    <p v-if="loading" class="muted">Загружаю заявки…</p>
 
     <template v-else>
       <div class="list-bar">
+        <button class="primary" :disabled="editingId !== null" @click="addRequest">+ Добавить заявку</button>
+
         <div class="view-switch" role="tablist">
           <button
             role="tab"
@@ -145,10 +147,8 @@ onMounted(load)
           </button>
         </div>
 
-        <button class="primary" :disabled="editingId !== null" @click="addRequest">+ Добавить заявку</button>
-
-        <div class="activity-actions">
-          <span class="activity-summary">Активных {{ activeShown }} из {{ filteredRequests.length }} показанных</span>
+        <div class="list-bar-group">
+          <span class="list-bar-note">Активных {{ activeShown }} из {{ filteredRequests.length }} показанных</span>
           <button :disabled="editingId !== null || activeShown === 0" @click="setActiveForShown(false)">
             Выключить показанные
           </button>
@@ -210,150 +210,3 @@ onMounted(load)
     </Transition>
   </div>
 </template>
-
-<style scoped>
-.requests-page {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px;
-  height: 100%;
-  overflow: auto;
-}
-
-.title h1 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.title p {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: #64748b;
-}
-
-.message {
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.message ul {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.message.error {
-  background: #fef2f2;
-  color: #991b1b;
-}
-
-/* уведомление об успехе всплывает поверх страницы и само исчезает: если вставлять его
-   над таблицей, строки съезжают вниз прямо под курсором */
-.toast {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 2000;
-  max-width: 420px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: #166534;
-  color: #fff;
-  font-size: 13px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
-}
-
-.toast-enter-active,
-.toast-leave-active {
-  transition:
-    opacity 0.2s,
-    transform 0.2s;
-}
-
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-.loading {
-  color: #64748b;
-}
-
-/* строка над списком: вид, добавление, массовое включение/выключение — всё рядом с таблицей */
-.list-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-}
-
-.activity-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding-left: 12px;
-  border-left: 1px solid #e2e8f0;
-}
-
-.activity-summary {
-  font-size: 12px;
-  color: #64748b;
-}
-
-/* переключатель «Таблица / Карта» — как сегменты одной кнопки */
-.view-switch {
-  display: inline-flex;
-}
-
-.view-switch button {
-  border-radius: 0;
-  min-width: 110px;
-}
-
-.view-switch button:first-child {
-  border-radius: 6px 0 0 6px;
-}
-
-.view-switch button:last-child {
-  border-radius: 0 6px 6px 0;
-  margin-left: -1px;
-}
-
-.view-switch button.active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
-}
-
-.table-view {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.map-view {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 14px;
-  align-items: start;
-}
-
-.map-area {
-  height: max(480px, calc(100vh - 360px));
-}
-
-@media (max-width: 900px) {
-  .map-view {
-    grid-template-columns: 1fr;
-  }
-
-  .map-area {
-    height: 420px;
-  }
-}
-</style>

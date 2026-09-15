@@ -5,11 +5,7 @@ from fastapi.responses import JSONResponse
 
 from src.api.v1.router import router as v1_router
 from src.core.config import settings
-from src.services.requests.requests_service import (
-    RequestDataError,
-    RequestInUseError,
-    RequestNotFoundError,
-)
+from src.core.errors import DataError, InUseError, NotFoundError
 
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
@@ -21,19 +17,16 @@ app.add_middleware(
 app.include_router(v1_router, prefix="/api/v1")
 
 
-@app.exception_handler(RequestNotFoundError)
-async def handle_request_not_found(_: HttpRequest, error: RequestNotFoundError) -> JSONResponse:
+@app.exception_handler(NotFoundError)
+async def handle_not_found(_: HttpRequest, error: NotFoundError) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(error)})
 
 
-@app.exception_handler(RequestInUseError)
-async def handle_request_in_use(_: HttpRequest, error: RequestInUseError) -> JSONResponse:
+@app.exception_handler(InUseError)
+async def handle_in_use(_: HttpRequest, error: InUseError) -> JSONResponse:
     return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
-@app.exception_handler(RequestDataError)
-async def handle_request_data_error(_: HttpRequest, error: RequestDataError) -> JSONResponse:
-    return JSONResponse(
-        status_code=422,
-        content={"detail": "Проверьте данные заявок", "errors": error.messages},
-    )
+@app.exception_handler(DataError)
+async def handle_data_error(_: HttpRequest, error: DataError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": "Проверьте данные", "errors": error.messages})

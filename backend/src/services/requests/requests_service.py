@@ -5,6 +5,7 @@ from datetime import timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.core.errors import DataError, InUseError, NotFoundError
 from src.models import Request
 from src.repositories.references import references_repository
 from src.repositories.requests import requests_repository
@@ -21,20 +22,16 @@ from src.services.requests.requests_csv import (
 )
 
 
-class RequestNotFoundError(Exception):
+class RequestNotFoundError(NotFoundError):
     """Заявки с таким номером нет."""
 
 
-class RequestInUseError(Exception):
+class RequestInUseError(InUseError):
     """Заявку нельзя удалить: на неё ссылаются планы или события перепланирования."""
 
 
-class RequestDataError(Exception):
-    """Данные заявки не прошли проверку. messages — понятные диспетчеру причины."""
-
-    def __init__(self, messages: list[str]) -> None:
-        super().__init__("; ".join(messages))
-        self.messages = messages
+class RequestDataError(DataError):
+    """Данные заявки не прошли проверку."""
 
 
 def local_timezone() -> timezone:

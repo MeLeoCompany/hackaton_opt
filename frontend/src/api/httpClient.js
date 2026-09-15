@@ -20,6 +20,12 @@ const FIELD_LABELS = {
   transport_id: 'Транспорт',
   is_active: 'Активность',
   request_ids: 'Заявки',
+  name: 'Имя',
+  start_latitude: 'Широта старта',
+  start_longitude: 'Долгота старта',
+  shift_start: 'Начало смены',
+  shift_end: 'Конец смены',
+  skill_ids: 'Навыки',
   file: 'Файл',
 }
 

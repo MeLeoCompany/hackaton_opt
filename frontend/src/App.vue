@@ -1,8 +1,15 @@
 <script setup>
 import { ref } from 'vue'
 
+import EngineersPage from './pages/EngineersPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
+
+const TABS = [
+  { key: 'requests', label: 'Заявки' },
+  { key: 'engineers', label: 'Исполнители' },
+  { key: 'routes', label: 'Маршруты (стенд)' },
+]
 
 const activeTab = ref('requests')
 </script>
@@ -11,91 +18,25 @@ const activeTab = ref('requests')
   <div class="app">
     <nav class="tabs">
       <span class="brand">Планирование маршрутов</span>
-      <button :class="{ active: activeTab === 'requests' }" @click="activeTab = 'requests'">Заявки</button>
-      <button :class="{ active: activeTab === 'routes' }" @click="activeTab = 'routes'">
-        Маршруты (стенд)
+      <button
+        v-for="tab in TABS"
+        :key="tab.key"
+        :class="{ active: activeTab === tab.key }"
+        @click="activeTab = tab.key"
+      >
+        {{ tab.label }}
       </button>
     </nav>
 
     <div class="page">
       <RequestsPage v-if="activeTab === 'requests'" />
+      <EngineersPage v-else-if="activeTab === 'engineers'" />
       <RouteStandPage v-else />
     </div>
   </div>
 </template>
 
-<style>
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  color: #0f172a;
-}
-
-input,
-select,
-button {
-  font: inherit;
-  font-size: 13px;
-}
-
-input,
-select {
-  padding: 6px 8px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #fff;
-}
-
-button {
-  padding: 6px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #fff;
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  border-color: #2563eb;
-  color: #2563eb;
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-button.primary {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
-}
-
-button.primary:hover:not(:disabled) {
-  background: #1d4ed8;
-  color: #fff;
-}
-
-button.danger:hover:not(:disabled) {
-  border-color: #dc2626;
-  color: #dc2626;
-}
-
-/* кнопки действий в строке таблицы: одинаковой ширины, чтобы при переходе
-   «Изменить/Удалить» -> «Сохранить/Отмена» колонка не прыгала */
-.row-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.row-actions button {
-  min-width: 96px;
-}
-
+<style scoped>
 .app {
   display: flex;
   flex-direction: column;
@@ -112,7 +53,7 @@ button.danger:hover:not(:disabled) {
   flex-shrink: 0;
 }
 
-.tabs .brand {
+.brand {
   font-weight: 600;
   margin-right: 16px;
 }

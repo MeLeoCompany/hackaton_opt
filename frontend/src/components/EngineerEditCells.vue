@@ -1,0 +1,72 @@
+<script setup>
+// Ячейки строки таблицы исполнителей в режиме редактирования (всё, кроме номера).
+// form — объект формы из useEngineersTable, поля ввода меняют его напрямую.
+defineProps({
+  form: { type: Object, required: true },
+  references: { type: Object, required: true },
+  saving: { type: Boolean, required: true },
+})
+defineEmits(['save', 'cancel'])
+</script>
+
+<template>
+  <td>
+    <input v-model="form.name" class="wide-input" placeholder="Бригада …" />
+  </td>
+  <td>
+    <select v-model="form.transport_id">
+      <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
+    </select>
+  </td>
+  <td>
+    <div class="skill-checkboxes" title="От 1 до 3 навыков">
+      <label v-for="skill in references.skills" :key="skill.id">
+        <input v-model="form.skill_ids" type="checkbox" :value="skill.id" />
+        {{ skill.name }}
+      </label>
+    </div>
+  </td>
+  <td>
+    <div class="stacked-inputs">
+      <input v-model="form.shift_start" type="datetime-local" />
+      <input v-model="form.shift_end" type="datetime-local" />
+    </div>
+  </td>
+  <td>
+    <div class="stacked-inputs">
+      <input v-model="form.start_latitude" type="number" step="any" placeholder="широта" />
+      <input v-model="form.start_longitude" type="number" step="any" placeholder="долгота" />
+    </div>
+  </td>
+  <td>
+    <div class="row-actions">
+      <button class="primary" :disabled="saving" @click="$emit('save')">
+        {{ saving ? 'Сохраняю…' : 'Сохранить' }}
+      </button>
+      <button :disabled="saving" @click="$emit('cancel')">Отмена</button>
+    </div>
+  </td>
+</template>
+
+<style scoped>
+.stacked-inputs,
+.skill-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skill-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.skill-checkboxes input {
+  width: 16px;
+  min-width: 0;
+  height: 16px;
+  padding: 0;
+}
+</style>

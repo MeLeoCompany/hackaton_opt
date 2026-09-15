@@ -1,4 +1,4 @@
-// Заявки: загрузка, добавление, изменение, удаление, загрузка из CSV.
+// Заявки: загрузка, добавление, изменение, удаление, включение/выключение, загрузка из CSV.
 // Фильтры, сортировка и страницы — в useRequestsView.
 
 import { ref } from 'vue'
@@ -14,6 +14,7 @@ import {
   updateRequest,
 } from '../api/requestsApi.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
+import { useMessages } from './useMessages.js'
 
 export const NEW_REQUEST = 'new'
 
@@ -23,38 +24,12 @@ export function useRequestsTable() {
 
   const loading = ref(false)
   const saving = ref(false)
-  const errorMessage = ref('')
-  const errorDetails = ref([])
-  const noticeMessage = ref('')
+  const { errorMessage, errorDetails, noticeMessage, showError, showNotice, clearMessages } = useMessages()
 
   // какая строка сейчас редактируется: номер заявки, NEW_REQUEST для новой или null
   const editingId = ref(null)
   // значения полей формы — в том виде, в каком их отдают поля ввода
   const form = ref(null)
-
-  function showError(error) {
-    errorMessage.value = error.message
-    errorDetails.value = error.details ?? []
-  }
-
-  // уведомление об успехе показывается всплывашкой и само исчезает
-  const NOTICE_VISIBLE_MS = 5000
-  let noticeTimer = null
-
-  function showNotice(text) {
-    noticeMessage.value = text
-    clearTimeout(noticeTimer)
-    noticeTimer = setTimeout(() => {
-      noticeMessage.value = ''
-    }, NOTICE_VISIBLE_MS)
-  }
-
-  function clearMessages() {
-    errorMessage.value = ''
-    errorDetails.value = []
-    noticeMessage.value = ''
-    clearTimeout(noticeTimer)
-  }
 
   async function load() {
     loading.value = true

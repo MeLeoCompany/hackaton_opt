@@ -1,5 +1,5 @@
 <script setup>
-// Ячейки строки таблицы в режиме редактирования (всё, кроме номера заявки).
+// Ячейки строки таблицы заявок в режиме редактирования (всё, кроме номера заявки).
 // form — объект формы из useRequestsTable, поля ввода меняют его напрямую.
 defineProps({
   form: { type: Object, required: true },
@@ -14,7 +14,7 @@ defineEmits(['save', 'cancel'])
     <input v-model="form.is_active" type="checkbox" class="active-checkbox" title="Учитывать при планировании" />
   </td>
   <td>
-    <input v-model="form.address" class="address-input" placeholder="Город Москва, ул. …" />
+    <input v-model="form.address" class="wide-input" placeholder="Город Москва, ул. …" />
   </td>
   <td>
     <input v-model="form.latitude" type="number" step="any" placeholder="55.7400" />
@@ -26,7 +26,7 @@ defineEmits(['save', 'cancel'])
     <input v-model="form.duration_minutes" type="number" min="1" class="short-input" />
   </td>
   <td>
-    <div class="window-inputs">
+    <div class="stacked-inputs">
       <input v-model="form.window_start" type="datetime-local" />
       <input v-model="form.window_end" type="datetime-local" />
     </div>
@@ -58,14 +58,6 @@ defineEmits(['save', 'cancel'])
 </template>
 
 <style scoped>
-/* стили ячеек правки живут здесь: у компонента несколько корневых <td>, и scoped-стили
-   родительской таблицы до его элементов не доходят */
-input,
-select {
-  width: 100%;
-  min-width: 90px;
-}
-
 input.active-checkbox {
   width: 16px;
   min-width: 0;
@@ -73,16 +65,7 @@ input.active-checkbox {
   padding: 0;
 }
 
-.address-input {
-  min-width: 220px;
-}
-
-.short-input {
-  min-width: 70px;
-  width: 80px;
-}
-
-.window-inputs {
+.stacked-inputs {
   display: flex;
   flex-direction: column;
   gap: 4px;

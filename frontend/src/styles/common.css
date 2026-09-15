@@ -1,0 +1,596 @@
+/* Общие стили интерфейса: то, что одинаково на всех вкладках — поля и кнопки, фильтры,
+   таблицы данных, переключатели, карточки, карта, всплывающие сообщения.
+   Компоненты держат в своих scoped-стилях только то, что есть лишь у них. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: #0f172a;
+}
+
+/* ---- поля и кнопки ---- */
+
+input,
+select,
+button {
+  font: inherit;
+  font-size: 13px;
+}
+
+input,
+select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+button.danger:hover:not(:disabled) {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+/* кнопка-ссылка: без рамки, для второстепенных действий вроде «Сбросить» */
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+}
+
+button.link:disabled {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+/* ---- рабочая область вкладки ---- */
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  height: 100%;
+  overflow: auto;
+}
+
+.workspace-title h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.workspace-title p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.muted {
+  color: #64748b;
+}
+
+.message {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.message ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.message.error {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+/* уведомление об успехе всплывает поверх страницы и само исчезает: если вставлять его
+   над таблицей, строки съезжают вниз прямо под курсором */
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2000;
+  max-width: 420px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #166534;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* ---- строка действий над списком ----
+   порядок слева направо: главное действие, вид, остальные группы. Ничего не прижато
+   к правому краю, при нехватке места группа переносится целиком. */
+
+.list-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.list-bar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid #e2e8f0;
+}
+
+.list-bar-note {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.view-switch {
+  display: inline-flex;
+}
+
+.view-switch button {
+  border-radius: 0;
+  min-width: 110px;
+}
+
+.view-switch button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.view-switch button:last-child {
+  border-radius: 0 6px 6px 0;
+  margin-left: -1px;
+}
+
+.view-switch button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.table-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---- фильтры ---- */
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filters-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.filters-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.field input,
+.field select {
+  width: 100%;
+}
+
+.time-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field .time-range input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+/* ---- таблица данных ---- */
+
+.table-scroll {
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+}
+
+.data-table th.sortable:hover,
+.data-table th.sorted {
+  color: #1d4ed8;
+}
+
+.sort-arrow {
+  margin-left: 3px;
+  font-size: 11px;
+  opacity: 0.45;
+}
+
+.data-table th.sorted .sort-arrow {
+  opacity: 1;
+}
+
+.data-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.data-table td input,
+.data-table td select {
+  width: 100%;
+  min-width: 90px;
+}
+
+.data-table td input.short-input {
+  width: 80px;
+  min-width: 70px;
+}
+
+.data-table td input.wide-input {
+  min-width: 220px;
+}
+
+.data-table tbody tr:not(.editing) {
+  cursor: pointer;
+}
+
+.data-table tbody tr:not(.editing):hover td {
+  background: #f8fafc;
+}
+
+/* выключенная запись — приглушённая, но читаемая */
+.data-table tr.inactive td {
+  color: #94a3b8;
+}
+
+.data-table tr.inactive .badge {
+  opacity: 0.55;
+}
+
+.data-table tr.selected td {
+  background: #fef9c3;
+}
+
+.data-table tr.editing td {
+  background: #eff6ff;
+  color: inherit;
+}
+
+.data-table td.number-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.data-table td.nowrap {
+  white-space: nowrap;
+}
+
+.data-table td.wide-cell {
+  min-width: 220px;
+}
+
+.data-table td.empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 24px;
+}
+
+/* кнопки действий в строке: одинаковой ширины, чтобы при переходе
+   «Изменить/Удалить» -> «Сохранить/Отмена» колонка не прыгала */
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.row-actions button {
+  min-width: 96px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.badge.urgent {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* переключатель вкл/выкл */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  vertical-align: middle;
+}
+
+.switch input[type='checkbox'] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  min-width: 0;
+  height: 0;
+  padding: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  background: #cbd5e1;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.switch input:checked + .slider {
+  background: #16a34a;
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(16px);
+}
+
+.switch input:disabled + .slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switch input:focus-visible + .slider {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* ---- карта и карточка выбранной записи ---- */
+
+.map-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  align-items: start;
+}
+
+.map-area {
+  height: max(480px, calc(100vh - 360px));
+}
+
+@media (max-width: 900px) {
+  .map-view {
+    grid-template-columns: 1fr;
+  }
+
+  .map-area {
+    height: 420px;
+  }
+}
+
+.map-frame {
+  position: relative;
+  height: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.map-frame .map {
+  width: 100%;
+  height: 100%;
+}
+
+.map-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 1000;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
+  font-size: 12px;
+  color: #334155;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 15%);
+  vertical-align: -1px;
+}
+
+.details-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.details-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.details-card h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.details-card .close {
+  padding: 0 8px;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.details-card dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.details-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.details-card dt {
+  color: #64748b;
+}
+
+.details-card dd {
+  margin: 0;
+  text-align: right;
+}
+
+.details-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.details-actions button {
+  flex: 1;
+}
+
+.status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.status.on {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status.off {
+  background: #f1f5f9;
+  color: #64748b;
+}

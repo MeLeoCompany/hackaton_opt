@@ -63,7 +63,7 @@ onMounted(scrollToSelected)
 
 <template>
   <div ref="tableRoot" class="table-scroll">
-    <table class="requests-table">
+    <table class="data-table">
       <thead>
         <tr>
           <th
@@ -81,7 +81,7 @@ onMounted(scrollToSelected)
       <tbody>
         <tr v-if="editingId === NEW_REQUEST" class="editing">
           <td>
-            <input v-model="form.id" type="number" min="1" class="id-input" placeholder="авто" />
+            <input v-model="form.id" type="number" min="1" class="short-input" placeholder="авто" />
           </td>
           <RequestEditCells
             :form="form"
@@ -130,11 +130,11 @@ onMounted(scrollToSelected)
                 <span class="slider"></span>
               </label>
             </td>
-            <td class="address">{{ request.address }}</td>
+            <td class="wide-cell">{{ request.address }}</td>
             <td class="number-cell">{{ request.latitude.toFixed(4) }}</td>
             <td class="number-cell">{{ request.longitude.toFixed(4) }}</td>
             <td class="number-cell">{{ request.duration_minutes }}</td>
-            <td class="window">{{ formatMoscowWindow(request.window_start, request.window_end) }}</td>
+            <td class="nowrap">{{ formatMoscowWindow(request.window_start, request.window_end) }}</td>
             <td>
               <span :class="['badge', { urgent: isUrgent(references, request) }]">
                 {{ referenceName(references, 'priorities', request.priority_id) }}
@@ -160,175 +160,3 @@ onMounted(scrollToSelected)
     </table>
   </div>
 </template>
-
-<style scoped>
-.table-scroll {
-  overflow: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.requests-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #f8fafc;
-  text-align: left;
-  font-weight: 600;
-  color: #475569;
-  padding: 8px 10px;
-  border-bottom: 1px solid #e2e8f0;
-  white-space: nowrap;
-  user-select: none;
-}
-
-th.sortable {
-  cursor: pointer;
-}
-
-th.sortable:hover,
-th.sorted {
-  color: #1d4ed8;
-}
-
-.sort-arrow {
-  margin-left: 3px;
-  font-size: 11px;
-  opacity: 0.45;
-}
-
-th.sorted .sort-arrow {
-  opacity: 1;
-}
-
-/* :deep — чтобы правила действовали и на ячейки из RequestEditCells */
-.requests-table :deep(td) {
-  padding: 7px 10px;
-  border-bottom: 1px solid #f1f5f9;
-  vertical-align: middle;
-}
-
-.requests-table tbody tr:not(.editing) {
-  cursor: pointer;
-}
-
-.requests-table :deep(tbody tr:not(.editing):hover td) {
-  background: #f8fafc;
-}
-
-/* выключенная заявка — приглушённая, но читаемая */
-.requests-table :deep(tr.inactive td) {
-  color: #94a3b8;
-}
-
-.requests-table :deep(tr.selected td) {
-  background: #fef9c3;
-}
-
-.requests-table :deep(tr.editing td) {
-  background: #eff6ff;
-  color: inherit;
-}
-
-.number-cell {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.address {
-  min-width: 220px;
-}
-
-.window {
-  white-space: nowrap;
-}
-
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #f1f5f9;
-  color: #334155;
-  white-space: nowrap;
-}
-
-.badge.urgent {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-tr.inactive .badge {
-  opacity: 0.55;
-}
-
-/* переключатель активности */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 34px;
-  height: 18px;
-  vertical-align: middle;
-}
-
-.switch input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.slider {
-  position: absolute;
-  inset: 0;
-  border-radius: 9px;
-  background: #cbd5e1;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.slider::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.15s;
-}
-
-.switch input:checked + .slider {
-  background: #16a34a;
-}
-
-.switch input:checked + .slider::before {
-  transform: translateX(16px);
-}
-
-.switch input:disabled + .slider {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.switch input:focus-visible + .slider {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
-}
-
-.id-input {
-  width: 80px;
-}
-
-.empty {
-  text-align: center;
-  color: #94a3b8;
-  padding: 24px;
-}
-</style>

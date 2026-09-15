@@ -1,6 +1,6 @@
 <script setup>
 // Карта заявок: точка на каждую заявку, прошедшую фильтры (со всех страниц списка).
-// Срочные — красные, обычные — синие, выбранная — крупнее и с тёмной обводкой.
+// Срочные — красные, обычные — синие, выключенные — серые, выбранная — крупнее с тёмной обводкой.
 // Клик по точке сообщает наверх, какую заявку выбрали.
 
 import L from 'leaflet'
@@ -21,10 +21,18 @@ const REGULAR_COLOR = '#2563eb'
 const URGENT_COLOR = '#dc2626'
 const INACTIVE_COLOR = '#94a3b8'
 
+const LEGEND = [
+  { label: 'Обычная', color: REGULAR_COLOR },
+  { label: 'Срочная', color: URGENT_COLOR },
+  { label: 'Выключена', color: INACTIVE_COLOR },
+]
+
 const container = ref(null)
 let map = null
 let markerLayer = null
 const markerByRequestId = new Map()
+// номера заявок, под которые последний раз подгонялся масштаб
+let fittedRequestIds = ''
 
 function markerColor(request) {
   if (!request.is_active) return INACTIVE_COLOR
@@ -58,9 +66,6 @@ function tooltipHtml(request) {
     status
   )
 }
-
-// номера заявок, под которые последний раз подгонялся масштаб
-let fittedRequestIds = ''
 
 function drawMarkers() {
   markerLayer.clearLayers()
@@ -113,7 +118,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => map?.remove())
 
-// другой набор заявок (фильтр, загрузка, правка) — перерисовываем и подгоняем масштаб;
+// другой набор заявок (фильтр, загрузка, правка) — перерисовываем;
 // смена сортировки или страницы набор не меняет, поэтому карта не дёргается
 watch(() => props.requests, drawMarkers)
 watch(() => props.references, drawMarkers)
@@ -121,70 +126,13 @@ watch(() => props.selectedId, highlightSelected)
 </script>
 
 <template>
-  <div class="map-wrap">
+  <div class="map-frame">
     <div ref="container" class="map"></div>
-    <div class="legend">
-      <span><i class="dot regular"></i>Обычная</span>
-      <span><i class="dot urgent"></i>Срочная</span>
-      <span><i class="dot inactive"></i>Выключена</span>
-      <span class="count">на карте: {{ requests.length }}</span>
+    <div class="map-legend">
+      <span v-for="item in LEGEND" :key="item.label">
+        <i class="legend-dot" :style="{ background: item.color }"></i>{{ item.label }}
+      </span>
+      <span class="muted">на карте: {{ requests.length }}</span>
     </div>
   </div>
 </template>
-
-<style scoped>
-.map-wrap {
-  position: relative;
-  height: 100%;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.map {
-  width: 100%;
-  height: 100%;
-}
-
-.legend {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  z-index: 1000;
-  display: flex;
-  gap: 12px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: rgb(255 255 255 / 92%);
-  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
-  font-size: 12px;
-  color: #334155;
-}
-
-.dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 5px;
-  border-radius: 50%;
-  border: 1.5px solid #fff;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 15%);
-  vertical-align: -1px;
-}
-
-.dot.regular {
-  background: #2563eb;
-}
-
-.dot.urgent {
-  background: #dc2626;
-}
-
-.dot.inactive {
-  background: #94a3b8;
-}
-
-.count {
-  color: #64748b;
-}
-</style>
