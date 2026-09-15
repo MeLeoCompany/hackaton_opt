@@ -1,3 +1,10 @@
+"""Запасной расчёт расстояния и времени в пути — без роутера, по прямой линии.
+
+Используется, когда Valhalla недоступна. Цифры оценочные: расстояние по прямой
+умножается на коэффициент извилистости улиц, время считается по средней скорости
+транспорта плюс постоянные потери на каждый переезд.
+"""
+
 import math
 from dataclasses import dataclass
 
@@ -18,7 +25,7 @@ class TransportProfile:
     speed_kmh: float
     # прямая линия короче реального пути по улицам; коэффициент приближает её к пробегу
     detour_factor: float
-    # постоянные потери на визит: парковка у авто, ожидание и подход к остановке у ОТ
+    # постоянные потери на каждый переезд: парковка у авто, ожидание и подход к остановке у ОТ
     fixed_overhead_min: float
 
 
@@ -33,14 +40,21 @@ PROFILES: dict[TransportKind, TransportProfile] = {
 
 
 def _straight_line_km(origin: Point, destination: Point) -> float:
-    lat1, lat2 = math.radians(origin.latitude), math.radians(destination.latitude)
-    delta_lat = lat2 - lat1
-    delta_lon = math.radians(destination.longitude - origin.longitude)
-    h = math.sin(delta_lat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
-    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(h))
+    """Расстояние между двумя точками по поверхности Земли (формула гаверсинусов), км."""
+    origin_latitude = math.radians(origin.latitude)
+    destination_latitude = math.radians(destination.latitude)
+    latitude_difference = destination_latitude - origin_latitude
+    longitude_difference = math.radians(destination.longitude - origin.longitude)
+
+    haversine = (
+        math.sin(latitude_difference / 2) ** 2
+        + math.cos(origin_latitude) * math.cos(destination_latitude) * math.sin(longitude_difference / 2) ** 2
+    )
+    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(haversine))
 
 
 def estimate(origin: Point, destination: Point, transport: TransportKind) -> TravelEstimate:
+    """Оценка одного переезда: километры по улицам и минуты в пути для данного транспорта."""
     profile = PROFILES[transport]
     distance_km = _straight_line_km(origin, destination) * profile.detour_factor
     if distance_km == 0.0:
@@ -50,17 +64,21 @@ def estimate(origin: Point, destination: Point, transport: TransportKind) -> Tra
 
 
 def build_matrix(points: list[Point], transport: TransportKind) -> TravelMatrix:
+    """Матрица «из каждой точки в каждую»: километры и минуты для всех пар точек."""
     size = len(points)
     distances_km = [[0.0] * size for _ in range(size)]
     durations_min = [[0.0] * size for _ in range(size)]
-    # обе половины считаются отдельно: у дорожного роутера матрица несимметрична (односторонние улицы)
-    for i in range(size):
-        for j in range(size):
-            if i == j:
+
+    # «туда» и «обратно» считаются отдельно: у настоящего роутера они различаются
+    # (односторонние улицы), и форма матрицы должна быть одинаковой у обоих провайдеров
+    for from_index in range(size):
+        for to_index in range(size):
+            if from_index == to_index:
                 continue
-            leg = estimate(points[i], points[j], transport)
-            distances_km[i][j] = leg.distance_km
-            durations_min[i][j] = leg.duration_min
+            trip = estimate(points[from_index], points[to_index], transport)
+            distances_km[from_index][to_index] = trip.distance_km
+            durations_min[from_index][to_index] = trip.duration_min
+
     return TravelMatrix(
         transport=transport,
         provider=TravelProvider.HAVERSINE,
@@ -71,7 +89,8 @@ def build_matrix(points: list[Point], transport: TransportKind) -> TravelMatrix:
 
 
 def build_route(points: list[Point], transport: TransportKind) -> TravelRoute:
-    legs = [estimate(points[i], points[i + 1], transport) for i in range(len(points) - 1)]
+    """Маршрут через точки по порядку: суммарные километры и минуты. Геометрии нет."""
+    legs = [estimate(points[leg], points[leg + 1], transport) for leg in range(len(points) - 1)]
     return TravelRoute(
         transport=transport,
         provider=TravelProvider.HAVERSINE,

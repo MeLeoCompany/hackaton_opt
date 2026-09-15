@@ -27,6 +27,26 @@
             "envFile": "${workspaceFolder}/backend/.env",
             "justMyCode": false,
             "subProcess": true
+        },
+        {
+            "name": "Tests: все тесты (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["tests", "-v"],
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/backend/.env",
+            "justMyCode": true
+        },
+        {
+            "name": "Tests: открытый файл (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["${file}", "-v"],
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/backend/.env",
+            "justMyCode": true
         }
     ]
 }

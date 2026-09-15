@@ -1,27 +1,17 @@
-"""Раздел 4.5: инженер считается задействованным, если у него есть хотя бы одна заявка.
+"""4.5 Если инженеру назначена хотя бы одна заявка — он считается задействованным.
 
-    y^k_i - u_k <= 0
+Для каждой пары (инженер, заявка):
+    «заявка назначена инженеру» - «инженер задействован» <= 0
 
-Связывает назначения с переменной u_k, по которой в целевой функции берётся плата
-за задействование инженера (метрика ТЗ 2.3 «минимум персонала»).
+Именно за «инженер задействован» целевая функция берёт плату — так решатель старается
+обойтись меньшим числом людей.
 """
 
-from src.services.planner.constraints.constraint_block import ConstraintBlock
-from src.services.planner.planner_variables import VariableLayout
+from src.services.planner.milp_problem import MilpProblem
+from src.services.planner.planner_problem import ProblemInstance
 
 
-def build(layout: VariableLayout) -> ConstraintBlock:
-    instance = layout.instance
-    block = ConstraintBlock(label="usage", sense="ub", n_variables=layout.n_variables)
-
-    for k, i in layout.assign_index:
-        block.add_row(
-            {
-                layout.assign_column(k, i): 1.0,
-                layout.usage_column(k): -1.0,
-            },
-            rhs=0.0,
-            label=f"usage:e={instance.engineers[k].engineer_id},r={instance.requests[i].request_id}",
-        )
-
-    return block
+def add_usage_constraint(problem: MilpProblem, instance: ProblemInstance) -> None:
+    for (engineer_index, _request_index), assigned_column in problem.assigned_column.items():
+        engineer_used_column = problem.engineer_used_column[engineer_index]
+        problem.add_row([(assigned_column, 1.0), (engineer_used_column, -1.0)], "<=", 0.0)

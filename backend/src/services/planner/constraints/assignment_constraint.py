@@ -1,24 +1,21 @@
-"""Раздел 4.2: каждая заявка либо назначена ровно одному инженеру, либо не назначена.
+"""4.2 Каждая заявка назначена ровно одному инженеру — или не назначена никому.
 
-    sum_{k in E_i} y^k_i + z_i = 1   для каждой заявки i
+Для каждой заявки:
+    сумма «назначена инженеру» по всем подходящим инженерам + «не назначена» = 1
 """
 
-from src.services.planner.constraints.constraint_block import ConstraintBlock
-from src.services.planner.planner_variables import VariableLayout
+from src.services.planner.milp_problem import MilpProblem
+from src.services.planner.planner_problem import ProblemInstance
 
 
-def build(layout: VariableLayout) -> ConstraintBlock:
-    instance = layout.instance
-    block = ConstraintBlock(
-        label="assignment", sense="eq", n_variables=layout.n_variables
-    )
+def add_assignment_constraint(problem: MilpProblem, instance: ProblemInstance) -> None:
+    for request_index in range(instance.n_requests):
+        coefficients = []
 
-    for i in range(instance.n_requests):
-        terms = {
-            layout.assign_column(k, i): 1.0
-            for k in instance.candidates(i)
-        }
-        terms[layout.unassigned_column(i)] = 1.0
-        block.add_row(terms, rhs=1.0, label=f"request={instance.requests[i].request_id}")
+        for engineer_index in range(instance.n_engineers):
+            assigned_column = problem.assigned_column.get((engineer_index, request_index))
+            if assigned_column is not None:
+                coefficients.append((assigned_column, 1.0))
 
-    return block
+        coefficients.append((problem.unassigned_column[request_index], 1.0))
+        problem.add_row(coefficients, "=", 1.0)

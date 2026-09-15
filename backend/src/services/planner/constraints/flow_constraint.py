@@ -1,64 +1,51 @@
-"""Раздел 4.3: связность маршрута и открытый маршрут (ТЗ 2.4 — без возврата в старт).
+"""4.3 Маршрут инженера — одна непрерывная цепочка переездов.
 
-Правка к исходной постановке. Там записано
+Для каждой заявки, которую можно отдать инженеру:
+    сколько раз он в неё въехал  = назначена ли она ему (0 или 1)
+    сколько раз он из неё выехал = назначена ли она ему (0 или 1)
 
-    sum_v x^k_iv = y^k_i   и   sum_v x^k_vi = y^k_i,
+Для каждого инженера:
+    сколько раз выехал со старта  = задействован ли он (0 или 1)
+    сколько раз приехал на финиш  = задействован ли он (0 или 1)
 
-но при открытом маршруте у последней заявки исходящей дуги нет, и первое равенство
-делает модель неразрешимой при любом непустом маршруте. Вводим фиктивный узел-финиш:
-дуги (заявка -> финиш) стоят 0 км и 0 минут, поэтому на метрики не влияют, а поток
-сходится:
-
-    sum_{u} x^k_ui        = y^k_i           входящий поток в заявку
-    sum_{v} x^k_iv        = y^k_i           исходящий (v включает финиш)
-    sum_{v} x^k_{s_k, v}  = u_k             выезд со старта — только если инженер занят
-    sum_{i} x^k_{i, финиш} = u_k            ровно один обрыв маршрута
-    sum_{v} x^k_{v, s_k}  = 0               в старт не возвращаемся (таких дуг просто нет)
-
-Отдельных ограничений на подциклы не требуется: их отсекают временные ограничения
-(раздел 4.4), поскольку tau строго растёт вдоль дуги, а в цикле это невозможно.
+Финиш фиктивный и ничего не стоит. Без него у последней заявки маршрута не было бы
+выезда, и равенство «выехал = назначена» сделало бы задачу неразрешимой.
 """
 
-from src.services.planner.constraints.constraint_block import ConstraintBlock
-from src.services.planner.planner_variables import VariableLayout
+from src.services.planner.milp_problem import MilpProblem
+from src.services.planner.planner_problem import ProblemInstance
 
 
-def build(layout: VariableLayout) -> ConstraintBlock:
-    instance = layout.instance
-    block = ConstraintBlock(label="flow", sense="eq", n_variables=layout.n_variables)
-
-    for k in range(instance.n_engineers):
-        engineer_id = instance.engineers[k].engineer_id
-
-        for i in range(instance.n_requests):
-            if not instance.compatible[i, k]:
+def add_flow_constraint(problem: MilpProblem, instance: ProblemInstance) -> None:
+    for engineer_index in range(instance.n_engineers):
+        for request_index in range(instance.n_requests):
+            assigned_column = problem.assigned_column.get((engineer_index, request_index))
+            if assigned_column is None:
                 continue
-            node = instance.request_node(i)
-            assign_column = layout.assign_column(k, i)
-            request_id = instance.requests[i].request_id
+            request_node = instance.request_node(request_index)
 
-            incoming = {int(layout.arc_column(a)): 1.0 for a in layout.arcs_into(node, k)}
-            incoming[assign_column] = incoming.get(assign_column, 0.0) - 1.0
-            block.add_row(incoming, rhs=0.0, label=f"in:e={engineer_id},r={request_id}")
+            # въехал в заявку = заявка назначена
+            drives_in = problem.drives_into[(engineer_index, request_node)]
+            problem.add_row(
+                [(column, 1.0) for column in drives_in] + [(assigned_column, -1.0)], "=", 0.0
+            )
 
-            outgoing = {int(layout.arc_column(a)): 1.0 for a in layout.arcs_out_of(node, k)}
-            outgoing[assign_column] = outgoing.get(assign_column, 0.0) - 1.0
-            block.add_row(outgoing, rhs=0.0, label=f"out:e={engineer_id},r={request_id}")
+            # выехал из заявки = заявка назначена
+            drives_out = problem.drives_out_of[(engineer_index, request_node)]
+            problem.add_row(
+                [(column, 1.0) for column in drives_out] + [(assigned_column, -1.0)], "=", 0.0
+            )
 
-        usage_column = layout.usage_column(k)
+        engineer_used_column = problem.engineer_used_column[engineer_index]
 
-        departures = {
-            int(layout.arc_column(a)): 1.0
-            for a in layout.arcs_out_of(instance.start_node(k), k)
-        }
-        departures[usage_column] = departures.get(usage_column, 0.0) - 1.0
-        block.add_row(departures, rhs=0.0, label=f"depart:e={engineer_id}")
+        # выехал со старта = инженер задействован
+        drives_from_start = problem.drives_out_of[(engineer_index, instance.start_node(engineer_index))]
+        problem.add_row(
+            [(column, 1.0) for column in drives_from_start] + [(engineer_used_column, -1.0)], "=", 0.0
+        )
 
-        terminations = {
-            int(layout.arc_column(a)): 1.0
-            for a in layout.arcs_into(instance.end_node, k)
-        }
-        terminations[usage_column] = terminations.get(usage_column, 0.0) - 1.0
-        block.add_row(terminations, rhs=0.0, label=f"finish:e={engineer_id}")
-
-    return block
+        # приехал на финиш = инженер задействован
+        drives_to_finish = problem.drives_into[(engineer_index, instance.end_node)]
+        problem.add_row(
+            [(column, 1.0) for column in drives_to_finish] + [(engineer_used_column, -1.0)], "=", 0.0
+        )

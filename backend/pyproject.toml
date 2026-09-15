@@ -30,6 +30,10 @@ dev = [
 where = ["."]
 include = ["src*"]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
