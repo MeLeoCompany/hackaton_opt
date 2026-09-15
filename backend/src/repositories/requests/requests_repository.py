@@ -87,3 +87,8 @@ async def sync_request_id_sequence(session: AsyncSession) -> None:
             "GREATEST((SELECT MAX(id) FROM request), 1))"
         )
     )
+
+
+async def lock_request_ids(session: AsyncSession) -> None:
+    """Serialize API inserts/imports until the transaction ends."""
+    await session.execute(text("SELECT pg_advisory_xact_lock(7419821)"))

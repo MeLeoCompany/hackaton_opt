@@ -106,11 +106,11 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
                     continue
                 # если между точками нет дороги, Valhalla отдаёт null
                 if pair.get("time") is None or pair.get("distance") is None:
-                    distances_km[from_index][to_index] = float("inf")
-                    durations_min[from_index][to_index] = float("inf")
+                    distances_km[from_index][to_index] = None
+                    durations_min[from_index][to_index] = None
                     continue
                 distances_km[from_index][to_index] = round(float(pair["distance"]), 3)
-                durations_min[from_index][to_index] = round(float(pair["time"]) / 60 + waiting_minutes, 1)
+                durations_min[from_index][to_index] = float(pair["time"]) / 60 + waiting_minutes
 
     return TravelMatrix(
         transport=transport,

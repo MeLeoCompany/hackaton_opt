@@ -44,8 +44,8 @@ class TravelMatrix(BaseModel):
     transport: TransportKind
     provider: TravelProvider
     points: list[Point]
-    distances_km: list[list[float]]
-    durations_min: list[list[float]]
+    distances_km: list[list[float | None]]
+    durations_min: list[list[float | None]]
 
 
 class TravelRoute(BaseModel):

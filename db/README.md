@@ -71,3 +71,15 @@ docker exec -i routing_db psql -U routing -d routing < db/init/004_request_is_ac
 ```
 docker exec -i routing_db psql -U routing -d routing < db/init/005_plan_day.sql
 ```
+
+## Снимки исходных данных планов
+
+`init/006_plan_snapshot.sql` добавляет `plan.input_snapshot` (JSONB).
+Новые планы сохраняют координаты, окна и параметры заявок и исполнителей при расчёте.
+Открытие старого плана использует снимок, поэтому редактирование данных не меняет его маршруты.
+Миграция фиксирует существующие планы по текущим данным; ранее сделанные изменения восстановить нельзя.
+На существующую БД примените миграцию до запуска обновлённого backend:
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/006_plan_snapshot.sql
+```

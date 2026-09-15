@@ -37,28 +37,40 @@ export function usePlans() {
     }
   }
 
+  let listRequest = 0
+  let detailRequest = 0
+
   async function loadPlans() {
+    const request = ++listRequest
+    ++detailRequest
+    loadingPlan.value = false
+    const day = selectedDay.value
     plans.value = []
     plan.value = null
     selectedPlanId.value = null
     try {
-      plans.value = await listPlans(selectedDay.value)
+      const summaries = await listPlans(day)
+      if (request !== listRequest) return
+      plans.value = summaries
       if (plans.value.length) await selectPlan(plans.value[0].id)
     } catch (error) {
-      showError(error)
+      if (request === listRequest) showError(error)
     }
   }
 
   async function selectPlan(planId) {
+    const request = ++detailRequest
+    plan.value = null
     selectedPlanId.value = planId
     selectedEngineerId.value = null
     loadingPlan.value = true
     try {
-      plan.value = await getPlan(planId)
+      const loaded = await getPlan(planId)
+      if (request === detailRequest) plan.value = loaded
     } catch (error) {
-      showError(error)
+      if (request === detailRequest) showError(error)
     } finally {
-      loadingPlan.value = false
+      if (request === detailRequest) loadingPlan.value = false
     }
   }
 

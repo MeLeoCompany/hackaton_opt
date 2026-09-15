@@ -50,6 +50,7 @@ async def get_request(session: AsyncSession, request_id: int) -> Request:
 
 
 async def create_request(session: AsyncSession, payload: RequestCreate) -> Request:
+    await requests_repository.lock_request_ids(session)
     await check_references_exist(session, payload)
 
     if payload.id is not None and await requests_repository.get_request(session, payload.id) is not None:
@@ -116,6 +117,7 @@ async def import_requests_csv(session: AsyncSession, content: bytes) -> RequestI
     ошибок с номерами строк. Заявка с уже существующим номером обновляется, без номера
     или с новым номером — добавляется.
     """
+    await requests_repository.lock_request_ids(session)
     references = await load_reference_lookup(session)
     parsed = parse_requests_csv(content, references, local_timezone())
     if parsed.errors:
@@ -128,7 +130,14 @@ async def import_requests_csv(session: AsyncSession, content: bytes) -> RequestI
 
     created = 0
     updated = 0
-    for fields in parsed.rows:
+    # Reserve all explicit IDs before allocating automatic IDs.
+    explicit_rows = [row for row in parsed.rows if row["id"] is not None]
+    automatic_rows = [row for row in parsed.rows if row["id"] is None]
+    for fields in explicit_rows + automatic_rows:
+        if fields["id"] is None and ids_in_file:
+            await session.flush()
+            await requests_repository.sync_request_id_sequence(session)
+            ids_in_file = []
         existing_request = existing_by_id.get(fields["id"])
         fields_without_id = {name: value for name, value in fields.items() if name != "id"}
 

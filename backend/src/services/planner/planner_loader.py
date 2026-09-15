@@ -159,7 +159,7 @@ async def build_day_matrices(
             ) from error
 
         distance_km[transport_id] = replace_unreachable(matrix.distances_km, UNREACHABLE_KM)
-        travel_min[transport_id] = np.rint(replace_unreachable(matrix.durations_min, UNREACHABLE_MINUTES)).astype(
+        travel_min[transport_id] = np.ceil(replace_unreachable(matrix.durations_min, UNREACHABLE_MINUTES)).astype(
             np.int32
         )
 

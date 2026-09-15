@@ -14,7 +14,7 @@ function formatDuration(minutes) {
 function matrixLegSum(matrix) {
   return matrix.distances_km
     .slice(0, -1)
-    .reduce((total, row, index) => total + row[index + 1], 0)
+    .reduce((total, row, index) => row[index + 1] === null ? Infinity : total + row[index + 1], 0)
 }
 </script>
 
@@ -39,8 +39,8 @@ function matrixLegSum(matrix) {
     <h3>Матрица</h3>
     <dl>
       <div><dt>Размер</dt><dd>{{ matrix.points.length }} × {{ matrix.points.length }}</dd></div>
-      <div><dt>Сумма плеч</dt><dd>{{ matrixLegSum(matrix).toFixed(2) }} км</dd></div>
-      <div v-if="props.route">
+      <div><dt>Сумма плеч</dt><dd>{{ Number.isFinite(matrixLegSum(matrix)) ? `${matrixLegSum(matrix).toFixed(2)} км` : "Нет пути между точками" }}</dd></div>
+      <div v-if="props.route && Number.isFinite(matrixLegSum(matrix))">
         <dt>Расхождение с /route</dt>
         <dd>{{ Math.abs(matrixLegSum(matrix) - props.route.distance_km).toFixed(2) }} км</dd>
       </div>

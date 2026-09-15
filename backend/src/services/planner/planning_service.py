@@ -2,7 +2,8 @@
 
 import asyncio
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
+from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,6 +64,7 @@ async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSumm
     solution = await cuopt_solver.solve_day(loaded.instance)
 
     plan = plans_repository.add_plan(session, PlanRunType.OPTIMIZED, plan_date, SOLVER_NAME)
+    plan.input_snapshot = snapshot_inputs(loaded)
     await session.flush()
 
     # назначенные заявки — по маршрутам исполнителей, в порядке объезда
@@ -157,6 +159,8 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
         raise PlanNotFoundError(f"План №{plan_id} не найден")
 
     assignments = await plans_repository.list_plan_assignments(session, plan_id)
+    if plan.input_snapshot:
+        assignments = [snapshot_assignment(a, plan.input_snapshot) for a in assignments]
     assignments_by_engineer: dict[int, list[Assignment]] = defaultdict(list)
     unassigned = []
     for assignment in assignments:
@@ -233,4 +237,34 @@ def to_unassigned_request(assignment: Assignment) -> UnassignedRequest:
         window_start=request.window_start,
         window_end=request.window_end,
         reason=assignment.unassigned_reason,
+    )
+
+
+def snapshot_inputs(loaded: LoadedDay) -> dict:
+    requests = {str(r.id): {
+        "id": r.id, "address": r.address, "latitude": float(r.latitude),
+        "longitude": float(r.longitude), "window_start": r.window_start.isoformat(),
+        "window_end": r.window_end.isoformat(), "duration_minutes": r.duration_minutes,
+        "priority_id": r.priority_id, "skill_id": r.skill_id, "transport_id": r.transport_id,
+    } for r in loaded.requests}
+    engineers = {str(e.id): {
+        "id": e.id, "name": e.name, "start_latitude": float(e.start_latitude),
+        "start_longitude": float(e.start_longitude), "transport_id": e.transport_id,
+        "shift_start": e.shift_start.isoformat(), "shift_end": e.shift_end.isoformat(),
+        "skill_ids": [skill.id for skill in e.skills],
+    } for e in loaded.engineers}
+    return {"requests": requests, "engineers": engineers}
+
+
+def snapshot_assignment(assignment: Assignment, snapshot: dict) -> SimpleNamespace:
+    request = dict(snapshot["requests"][str(assignment.request_id)])
+    for key in ("window_start", "window_end"):
+        request[key] = datetime.fromisoformat(request[key])
+    engineer = snapshot["engineers"].get(str(assignment.engineer_id))
+    return SimpleNamespace(
+        request=SimpleNamespace(**request),
+        engineer=SimpleNamespace(**engineer) if engineer else None,
+        engineer_id=assignment.engineer_id, visit_order=assignment.visit_order,
+        planned_arrival_time=assignment.planned_arrival_time,
+        unassigned_reason=assignment.unassigned_reason,
     )
