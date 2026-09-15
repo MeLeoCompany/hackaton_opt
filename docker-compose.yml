@@ -21,6 +21,26 @@ services:
       timeout: 5s
       retries: 10
 
+  valhalla:
+    image: ghcr.io/nilsnolde/docker-valhalla/valhalla:latest
+    container_name: routing_valhalla
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - valhalla_tiles:/custom_files
+    environment:
+      # Москва + область: в данных есть Домодедово, компактный экстракт по городу его не покрывает
+      tile_urls: https://download.geofabrik.de/russia/central-fed-district-latest.osm.pbf
+      server_threads: 12
+      # тайлы собираются один раз и переиспользуются при следующих стартах
+      use_tiles_ignore_pbf: "True"
+      force_rebuild: "False"
+      build_elevation: "False"
+      build_admins: "False"
+      # маршрутизация с учётом времени суток нам не нужна, экономим на сборке
+      build_time_zones: "False"
+
   backend:
     build:
       context: ./backend
@@ -28,6 +48,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://routing:routing@postgres:5432/routing
+      VALHALLA_URL: http://valhalla:8002
     ports:
       - "8000:8000"
     volumes:
@@ -37,5 +58,24 @@ services:
       postgres:
         condition: service_healthy
 
+  frontend:
+    image: node:22-alpine
+    container_name: routing_frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      # node_modules в отдельном томе: не затирается тем, что установлено на хосте
+      - frontend_node_modules:/app/node_modules
+    environment:
+      # внутри compose бэкенд доступен по имени сервиса, vite проксирует /api на него
+      VITE_API_TARGET: http://backend:8000
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - backend
+
 volumes:
   db_data:
+  valhalla_tiles:
+  frontend_node_modules:
