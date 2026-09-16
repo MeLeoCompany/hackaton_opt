@@ -2,7 +2,7 @@
 // День и два времени вместо двух «прокручиваемых» полей даты-времени:
 // дата задаётся один раз, время набирается руками.
 // Если время окончания не позже времени начала, конец считается следующим днём:
-// ночная смена и ночное окно.
+// ночная смена и ночное окно. Об этом говорит значок «!» с пояснением при наведении.
 import { computed, ref, watch } from 'vue'
 
 import { formatDay, joinMoscowInputValue, nextDay, splitMoscowInputValue } from '../utils/moscowTime.js'
@@ -47,10 +47,17 @@ function apply() {
     <input v-model="date" type="date" aria-label="день" @change="apply" />
     <div class="times">
       <TimeInput v-model="startTime" aria-label="время начала" @update:model-value="apply" />
-      <span>—</span>
+      <span>–</span>
       <TimeInput v-model="endTime" aria-label="время окончания" @update:model-value="apply" />
-      <span v-if="endDate && endDate !== date" class="next-day" :title="`Окончание — ${formatDay(endDate)}`">
-        +1 день
+      <!-- окончание на следующих сутках: компактный значок, пояснение — при наведении -->
+      <span
+        v-if="endDate && endDate !== date"
+        class="next-day"
+        role="img"
+        :title="`Окончание на следующие сутки — ${formatDay(endDate)}`"
+        :aria-label="`Окончание на следующие сутки — ${formatDay(endDate)}`"
+      >
+        !
       </span>
     </div>
   </div>
@@ -81,7 +88,18 @@ function apply() {
   width: auto;
 }
 
-.next-day {
-  color: #b45309;
+.times .next-day {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
 }
 </style>
