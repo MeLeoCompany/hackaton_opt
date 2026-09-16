@@ -15,21 +15,33 @@ function harness() {
     .slice(file.indexOf('export const NEW_REQUEST'))
     .replace('export const NEW_REQUEST', 'const NEW_REQUEST')
     .replace('export function', 'function')
-  const make = new Function('ref', 'watch', 'useMessages', 'useSelectedDay', 'toMoscowInputValue',
-    source + '; return useRequestsTable()')
+  const lists = {}
+  const selectedDay = { value: '2026-08-17' }
+  const make = new Function(
+    'ref',
+    'watch',
+    'useMessages',
+    'useSelectedDay',
+    'toMoscowInputValue',
+    'fetchReferences',
+    'listRequests',
+    source + '; return useRequestsTable()',
+  )
   const table = make(
     (value) => ({ value }),
     () => {},
     () => ({ showError() {}, showNotice() {}, clearMessages() {} }),
-    () => ({ selectedDay: { value: '2026-08-17' } }),
+    () => ({ selectedDay }),
     (value) => value,
+    async () => ({ skills: [], priorities: [], transports: [], work_types: WORK_TYPES }),
+    (day) => new Promise((resolve) => { lists[day] = resolve }),
   )
   table.references.value = { skills: [], priorities: [{ id: 1 }], transports: [], work_types: WORK_TYPES }
-  return table
+  return { table, lists, selectedDay }
 }
 
 test('новая заявка заполняется нормативами первого типа работ', () => {
-  const table = harness()
+  const { table } = harness()
   table.startCreate()
 
   assert.equal(table.form.value.work_type_id, 1)
@@ -38,7 +50,7 @@ test('новая заявка заполняется нормативами пе
 })
 
 test('смена типа работ подставляет его норматив и навык', () => {
-  const table = harness()
+  const { table } = harness()
   table.startCreate()
   table.applyWorkTypeNorms(2)
 
@@ -47,11 +59,24 @@ test('смена типа работ подставляет его нормат�
 })
 
 test('свою длительность после автозаполнения ничто не перетирает', () => {
-  const table = harness()
+  const { table } = harness()
   table.startCreate()
   table.applyWorkTypeNorms(2)
   table.form.value.duration_minutes = 45
 
   assert.equal(table.form.value.duration_minutes, 45)
   assert.equal(table.form.value.skill_id, 3)
+})
+
+test('поздний ответ старого дня не заменяет заявки нового дня', async () => {
+  const { table, lists, selectedDay } = harness()
+  const first = table.load()
+  selectedDay.value = '2026-08-18'
+  const second = table.load()
+
+  lists['2026-08-18']([{ id: 18 }]); await second
+  lists['2026-08-17']([{ id: 17 }]); await first
+
+  assert.deepEqual(table.requests.value, [{ id: 18 }])
+  assert.equal(table.loading.value, false)
 })

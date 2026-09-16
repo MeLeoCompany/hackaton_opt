@@ -24,6 +24,7 @@ const selectedDay = ref(storedDay() || todayInMoscow())
 // дни, на которые есть активные заявки: подсказываем, куда перейти, если на выбранный день пусто
 const daysWithRequests = ref([])
 let daysLoaded = false
+let daysLoadPromise = null
 
 export function useSelectedDay() {
   function selectDay(day) {
@@ -36,17 +37,35 @@ export function useSelectedDay() {
   }
 
   // при первом запуске открываем день, на который есть заявки: ближайший будущий, иначе последний
-  async function loadDaysWithRequests() {
-    if (daysLoaded) return
-    daysLoaded = true
-    const days = await listPlanningDays()
-    daysWithRequests.value = days
-    if (storedDay() || !days.length) return
+  async function loadDaysWithRequests(force = false) {
+    if (daysLoadPromise) {
+      await daysLoadPromise
+      if (!force) return
+    }
+    if (daysLoaded && !force) return
 
-    const dates = days.map((day) => day.plan_date)
-    const today = todayInMoscow()
-    selectDay(dates.find((date) => date >= today) ?? dates[dates.length - 1])
+    daysLoadPromise = (async () => {
+      try {
+        const days = await listPlanningDays()
+        daysWithRequests.value = days
+        daysLoaded = true
+        if (storedDay() || !days.length) return
+
+        const dates = days.map((day) => day.plan_date)
+        const today = todayInMoscow()
+        selectDay(dates.find((date) => date >= today) ?? dates[dates.length - 1])
+      } catch {
+        // Подсказка по дням некритична; следующая загрузка страницы повторит запрос.
+      } finally {
+        daysLoadPromise = null
+      }
+    })()
+    return daysLoadPromise
   }
 
-  return { selectedDay, daysWithRequests, selectDay, loadDaysWithRequests }
+  function refreshDaysWithRequests() {
+    return loadDaysWithRequests(true)
+  }
+
+  return { selectedDay, daysWithRequests, selectDay, loadDaysWithRequests, refreshDaysWithRequests }
 }

@@ -24,21 +24,25 @@ export function useEngineersTable() {
   const editingId = ref(null)
   // значения полей формы — в том виде, в каком их отдают поля ввода
   const form = ref(null)
+  let loadRequest = 0
 
   async function load() {
+    const request = ++loadRequest
+    const day = selectedDay.value
     loading.value = true
     clearMessages()
     try {
       const [loadedReferences, loadedEngineers] = await Promise.all([
         fetchReferences(),
-        listEngineers(selectedDay.value),
+        listEngineers(day),
       ])
+      if (request !== loadRequest) return
       references.value = loadedReferences
       engineers.value = loadedEngineers
     } catch (error) {
-      showError(error)
+      if (request === loadRequest) showError(error)
     } finally {
-      loading.value = false
+      if (request === loadRequest) loading.value = false
     }
   }
 
@@ -100,15 +104,17 @@ export function useEngineersTable() {
     clearMessages()
     try {
       const payload = formToPayload()
+      let notice
       if (editingId.value === NEW_ENGINEER) {
         const created = await createEngineer({ ...payload, id: numberOrNull(form.value.id) })
-        showNotice(`Исполнитель «${created.name}» добавлен`)
+        notice = `Исполнитель «${created.name}» добавлен`
       } else {
         const updated = await updateEngineer(editingId.value, payload)
-        showNotice(`Исполнитель «${updated.name}» сохранён`)
+        notice = `Исполнитель «${updated.name}» сохранён`
       }
       cancelEdit()
-      engineers.value = await listEngineers(selectedDay.value)
+      await load()
+      showNotice(notice)
     } catch (error) {
       showError(error)
     } finally {

@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class RequestWrite(BaseModel):
     """Поля заявки, которые диспетчер заполняет при создании и изменении."""
 
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     address: str = Field(min_length=1)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -22,7 +24,9 @@ class RequestWrite(BaseModel):
     @model_validator(mode="after")
     def check_window(self) -> "RequestWrite":
         if self.window_start.tzinfo is None or self.window_end.tzinfo is None:
-            raise ValueError("время окна должно быть с часовым поясом, например 2026-08-17T10:00:00+03:00")
+            raise ValueError(
+                "время окна должно быть с часовым поясом, например 2026-08-17T10:00:00+03:00"
+            )
         if self.window_end <= self.window_start:
             raise ValueError("конец окна должен быть позже начала")
         return self

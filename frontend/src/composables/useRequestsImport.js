@@ -4,8 +4,10 @@ import { ref } from 'vue'
 
 import { downloadCsvTemplate, importRequestsCsv } from '../api/requestsApi.js'
 import { useMessages } from './useMessages.js'
+import { useSelectedDay } from './useSelectedDay.js'
 
 export function useRequestsImport() {
+  const { refreshDaysWithRequests } = useSelectedDay()
   const saving = ref(false)
   const lastReport = ref(null) // { created, updated } последней удачной загрузки
   const { errorMessage, errorDetails, noticeMessage, showError, showNotice, clearMessages } = useMessages()
@@ -16,6 +18,7 @@ export function useRequestsImport() {
     clearMessages()
     try {
       const report = await importRequestsCsv(file)
+      await refreshDaysWithRequests()
       lastReport.value = report
       showNotice(`Файл «${file.name}» загружен: добавлено ${report.created}, обновлено ${report.updated}`)
     } catch (error) {

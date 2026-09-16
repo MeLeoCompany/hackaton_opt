@@ -18,7 +18,7 @@ import { useSelectedDay } from './useSelectedDay.js'
 export const NEW_REQUEST = 'new'
 
 export function useRequestsTable() {
-  const { selectedDay } = useSelectedDay()
+  const { selectedDay, refreshDaysWithRequests } = useSelectedDay()
   const requests = ref([])
   const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
 
@@ -30,21 +30,25 @@ export function useRequestsTable() {
   const editingId = ref(null)
   // значения полей формы — в том виде, в каком их отдают поля ввода
   const form = ref(null)
+  let loadRequest = 0
 
   async function load() {
+    const request = ++loadRequest
+    const day = selectedDay.value
     loading.value = true
     clearMessages()
     try {
       const [loadedReferences, loadedRequests] = await Promise.all([
         fetchReferences(),
-        listRequests(selectedDay.value),
+        listRequests(day),
       ])
+      if (request !== loadRequest) return
       references.value = loadedReferences
       requests.value = loadedRequests
     } catch (error) {
-      showError(error)
+      if (request === loadRequest) showError(error)
     } finally {
-      loading.value = false
+      if (request === loadRequest) loading.value = false
     }
   }
 
@@ -127,15 +131,17 @@ export function useRequestsTable() {
     clearMessages()
     try {
       const payload = formToPayload()
+      let notice
       if (editingId.value === NEW_REQUEST) {
         const created = await createRequest({ ...payload, id: numberOrNull(form.value.id) })
-        showNotice(`Заявка №${created.id} добавлена`)
+        notice = `Заявка №${created.id} добавлена`
       } else {
         await updateRequest(editingId.value, payload)
-        showNotice(`Заявка №${editingId.value} сохранена`)
+        notice = `Заявка №${editingId.value} сохранена`
       }
       cancelEdit()
-      requests.value = await listRequests(selectedDay.value)
+      await Promise.all([load(), refreshDaysWithRequests()])
+      showNotice(notice)
     } catch (error) {
       showError(error)
     } finally {
@@ -149,6 +155,7 @@ export function useRequestsTable() {
     try {
       await deleteRequest(request.id)
       requests.value = requests.value.filter((item) => item.id !== request.id)
+      await refreshDaysWithRequests()
       showNotice(`Заявка №${request.id} удалена`)
     } catch (error) {
       showError(error)
@@ -165,6 +172,7 @@ export function useRequestsTable() {
       requests.value = requests.value.map((request) =>
         changedIds.has(request.id) ? { ...request, is_active: isActive } : request,
       )
+      await refreshDaysWithRequests()
       if (requestIds.length === 1) {
         showNotice(`Заявка №${requestIds[0]} ${isActive ? 'включена' : 'выключена'}`)
       } else {

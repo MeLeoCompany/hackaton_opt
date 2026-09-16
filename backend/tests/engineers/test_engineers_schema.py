@@ -29,6 +29,11 @@ def test_valid_engineer_without_id():
     assert engineer.skill_ids == [1, 2]
 
 
+def test_name_is_trimmed_and_cannot_be_only_spaces():
+    assert EngineerCreate(**{**VALID, "name": "  Бригада  "}).name == "Бригада"
+    assert "name" in errors_for(name="   ")
+
+
 def test_needs_at_least_one_skill():
     assert "skill_ids" in errors_for(skill_ids=[])
 
@@ -42,7 +47,9 @@ def test_skills_must_not_repeat():
 
 
 def test_shift_end_after_start():
-    assert "конец смены должен быть позже начала" in errors_for(shift_end="2026-08-17T08:00:00+03:00")
+    assert "конец смены должен быть позже начала" in errors_for(
+        shift_end="2026-08-17T08:00:00+03:00"
+    )
 
 
 def test_shift_needs_timezone():
