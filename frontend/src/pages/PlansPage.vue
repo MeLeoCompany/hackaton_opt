@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref, watch } from 'vue'
 
+import DayPanel from '../components/DayPanel.vue'
 import PlanMap from '../components/PlanMap.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
 import PlansList from '../components/PlansList.vue'
@@ -8,7 +9,6 @@ import { usePlans } from '../composables/usePlans.js'
 import { formatDay } from '../utils/moscowTime.js'
 
 const {
-  days,
   selectedDay,
   plans,
   selectedPlanId,
@@ -21,7 +21,7 @@ const {
   errorMessage,
   errorDetails,
   noticeMessage,
-  loadDays,
+  load,
   loadPlans,
   selectPlan,
   buildDayPlan,
@@ -42,7 +42,7 @@ watch(selectedDay, () => {
   viewMode.value = 'details'
 })
 
-onMounted(loadDays)
+onMounted(load)
 </script>
 
 <template>
@@ -52,18 +52,11 @@ onMounted(loadDays)
       <p>Маршруты исполнителей на день · время московское</p>
     </header>
 
-    <section class="plan-toolbar">
-      <label class="field day-field">
-        <span>День</span>
-        <select v-model="selectedDay" :disabled="loadingDays || building" @change="loadPlans">
-          <option v-for="day in days" :key="day.plan_date" :value="day.plan_date">
-            {{ formatDay(day.plan_date) }} · активных заявок {{ day.active_requests }}
-          </option>
-        </select>
-      </label>
+    <DayPanel :disabled="building" :summary="`планов на этот день ${plans.length}`" />
 
+    <section class="plan-toolbar">
       <button class="primary" :disabled="!selectedDay || building" @click="buildDayPlan">
-        {{ building ? 'Строю план…' : 'Построить план' }}
+        {{ building ? 'Строю план…' : 'Построить план на ' + formatDay(selectedDay) }}
       </button>
     </section>
 
@@ -74,8 +67,7 @@ onMounted(loadDays)
       </ul>
     </div>
 
-    <p v-if="loadingDays" class="muted">Загружаю дни…</p>
-    <p v-else-if="!days.length" class="muted">Нет активных заявок ни на один день — планировать нечего.</p>
+    <p v-if="loadingDays" class="muted">Загружаю планы…</p>
 
     <template v-else>
       <p v-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
@@ -145,10 +137,6 @@ onMounted(loadDays)
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px 12px;
-}
-
-.day-field {
-  width: 280px;
 }
 
 .plans-block {

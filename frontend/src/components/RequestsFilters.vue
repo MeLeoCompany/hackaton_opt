@@ -1,6 +1,5 @@
 <script setup>
 import { NO_TRANSPORT } from '../composables/useRequestsView.js'
-import { formatDay } from '../utils/moscowTime.js'
 
 import TimeInput from './TimeInput.vue'
 
@@ -8,7 +7,6 @@ import TimeInput from './TimeInput.vue'
 defineProps({
   filters: { type: Object, required: true },
   references: { type: Object, required: true },
-  availableDays: { type: Array, required: true },
   activeCount: { type: Number, required: true },
 })
 defineEmits(['reset'])
@@ -60,14 +58,6 @@ defineEmits(['reset'])
           <option value="">Любой</option>
           <option :value="NO_TRANSPORT">Не важен</option>
           <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>День</span>
-        <select v-model="filters.day">
-          <option value="">Любой</option>
-          <option v-for="day in availableDays" :key="day" :value="day">{{ formatDay(day) }}</option>
         </select>
       </label>
 

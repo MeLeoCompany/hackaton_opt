@@ -1,8 +1,11 @@
 """Исполнители: просмотр, создание, изменение, удаление."""
 
+from datetime import date
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
+from src.core.local_day import day_bounds
 from src.core.free_id import smallest_free_id
 from src.models import Engineer, Skill
 from src.repositories.engineers import engineers_repository
@@ -36,8 +39,13 @@ def to_engineer_read(engineer: Engineer) -> EngineerRead:
     )
 
 
-async def list_engineers(session: AsyncSession) -> list[EngineerRead]:
-    engineers = await engineers_repository.list_engineers(session)
+async def list_engineers(session: AsyncSession, plan_date: date | None = None) -> list[EngineerRead]:
+    """Все исполнители или только те, чья смена попадает в выбранный день."""
+    if plan_date is None:
+        engineers = await engineers_repository.list_engineers(session)
+    else:
+        day_start, day_end = day_bounds(plan_date)
+        engineers = await engineers_repository.list_engineers_in_period(session, day_start, day_end)
     return [to_engineer_read(engineer) for engineer in engineers]
 
 

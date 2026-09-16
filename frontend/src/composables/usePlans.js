@@ -1,14 +1,14 @@
-// Планы на день: какие дни есть, построение плана через cuOpt, выбранный план с маршрутами.
+// Планы на выбранный день: построение через cuOpt, выбранный план с маршрутами.
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
-import { buildPlan, deletePlan, getPlan, listPlanningDays, listPlans } from '../api/plansApi.js'
+import { buildPlan, deletePlan, getPlan, listPlans } from '../api/plansApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
 import { useMessages } from './useMessages.js'
+import { useSelectedDay } from './useSelectedDay.js'
 
 export function usePlans() {
-  const days = ref([]) // [{ plan_date, active_requests }]
-  const selectedDay = ref('')
+  const { selectedDay } = useSelectedDay()
   const plans = ref([]) // планы выбранного дня, новые первыми
   const selectedPlanId = ref(null)
   const plan = ref(null) // выбранный план с маршрутами
@@ -21,15 +21,12 @@ export function usePlans() {
   const building = ref(false)
   const { errorMessage, errorDetails, noticeMessage, showError, showNotice, clearMessages } = useMessages()
 
-  async function loadDays() {
+  async function load() {
     loadingDays.value = true
     clearMessages()
     try {
-      const [loadedReferences, loadedDays] = await Promise.all([fetchReferences(), listPlanningDays()])
-      references.value = loadedReferences
-      days.value = loadedDays
-      if (!selectedDay.value && loadedDays.length) selectedDay.value = loadedDays[0].plan_date
-      if (selectedDay.value) await loadPlans()
+      references.value = await fetchReferences()
+      await loadPlans()
     } catch (error) {
       showError(error)
     } finally {
@@ -113,13 +110,15 @@ export function usePlans() {
     }
   }
 
+  // сменили день — показываем планы нового дня
+  watch(selectedDay, loadPlans)
+
   // повторный клик по тому же исполнителю снимает подсветку
   function selectEngineer(engineerId) {
     selectedEngineerId.value = selectedEngineerId.value === engineerId ? null : engineerId
   }
 
   return {
-    days,
     selectedDay,
     plans,
     selectedPlanId,
@@ -132,7 +131,7 @@ export function usePlans() {
     errorMessage,
     errorDetails,
     noticeMessage,
-    loadDays,
+    load,
     loadPlans,
     selectPlan,
     buildDayPlan,

@@ -1,16 +1,18 @@
 // Исполнители: загрузка, добавление, изменение, удаление.
 // Фильтры, сортировка и выбор — в useEngineersView.
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 import { createEngineer, deleteEngineer, listEngineers, updateEngineer } from '../api/engineersApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
+import { useSelectedDay } from './useSelectedDay.js'
 
 export const NEW_ENGINEER = 'new'
 
 export function useEngineersTable() {
+  const { selectedDay } = useSelectedDay()
   const engineers = ref([])
   const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
 
@@ -27,7 +29,10 @@ export function useEngineersTable() {
     loading.value = true
     clearMessages()
     try {
-      const [loadedReferences, loadedEngineers] = await Promise.all([fetchReferences(), listEngineers()])
+      const [loadedReferences, loadedEngineers] = await Promise.all([
+        fetchReferences(),
+        listEngineers(selectedDay.value),
+      ])
       references.value = loadedReferences
       engineers.value = loadedEngineers
     } catch (error) {
@@ -103,7 +108,7 @@ export function useEngineersTable() {
         showNotice(`Исполнитель «${updated.name}» сохранён`)
       }
       cancelEdit()
-      engineers.value = await listEngineers()
+      engineers.value = await listEngineers(selectedDay.value)
     } catch (error) {
       showError(error)
     } finally {
@@ -122,6 +127,12 @@ export function useEngineersTable() {
       showError(error)
     }
   }
+
+  // сменили день — список перезагружается на новый день
+  watch(selectedDay, () => {
+    cancelEdit()
+    load()
+  })
 
   return {
     engineers,

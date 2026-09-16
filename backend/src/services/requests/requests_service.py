@@ -1,11 +1,11 @@
 """Заявки: просмотр, создание, изменение, удаление и загрузка из CSV."""
 
-from datetime import timedelta, timezone
+from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
 from src.core.errors import DataError, InUseError, NotFoundError
+from src.core.local_day import day_bounds, local_timezone
 from src.core.free_id import smallest_free_id
 from src.models import Request
 from src.repositories.references import references_repository
@@ -36,12 +36,12 @@ class RequestDataError(DataError):
     """Данные заявки не прошли проверку."""
 
 
-def local_timezone() -> timezone:
-    return timezone(timedelta(hours=settings.local_utc_offset_hours))
-
-
-async def list_requests(session: AsyncSession) -> list[Request]:
-    return await requests_repository.list_requests(session)
+async def list_requests(session: AsyncSession, plan_date: date | None = None) -> list[Request]:
+    """Все заявки или только те, чьё окно попадает в выбранный день."""
+    if plan_date is None:
+        return await requests_repository.list_requests(session)
+    day_start, day_end = day_bounds(plan_date)
+    return await requests_repository.list_requests_in_period(session, day_start, day_end)
 
 
 async def get_request(session: AsyncSession, request_id: int) -> Request:

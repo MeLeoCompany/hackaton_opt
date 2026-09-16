@@ -1,7 +1,8 @@
 import { apiRequest } from './httpClient.js'
 
-export function listEngineers() {
-  return apiRequest('GET', '/engineers')
+// день не указан — вернутся все исполнители; указан — только те, чья смена попадает в этот день
+export function listEngineers(planDate) {
+  return apiRequest('GET', planDate ? `/engineers?plan_date=${encodeURIComponent(planDate)}` : '/engineers')
 }
 
 export function createEngineer(fields) {

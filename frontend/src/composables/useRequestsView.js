@@ -18,7 +18,6 @@ function emptyFilters() {
     priorityId: '', // '' — любой
     workTypeId: '', // '' — любой тип работ
     transportId: '', // '' — любой, NO_TRANSPORT — «не важен», иначе номер транспорта
-    day: '', // 'YYYY-MM-DD' — московская дата начала окна
     timeFrom: '', // 'HH:MM' — окно начинается не раньше
     timeTo: '', // 'HH:MM' — окно начинается не позже
   }
@@ -34,10 +33,6 @@ export function useRequestsView(requests, references) {
 
   // ---- фильтры ----
 
-  const availableDays = computed(() => {
-    const days = new Set(requests.value.map((request) => moscowDateOf(request.window_start)))
-    return [...days].sort()
-  })
 
   const activeFilterCount = computed(
     () => Object.entries(emptyFilters()).filter(([name, emptyValue]) => filters[name] !== emptyValue).length,
@@ -59,8 +54,6 @@ export function useRequestsView(requests, references) {
     } else if (filters.transportId !== '' && request.transport_id !== filters.transportId) {
       return false
     }
-
-    if (filters.day && moscowDateOf(request.window_start) !== filters.day) return false
 
     const windowStartTime = moscowTimeOf(request.window_start)
     if (filters.timeFrom && windowStartTime < filters.timeFrom) return false
@@ -163,7 +156,6 @@ export function useRequestsView(requests, references) {
 
   return {
     filters,
-    availableDays,
     activeFilterCount,
     filteredRequests,
     resetFilters,

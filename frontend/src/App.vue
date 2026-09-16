@@ -1,7 +1,9 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 
+import { useSelectedDay } from './composables/useSelectedDay.js'
 import EngineersPage from './pages/EngineersPage.vue'
+import ImportPage from './pages/ImportPage.vue'
 import PlansPage from './pages/PlansPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
@@ -10,16 +12,39 @@ const TABS = [
   { key: 'requests', label: 'Заявки' },
   { key: 'engineers', label: 'Исполнители' },
   { key: 'plans', label: 'Планы' },
+  { key: 'import', label: 'Загрузка CSV' },
   { key: 'routes', label: 'Маршруты (стенд)' },
 ]
 
-const activeTab = ref('requests')
+const TAB_STORAGE_KEY = 'routing.activeTab'
+
+// открытая вкладка переживает перезагрузку страницы: диспетчер обновляет её посреди работы
+function storedTab() {
+  try {
+    const stored = window.localStorage.getItem(TAB_STORAGE_KEY)
+    return TABS.some((tab) => tab.key === stored) ? stored : ''
+  } catch {
+    return '' // приватное окно или запрещённые куки
+  }
+}
+
+const activeTab = ref(storedTab() || 'requests')
+
+watch(activeTab, (tab) => {
+  try {
+    window.localStorage.setItem(TAB_STORAGE_KEY, tab)
+  } catch {
+    // не смогли запомнить — вкладка просто не переживёт перезагрузку
+  }
+})
+
+const { loadDaysWithRequests } = useSelectedDay()
+onMounted(loadDaysWithRequests)
 </script>
 
 <template>
   <div class="app">
     <nav class="tabs">
-      <span class="brand">Планирование маршрутов</span>
       <button
         v-for="tab in TABS"
         :key="tab.key"
@@ -34,6 +59,7 @@ const activeTab = ref('requests')
       <RequestsPage v-if="activeTab === 'requests'" />
       <EngineersPage v-else-if="activeTab === 'engineers'" />
       <PlansPage v-else-if="activeTab === 'plans'" />
+      <ImportPage v-else-if="activeTab === 'import'" />
       <RouteStandPage v-else />
     </div>
   </div>
@@ -54,11 +80,6 @@ const activeTab = ref('requests')
   height: 46px;
   border-bottom: 1px solid #e2e8f0;
   flex-shrink: 0;
-}
-
-.brand {
-  font-weight: 600;
-  margin-right: 16px;
 }
 
 .tabs button {

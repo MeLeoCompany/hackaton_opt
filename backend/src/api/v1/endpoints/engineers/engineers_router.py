@@ -4,6 +4,8 @@
 в ответы 404 / 422 / 409 обработчиками в src/main.py.
 """
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,8 +17,8 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[EngineerRead], summary="Все исполнители")
-async def list_engineers(session: AsyncSession = Depends(get_db)):
-    return await engineers_service.list_engineers(session)
+async def list_engineers(plan_date: date | None = None, session: AsyncSession = Depends(get_db)):
+    return await engineers_service.list_engineers(session, plan_date)
 
 
 @router.get("/{engineer_id}", response_model=EngineerRead, summary="Один исполнитель")

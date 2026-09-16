@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
+import DayPanel from '../components/DayPanel.vue'
 import RequestDetailsCard from '../components/RequestDetailsCard.vue'
-import RequestsCsvImport from '../components/RequestsCsvImport.vue'
 import RequestsFilters from '../components/RequestsFilters.vue'
 import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
@@ -29,14 +29,11 @@ const {
   saveForm,
   remove,
   setActive,
-  importCsv,
-  downloadTemplate,
 } = useRequestsTable()
 
 // что из данных видно: фильтры, сортировка, страница, выбранная заявка
 const {
   filters,
-  availableDays,
   activeFilterCount,
   filteredRequests,
   resetFilters,
@@ -104,12 +101,11 @@ onMounted(load)
       </p>
     </header>
 
-    <RequestsCsvImport :busy="saving" @import="importCsv" @download-template="downloadTemplate" />
+    <DayPanel :summary="`заявок на этот день ${requests.length}, активных ${activeTotal}`" />
 
     <RequestsFilters
       :filters="filters"
       :references="references"
-      :available-days="availableDays"
       :active-count="activeFilterCount"
       @reset="resetFilters"
     />

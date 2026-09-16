@@ -17,6 +17,18 @@ async def list_requests(session: AsyncSession) -> list[Request]:
     return list(result.scalars().all())
 
 
+async def list_requests_in_period(
+    session: AsyncSession, period_start: datetime, period_end: datetime
+) -> list[Request]:
+    """Заявки (и выключенные тоже), окно которых пересекается с периодом [period_start, period_end)."""
+    result = await session.execute(
+        select(Request)
+        .where(Request.window_start < period_end, Request.window_end > period_start)
+        .order_by(Request.window_start, Request.id)
+    )
+    return list(result.scalars().all())
+
+
 async def list_active_requests(session: AsyncSession) -> list[Request]:
     result = await session.execute(
         select(Request).where(Request.is_active.is_(True)).order_by(Request.window_start, Request.id)

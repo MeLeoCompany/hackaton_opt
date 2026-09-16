@@ -6,10 +6,14 @@ function harness() {
   const source = fs.readFileSync(new URL('../src/composables/usePlans.js', import.meta.url), 'utf8')
     .replace(/^import .*$/mg, '').replace('export function', 'function')
   const details = {}, lists = {}, errors = []
-  const make = new Function('ref', 'getPlan', 'listPlans', 'useMessages', source + '; return usePlans()')
-  const plans = make(value => ({ value }), id => new Promise(resolve => { details[id] = resolve }),
+  const day = { value: '2026-08-17' }
+  const make = new Function('ref', 'watch', 'getPlan', 'listPlans', 'useMessages', 'useSelectedDay',
+    source + '; return usePlans()')
+  const plans = make(value => ({ value }), () => {},
+    id => new Promise(resolve => { details[id] = resolve }),
     day => new Promise(resolve => { lists[day] = resolve }),
-    () => ({ showError: error => errors.push(error), clearMessages() {} }))
+    () => ({ showError: error => errors.push(error), clearMessages() {} }),
+    () => ({ selectedDay: day }))
   return { plans, details, lists }
 }
 

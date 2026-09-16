@@ -4,6 +4,8 @@
 в ответы 404 / 422 / 409 обработчиками в src/main.py.
 """
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,8 +26,8 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[RequestRead], summary="Все заявки, ближайшие по окну — первыми")
-async def list_requests(session: AsyncSession = Depends(get_db)):
-    return await requests_service.list_requests(session)
+async def list_requests(plan_date: date | None = None, session: AsyncSession = Depends(get_db)):
+    return await requests_service.list_requests(session, plan_date)
 
 
 @router.get("/csv-template", summary="Шаблон CSV для загрузки заявок")

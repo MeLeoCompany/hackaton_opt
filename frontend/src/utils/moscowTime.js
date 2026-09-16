@@ -73,10 +73,20 @@ export function joinMoscowInputValue(date, time) {
   return date && time ? `${date}T${time}` : ''
 }
 
-// "2026-08-17" -> "2026-08-18": окно или смена, перешедшие через полночь
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function shiftDay(date, milliseconds) {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + milliseconds).toISOString().slice(0, 10)
+}
+
+// "2026-08-17" -> "2026-08-18": окно или смена, перешедшие через полночь; шаг вперёд по дням
 export function nextDay(date) {
-  const DAY_MS = 24 * 60 * 60 * 1000
-  return new Date(new Date(`${date}T00:00:00Z`).getTime() + DAY_MS).toISOString().slice(0, 10)
+  return shiftDay(date, DAY_MS)
+}
+
+// "2026-08-17" -> "2026-08-16"
+export function previousDay(date) {
+  return shiftDay(date, -DAY_MS)
 }
 
 // окно заявки для таблицы: "17.08.2026 18:00–20:00"

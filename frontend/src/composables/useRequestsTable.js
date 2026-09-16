@@ -1,24 +1,24 @@
-// Заявки: загрузка, добавление, изменение, удаление, включение/выключение, загрузка из CSV.
-// Фильтры, сортировка и страницы — в useRequestsView.
+// Заявки: загрузка, добавление, изменение, удаление, включение/выключение.
+// Фильтры, сортировка и страницы — в useRequestsView, загрузка из CSV — в useRequestsImport.
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 import { fetchReferences } from '../api/referencesApi.js'
 import {
   createRequest,
   deleteRequest,
-  downloadCsvTemplate,
-  importRequestsCsv,
   listRequests,
   setRequestsActive,
   updateRequest,
 } from '../api/requestsApi.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
+import { useSelectedDay } from './useSelectedDay.js'
 
 export const NEW_REQUEST = 'new'
 
 export function useRequestsTable() {
+  const { selectedDay } = useSelectedDay()
   const requests = ref([])
   const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
 
@@ -35,7 +35,10 @@ export function useRequestsTable() {
     loading.value = true
     clearMessages()
     try {
-      const [loadedReferences, loadedRequests] = await Promise.all([fetchReferences(), listRequests()])
+      const [loadedReferences, loadedRequests] = await Promise.all([
+        fetchReferences(),
+        listRequests(selectedDay.value),
+      ])
       references.value = loadedReferences
       requests.value = loadedRequests
     } catch (error) {
@@ -132,7 +135,7 @@ export function useRequestsTable() {
         showNotice(`Заявка №${editingId.value} сохранена`)
       }
       cancelEdit()
-      requests.value = await listRequests()
+      requests.value = await listRequests(selectedDay.value)
     } catch (error) {
       showError(error)
     } finally {
@@ -172,32 +175,11 @@ export function useRequestsTable() {
     }
   }
 
-  async function importCsv(file) {
-    saving.value = true
-    clearMessages()
-    try {
-      const report = await importRequestsCsv(file)
-      requests.value = await listRequests()
-      showNotice(`Файл «${file.name}» загружен: добавлено ${report.created}, обновлено ${report.updated}`)
-    } catch (error) {
-      showError(error)
-    } finally {
-      saving.value = false
-    }
-  }
-
-  async function downloadTemplate() {
-    try {
-      const blob = await downloadCsvTemplate()
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = 'requests_template.csv'
-      link.click()
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000)
-    } catch (error) {
-      showError(error)
-    }
-  }
+  // сменили день — таблица перезагружается на новый день
+  watch(selectedDay, () => {
+    cancelEdit()
+    load()
+  })
 
   return {
     requests,
@@ -217,7 +199,5 @@ export function useRequestsTable() {
     saveForm,
     remove,
     setActive,
-    importCsv,
-    downloadTemplate,
   }
 }

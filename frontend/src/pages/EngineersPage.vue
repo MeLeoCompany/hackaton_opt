@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
+import DayPanel from '../components/DayPanel.vue'
 import EngineerDetailsCard from '../components/EngineerDetailsCard.vue'
 import EngineersFilters from '../components/EngineersFilters.vue'
 import EngineersMap from '../components/EngineersMap.vue'
@@ -74,6 +75,8 @@ onMounted(load)
         · время смен московское
       </p>
     </header>
+
+    <DayPanel :summary="`исполнителей со сменой в этот день ${engineers.length}`" />
 
     <EngineersFilters
       :filters="filters"

@@ -17,8 +17,8 @@ import httpx
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
 from src.core.errors import ExternalServiceError
+from src.core.local_day import local_timezone
 from src.models import Engineer, Request
 from src.repositories.engineers import engineers_repository
 from src.repositories.references import references_repository
@@ -68,10 +68,6 @@ class LoadedDay:
     engineers: list[Engineer]  # в том же порядке, что instance.engineers, навыки загружены
     skill_names: dict[int, str]
     transport_names: dict[int, str]
-
-
-def local_timezone() -> timezone:
-    return timezone(timedelta(hours=settings.local_utc_offset_hours))
 
 
 def planning_day(plan_date: date) -> PlanningDay:

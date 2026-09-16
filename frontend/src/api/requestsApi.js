@@ -1,7 +1,8 @@
 import { apiDownload, apiRequest } from './httpClient.js'
 
-export function listRequests() {
-  return apiRequest('GET', '/requests')
+// день не указан — вернутся все заявки; указан — только те, чьё окно попадает в этот день
+export function listRequests(planDate) {
+  return apiRequest('GET', planDate ? `/requests?plan_date=${encodeURIComponent(planDate)}` : '/requests')
 }
 
 export function createRequest(fields) {

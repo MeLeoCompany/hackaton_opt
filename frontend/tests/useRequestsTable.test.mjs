@@ -15,10 +15,13 @@ function harness() {
     .slice(file.indexOf('export const NEW_REQUEST'))
     .replace('export const NEW_REQUEST', 'const NEW_REQUEST')
     .replace('export function', 'function')
-  const make = new Function('ref', 'useMessages', 'toMoscowInputValue', source + '; return useRequestsTable()')
+  const make = new Function('ref', 'watch', 'useMessages', 'useSelectedDay', 'toMoscowInputValue',
+    source + '; return useRequestsTable()')
   const table = make(
     (value) => ({ value }),
+    () => {},
     () => ({ showError() {}, showNotice() {}, clearMessages() {} }),
+    () => ({ selectedDay: { value: '2026-08-17' } }),
     (value) => value,
   )
   table.references.value = { skills: [], priorities: [{ id: 1 }], transports: [], work_types: WORK_TYPES }
