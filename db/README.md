@@ -65,7 +65,7 @@ docker exec -i routing_db psql -U routing -d routing < db/init/004_request_is_ac
 ## День и решатель плана (`plan.plan_date`, `plan.solver`)
 
 Добавлено миграцией `init/005_plan_day.sql`: `plan_date DATE` — день, на который построен план
-(по московскому времени), `solver TEXT` — чем посчитан (сейчас всегда `cuopt`).
+(по московскому времени), `solver TEXT` — чем посчитан (`cuopt`, `baseline`, в будущем CPU fallback).
 У уже существующих планов дата проставляется из их заявок.
 
 ```
@@ -103,6 +103,17 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 
 Повторный запуск безопасен. Новый Docker volume получает все миграции автоматически;
 удалять существующий volume не нужно.
+
+## Сравнение baseline и cuOpt
+
+`init/012_plan_comparison.sql` возвращает `plan.comparison_id` и добавляет
+`solve_duration_ms`. Один запуск планировщика сохраняет два плана на одном снимке и одних
+матрицах: последовательный baseline и результат cuOpt. Общий UUID связывает пару, а время
+решателя хранится отдельно от загрузки данных и построения линий маршрутов.
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/012_plan_comparison.sql
+```
 
 ## Типы работ (`work_type`)
 

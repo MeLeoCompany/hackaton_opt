@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 
 import DayPanel from '../components/DayPanel.vue'
 import PlanMap from '../components/PlanMap.vue'
+import PlanComparisonPanel from '../components/PlanComparisonPanel.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
 import PlansList from '../components/PlansList.vue'
 import { usePlans } from '../composables/usePlans.js'
@@ -86,6 +87,8 @@ onMounted(load)
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 
       <template v-if="plan">
+        <PlanComparisonPanel v-if="plan.comparison" :plan="plan" :comparison="plan.comparison" />
+
         <div class="list-bar">
           <div class="view-switch" role="tablist">
             <button

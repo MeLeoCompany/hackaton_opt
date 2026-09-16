@@ -1,16 +1,17 @@
 import enum
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import BigInteger, Date, DateTime, Enum, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
 
 
 class PlanRunType(str, enum.Enum):
-    # baseline остался в типе БД от старых планов, новые планы считает только cuOpt
     BASELINE = "baseline"
     OPTIMIZED = "optimized"
     REPLANNED = "replanned"
@@ -33,6 +34,10 @@ class Plan(Base):
     plan_date: Mapped[date | None] = mapped_column(Date)
     # чем посчитан план
     solver: Mapped[str | None] = mapped_column(Text)
+
+    # Одинаковый UUID связывает baseline и оптимизированный план одного запуска.
+    comparison_id: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    solve_duration_ms: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
 
     input_snapshot: Mapped[dict | None] = mapped_column(JSONB)
     # общий пробег по дорогам, считается при построении плана

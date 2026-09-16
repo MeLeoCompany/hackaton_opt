@@ -57,7 +57,13 @@ def test_snapshot_survives_edits_to_live_data():
         shift_end=now,
         skills=[SimpleNamespace(id=2)],
     )
-    snapshot = snapshot_inputs(SimpleNamespace(requests=[request], engineers=[engineer]))
+    snapshot = snapshot_inputs(
+        SimpleNamespace(
+            requests=[request],
+            engineers=[engineer],
+            instance=SimpleNamespace(requests=[SimpleNamespace(is_urgent=False)]),
+        )
+    )
     request.address = "edited"
     request.duration_minutes = 999
     engineer.transport_id = 2

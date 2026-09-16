@@ -380,14 +380,14 @@ def validate_solution(instance: ProblemInstance, solution: DaySolution) -> None:
     seen = set()
     for engineer_index, visits in solution.routes.items():
         if not 0 <= engineer_index < instance.n_engineers:
-            raise ExternalServiceError("cuOpt вернул неизвестного исполнителя")
+            raise ExternalServiceError("Решатель вернул неизвестного исполнителя")
         engineer = instance.engineers[engineer_index]
         previous_node = instance.start_node(engineer_index)
         available: float = engineer.shift_start_min
         for visit in visits:
             index = visit.request_index
             if not 0 <= index < instance.n_requests or index in seen:
-                raise ExternalServiceError("cuOpt вернул неизвестную или повторную заявку")
+                raise ExternalServiceError("Решатель вернул неизвестную или повторную заявку")
             seen.add(index)
             request = instance.requests[index]
             start = visit.work_start_minute
@@ -396,6 +396,6 @@ def validate_solution(instance: ProblemInstance, solution: DaySolution) -> None:
                     or start < max(arrival, request.window_start_min) - 1e-4
                     or start > request.window_end_min + 1e-4
                     or start + request.duration_min > engineer.shift_end_min + 1e-4):
-                raise ExternalServiceError("Результат cuOpt нарушает ограничения заявки или смены")
+                raise ExternalServiceError("Результат решателя нарушает ограничения заявки или смены")
             available = start + request.duration_min
             previous_node = instance.request_node(index)

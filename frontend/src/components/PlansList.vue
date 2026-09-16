@@ -21,6 +21,10 @@ function distanceTitle(summary) {
   if (summary.distance_provider === 'mixed') return 'Часть маршрутов рассчитана приближённо'
   return summary.distance_provider === 'valhalla' ? 'Рассчитано по дорогам через Valhalla' : ''
 }
+
+function solveDuration(summary) {
+  return summary.solve_duration_ms === null ? '—' : `${summary.solve_duration_ms.toFixed(1)} мс`
+}
 </script>
 
 <template>
@@ -32,9 +36,11 @@ function distanceTitle(summary) {
           <th>Рассчитан</th>
           <th>Решатель</th>
           <th>Назначено</th>
+          <th>Срочных</th>
           <th>Не назначено</th>
           <th>Исполнителей</th>
           <th>Пробег, км</th>
+          <th>Расчёт</th>
           <th></th>
         </tr>
       </thead>
@@ -49,9 +55,11 @@ function distanceTitle(summary) {
           <td class="nowrap">{{ moscowTimeOf(summary.created_at) }}</td>
           <td>{{ summary.solver ?? '—' }}</td>
           <td class="number-cell">{{ summary.assigned_count }}</td>
+          <td class="number-cell">{{ summary.urgent_assigned_count ?? '—' }}</td>
           <td class="number-cell">{{ summary.unassigned_count }}</td>
           <td class="number-cell">{{ summary.engineers_used }}</td>
           <td class="number-cell" :title="distanceTitle(summary)">{{ distanceLabel(summary) }}</td>
+          <td class="number-cell nowrap">{{ solveDuration(summary) }}</td>
           <td>
             <div class="row-actions">
               <button class="danger" :disabled="busy" @click.stop="$emit('remove', summary)">Удалить</button>

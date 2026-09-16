@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -22,9 +23,12 @@ class PlanSummary(BaseModel):
     created_at: datetime
     engineers_used: int
     assigned_count: int
+    urgent_assigned_count: int | None = None
     unassigned_count: int
     total_distance_km: float | None = None  # общий пробег по дорогам; у старых планов может не быть
     distance_provider: str | None = None  # valhalla / haversine / mixed; NULL у старых планов
+    comparison_id: UUID | None = None
+    solve_duration_ms: float | None = None
 
 
 class PlanVisit(BaseModel):
@@ -68,3 +72,4 @@ class PlanDetail(PlanSummary):
     total_distance_km: float
     routes: list[EngineerRoute]
     unassigned: list[UnassignedRequest]
+    comparison: PlanSummary | None = None

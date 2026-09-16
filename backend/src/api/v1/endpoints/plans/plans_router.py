@@ -30,7 +30,7 @@ async def list_plans(plan_date: date | None = None, session: AsyncSession = Depe
     "",
     response_model=PlanSummary,
     status_code=status.HTTP_201_CREATED,
-    summary="Построить план на день через cuOpt",
+    summary="Построить и сравнить планы baseline и cuOpt",
 )
 async def build_plan(payload: PlanBuildRequest, session: AsyncSession = Depends(get_db)):
     return await planning_service.build_plan_for_day(session, payload.plan_date)

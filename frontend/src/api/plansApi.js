@@ -9,7 +9,7 @@ export function listPlans(planDate) {
   return apiRequest('GET', `/plans?plan_date=${encodeURIComponent(planDate)}`)
 }
 
-// строит план на день через cuOpt; отвечает сводкой построенного плана
+// строит сравнимую пару baseline/cuOpt; отвечает сводкой оптимизированного плана
 export function buildPlan(planDate) {
   return apiRequest('POST', '/plans', { json: { plan_date: planDate } })
 }

@@ -6,6 +6,7 @@ from src.services.planner.planning_service import (
     SCHEDULE_REASON,
     TIME_REASON,
     assignment_explanation,
+    count_urgent_assignments,
     unassigned_reason,
 )
 
@@ -47,3 +48,20 @@ def test_assignment_explanation_describes_constraints_and_objective():
     assert "транспорт соответствует" in explanation
     assert "Позиция №2" in explanation
     assert "срочности" in explanation
+
+
+def test_urgent_assignments_are_counted_from_frozen_snapshot():
+    snapshot = {
+        "requests": {
+            "10": {"is_urgent": True},
+            "20": {"is_urgent": False},
+            "30": {"is_urgent": True},
+        }
+    }
+
+    assert count_urgent_assignments(snapshot, {10, 20}) == 1
+    assert count_urgent_assignments(snapshot, {10, 30}) == 2
+
+
+def test_old_snapshot_without_urgency_returns_unknown_count():
+    assert count_urgent_assignments({"requests": {"10": {}}}, {10}) is None
