@@ -1,12 +1,22 @@
 <script setup>
 // Ячейки строки таблицы заявок в режиме редактирования (всё, кроме номера заявки).
 // form — объект формы из useRequestsTable, поля ввода меняют его напрямую.
-defineProps({
+import DayTimeRange from './DayTimeRange.vue'
+import PointPickerButton from './PointPickerButton.vue'
+
+const props = defineProps({
   form: { type: Object, required: true },
   references: { type: Object, required: true },
   saving: { type: Boolean, required: true },
+  // остальные заявки — показываем на карте выбора, чтобы было видно, где ставим новую
+  contextPoints: { type: Array, default: () => [] },
 })
 defineEmits(['save', 'cancel'])
+
+function applyPickedPoint(latitude, longitude) {
+  props.form.latitude = latitude
+  props.form.longitude = longitude
+}
 </script>
 
 <template>
@@ -17,19 +27,26 @@ defineEmits(['save', 'cancel'])
     <input v-model="form.address" class="wide-input" placeholder="Город Москва, ул. …" />
   </td>
   <td>
-    <input v-model="form.latitude" type="number" step="any" placeholder="55.7400" />
-  </td>
-  <td>
-    <input v-model="form.longitude" type="number" step="any" placeholder="37.6580" />
+    <div class="coordinates-cell">
+      <div class="coordinate-inputs">
+        <input v-model="form.latitude" type="number" step="any" placeholder="широта" />
+        <input v-model="form.longitude" type="number" step="any" placeholder="долгота" />
+      </div>
+      <PointPickerButton
+        title="Где находится заявка"
+        hint="Указать координаты на карте"
+        :latitude="form.latitude"
+        :longitude="form.longitude"
+        :context-points="contextPoints"
+        @pick="applyPickedPoint"
+      />
+    </div>
   </td>
   <td>
     <input v-model="form.duration_minutes" type="number" min="1" class="short-input" />
   </td>
   <td>
-    <div class="stacked-inputs">
-      <input v-model="form.window_start" type="datetime-local" />
-      <input v-model="form.window_end" type="datetime-local" />
-    </div>
+    <DayTimeRange v-model:start="form.window_start" v-model:end="form.window_end" />
   </td>
   <td>
     <select v-model="form.priority_id">
@@ -43,7 +60,7 @@ defineEmits(['save', 'cancel'])
   </td>
   <td>
     <select v-model="form.transport_id">
-      <option value="">— не важен</option>
+      <option value="">не важен</option>
       <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
     </select>
   </td>
@@ -58,16 +75,27 @@ defineEmits(['save', 'cancel'])
 </template>
 
 <style scoped>
+.coordinates-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coordinate-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coordinate-inputs input {
+  width: 108px;
+  min-width: 0;
+}
+
 input.active-checkbox {
   width: 16px;
   min-width: 0;
   height: 16px;
   padding: 0;
-}
-
-.stacked-inputs {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 </style>

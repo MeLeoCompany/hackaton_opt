@@ -2,6 +2,8 @@
 import { NO_TRANSPORT } from '../composables/useRequestsView.js'
 import { formatDay } from '../utils/moscowTime.js'
 
+import TimeInput from './TimeInput.vue'
+
 // filters — объект фильтров из useRequestsView, поля меняют его напрямую
 defineProps({
   filters: { type: Object, required: true },
@@ -72,9 +74,9 @@ defineEmits(['reset'])
       <div class="field">
         <span>Окно начинается (МСК)</span>
         <div class="time-range">
-          <input v-model="filters.timeFrom" type="time" aria-label="не раньше" />
+          <TimeInput v-model="filters.timeFrom" aria-label="не раньше" />
           <span>—</span>
-          <input v-model="filters.timeTo" type="time" aria-label="не позже" />
+          <TimeInput v-model="filters.timeTo" aria-label="не позже" />
         </div>
       </div>
     </div>

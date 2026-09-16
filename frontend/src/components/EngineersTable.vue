@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { NEW_ENGINEER } from '../composables/useEngineersTable.js'
 import { formatMoscowWindow } from '../utils/moscowTime.js'
@@ -30,6 +30,17 @@ const COLUMNS = [
   { label: 'Старт', sortKey: null },
   { label: '', sortKey: null },
 ]
+
+// старты остальных бригад — ориентир на карте выбора координаты
+const contextPoints = computed(() =>
+  props.engineers
+    .filter((engineer) => engineer.id !== props.editingId)
+    .map((engineer) => ({
+      latitude: engineer.start_latitude,
+      longitude: engineer.start_longitude,
+      label: engineer.name,
+    })),
+)
 
 function sortArrow(columnSortKey) {
   if (props.sortKey !== columnSortKey) return '↕'
@@ -83,6 +94,7 @@ onMounted(scrollToSelected)
             :form="form"
             :references="references"
             :saving="saving"
+            :context-points="contextPoints"
             @save="$emit('save')"
             @cancel="$emit('cancel')"
           />
@@ -102,6 +114,7 @@ onMounted(scrollToSelected)
             :form="form"
             :references="references"
             :saving="saving"
+            :context-points="contextPoints"
             @save="$emit('save')"
             @cancel="$emit('cancel')"
           />

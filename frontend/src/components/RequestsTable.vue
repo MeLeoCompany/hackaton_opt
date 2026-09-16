@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { NEW_REQUEST } from '../composables/useRequestsTable.js'
 import { formatMoscowWindow } from '../utils/moscowTime.js'
@@ -24,8 +24,7 @@ const COLUMNS = [
   { label: '№', sortKey: 'id' },
   { label: 'Активна', sortKey: 'is_active' },
   { label: 'Адрес', sortKey: 'address' },
-  { label: 'Широта', sortKey: null },
-  { label: 'Долгота', sortKey: null },
+  { label: 'Координаты', sortKey: null },
   { label: 'Работа, мин', sortKey: 'duration_minutes' },
   { label: 'Окно (МСК)', sortKey: 'window_start' },
   { label: 'Приоритет', sortKey: 'priority' },
@@ -33,6 +32,13 @@ const COLUMNS = [
   { label: 'Транспорт', sortKey: 'transport' },
   { label: '', sortKey: null },
 ]
+
+// точки остальных заявок страницы — ориентир на карте выбора координаты
+const contextPoints = computed(() =>
+  props.requests
+    .filter((request) => request.id !== props.editingId)
+    .map((request) => ({ latitude: request.latitude, longitude: request.longitude, label: request.address })),
+)
 
 function sortArrow(columnSortKey) {
   if (props.sortKey !== columnSortKey) return '↕'
@@ -87,6 +93,7 @@ onMounted(scrollToSelected)
             :form="form"
             :references="references"
             :saving="saving"
+            :context-points="contextPoints"
             @save="$emit('save')"
             @cancel="$emit('cancel')"
           />
@@ -110,6 +117,7 @@ onMounted(scrollToSelected)
             :form="form"
             :references="references"
             :saving="saving"
+            :context-points="contextPoints"
             @save="$emit('save')"
             @cancel="$emit('cancel')"
           />
@@ -131,8 +139,7 @@ onMounted(scrollToSelected)
               </label>
             </td>
             <td class="wide-cell">{{ request.address }}</td>
-            <td class="number-cell">{{ request.latitude.toFixed(4) }}</td>
-            <td class="number-cell">{{ request.longitude.toFixed(4) }}</td>
+            <td class="number-cell nowrap">{{ request.latitude.toFixed(4) }}, {{ request.longitude.toFixed(4) }}</td>
             <td class="number-cell">{{ request.duration_minutes }}</td>
             <td class="nowrap">{{ formatMoscowWindow(request.window_start, request.window_end) }}</td>
             <td>

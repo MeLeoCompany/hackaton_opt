@@ -34,6 +34,51 @@ export function fromMoscowInputValue(inputValue) {
   return `${inputValue}:00+03:00`
 }
 
+// Набранное в поле времени -> то, что вообще может быть временем.
+// Лишние цифры не принимаются: "18:90" набрать нельзя, а "9" превращается в "09:",
+// потому что часа, начинающегося на девятку, не бывает.
+export function maskTimeInput(rawValue) {
+  let masked = ''
+  for (const digit of rawValue.replace(/[^0-9]/g, '')) {
+    const position = masked.replace(':', '').length
+    if (position === 0) {
+      masked = digit <= '2' ? digit : `0${digit}:`
+    } else if (position === 1) {
+      if (masked[0] === '2' && digit > '3') continue
+      masked = `${masked}${digit}:`
+    } else if (position === 2) {
+      if (digit > '5') continue
+      masked = `${masked}${digit}`
+    } else if (position === 3) {
+      masked = `${masked}${digit}`
+    }
+  }
+  return masked
+}
+
+// Недобранное время -> "ЧЧ:ММ": "18:" -> "18:00", "9" -> "09:00", пустое остаётся пустым
+export function completeTime(maskedValue) {
+  if (!maskedValue) return ''
+  const [hours, minutes = ''] = maskedValue.split(':')
+  return `${hours.padStart(2, '0')}:${minutes.padEnd(2, '0').slice(0, 2)}`
+}
+
+// "2026-08-17T18:00" -> { date: "2026-08-17", time: "18:00" }
+export function splitMoscowInputValue(inputValue) {
+  return { date: (inputValue ?? '').slice(0, 10), time: (inputValue ?? '').slice(11, 16) }
+}
+
+// "2026-08-17" + "18:00" -> "2026-08-17T18:00"; без даты или времени — пустая строка
+export function joinMoscowInputValue(date, time) {
+  return date && time ? `${date}T${time}` : ''
+}
+
+// "2026-08-17" -> "2026-08-18": окно или смена, перешедшие через полночь
+export function nextDay(date) {
+  const DAY_MS = 24 * 60 * 60 * 1000
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + DAY_MS).toISOString().slice(0, 10)
+}
+
 // окно заявки для таблицы: "17.08.2026 18:00–20:00"
 export function formatMoscowWindow(startIso, endIso) {
   const startDay = moscowDateOf(startIso)

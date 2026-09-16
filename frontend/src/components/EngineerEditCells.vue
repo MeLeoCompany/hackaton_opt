@@ -1,12 +1,22 @@
 <script setup>
 // Ячейки строки таблицы исполнителей в режиме редактирования (всё, кроме номера).
 // form — объект формы из useEngineersTable, поля ввода меняют его напрямую.
-defineProps({
+import DayTimeRange from './DayTimeRange.vue'
+import PointPickerButton from './PointPickerButton.vue'
+
+const props = defineProps({
   form: { type: Object, required: true },
   references: { type: Object, required: true },
   saving: { type: Boolean, required: true },
+  // старты других бригад — ориентир на карте выбора
+  contextPoints: { type: Array, default: () => [] },
 })
 defineEmits(['save', 'cancel'])
+
+function applyPickedPoint(latitude, longitude) {
+  props.form.start_latitude = latitude
+  props.form.start_longitude = longitude
+}
 </script>
 
 <template>
@@ -27,15 +37,22 @@ defineEmits(['save', 'cancel'])
     </div>
   </td>
   <td>
-    <div class="stacked-inputs">
-      <input v-model="form.shift_start" type="datetime-local" />
-      <input v-model="form.shift_end" type="datetime-local" />
-    </div>
+    <DayTimeRange v-model:start="form.shift_start" v-model:end="form.shift_end" />
   </td>
   <td>
-    <div class="stacked-inputs">
-      <input v-model="form.start_latitude" type="number" step="any" placeholder="широта" />
-      <input v-model="form.start_longitude" type="number" step="any" placeholder="долгота" />
+    <div class="coordinates-cell">
+      <div class="coordinate-inputs">
+        <input v-model="form.start_latitude" type="number" step="any" placeholder="широта" />
+        <input v-model="form.start_longitude" type="number" step="any" placeholder="долгота" />
+      </div>
+      <PointPickerButton
+        title="Откуда выезжает бригада"
+        hint="Указать координаты на карте"
+        :latitude="form.start_latitude"
+        :longitude="form.start_longitude"
+        :context-points="contextPoints"
+        @pick="applyPickedPoint"
+      />
     </div>
   </td>
   <td>
@@ -49,11 +66,27 @@ defineEmits(['save', 'cancel'])
 </template>
 
 <style scoped>
-.stacked-inputs,
 .skill-checkboxes {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.coordinates-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coordinate-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coordinate-inputs input {
+  width: 108px;
+  min-width: 0;
 }
 
 .skill-checkboxes label {
