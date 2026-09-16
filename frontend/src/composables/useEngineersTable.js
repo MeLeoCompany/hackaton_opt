@@ -12,7 +12,7 @@ export const NEW_ENGINEER = 'new'
 
 export function useEngineersTable() {
   const engineers = ref([])
-  const references = ref({ skills: [], priorities: [], transports: [] })
+  const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
 
   const loading = ref(false)
   const saving = ref(false)

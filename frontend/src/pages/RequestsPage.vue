@@ -14,6 +14,7 @@ import { useRequestsView } from '../composables/useRequestsView.js'
 const {
   requests,
   references,
+  applyWorkTypeNorms,
   loading,
   saving,
   errorMessage,
@@ -176,6 +177,7 @@ onMounted(load)
           @cancel="cancelEdit"
           @save="saveForm"
           @remove="remove"
+          @work-type-picked="applyWorkTypeNorms"
         />
         <RequestsPagination
           v-model:page-size="pageSize"

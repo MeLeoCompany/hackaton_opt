@@ -17,7 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
-from src.models.reference import Priority, Skill, Transport
+from src.models.reference import Priority, Skill, Transport, WorkType
 
 
 class Request(Base):
@@ -35,9 +35,12 @@ class Request(Base):
     priority_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("priority.id"))
     skill_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("skill.id"))
     transport_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("transport.id"))
+    # тип работ из справочника нормативов: из него берутся длительность и навык по умолчанию
+    work_type_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("work_type.id"))
     # выключенная заявка хранится, но в сборку задачи планирования не попадает
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
 
     priority: Mapped["Priority"] = relationship()
     skill: Mapped["Skill"] = relationship()
     transport: Mapped["Transport | None"] = relationship()
+    work_type: Mapped["WorkType | None"] = relationship()

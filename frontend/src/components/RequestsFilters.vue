@@ -47,10 +47,10 @@ defineEmits(['reset'])
       </label>
 
       <label class="field">
-        <span>Навык</span>
-        <select v-model="filters.skillId">
+        <span>Тип работ</span>
+        <select v-model="filters.workTypeId">
           <option value="">Любой</option>
-          <option v-for="item in references.skills" :key="item.id" :value="item.id">{{ item.name }}</option>
+          <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
         </select>
       </label>
 

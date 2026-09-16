@@ -46,8 +46,11 @@ defineEmits(['show-in-table', 'close', 'toggle-active'])
           </dd>
         </div>
         <div>
-          <dt>Навык</dt>
-          <dd>{{ referenceName(references, 'skills', request.skill_id) }}</dd>
+          <dt>Тип работ</dt>
+          <dd>
+            {{ referenceName(references, 'work_types', request.work_type_id) }}
+            <span class="muted">· навык {{ referenceName(references, 'skills', request.skill_id) }}</span>
+          </dd>
         </div>
         <div>
           <dt>Транспорт</dt>

@@ -18,6 +18,7 @@ from src.schemas.requests import (
 )
 from src.services.requests.requests_csv import (
     ReferenceLookup,
+    WorkTypeNorm,
     parse_requests_csv,
     reference_options,
 )
@@ -53,6 +54,7 @@ async def get_request(session: AsyncSession, request_id: int) -> Request:
 async def create_request(session: AsyncSession, payload: RequestCreate) -> Request:
     await requests_repository.lock_request_ids(session)
     await check_references_exist(session, payload)
+    await apply_work_type_norms(session, payload)
 
     if payload.id is not None and await requests_repository.get_request(session, payload.id) is not None:
         raise RequestDataError(
@@ -72,6 +74,7 @@ async def create_request(session: AsyncSession, payload: RequestCreate) -> Reque
 async def update_request(session: AsyncSession, request_id: int, payload: RequestWrite) -> Request:
     request = await get_request(session, request_id)
     await check_references_exist(session, payload)
+    await apply_work_type_norms(session, payload)
     requests_repository.apply_changes(request, payload.model_dump())
     await session.commit()
     return request
@@ -165,21 +168,52 @@ async def load_reference_lookup(session: AsyncSession) -> ReferenceLookup:
     skills = await references_repository.list_skills(session)
     priorities = await references_repository.list_priorities(session)
     transports = await references_repository.list_transports(session)
+    work_types = await references_repository.list_work_types(session)
     return ReferenceLookup(
         skills=reference_options([(skill.id, skill.name) for skill in skills]),
         priorities=reference_options([(priority.id, priority.name) for priority in priorities]),
         transports=reference_options([(transport.id, transport.name) for transport in transports]),
+        work_types=reference_options([(work_type.id, work_type.name) for work_type in work_types]),
+        work_type_norms={
+            work_type.id: WorkTypeNorm(skill_id=work_type.skill_id, work_minutes=work_type.work_minutes)
+            for work_type in work_types
+        },
     )
 
 
+async def apply_work_type_norms(session: AsyncSession, payload: RequestWrite) -> None:
+    """Подставляет в заявку нормативы типа работ и проверяет, что длительность и навык заданы.
+
+    Навык определяется типом работ: отдельно его выбирать незачем, иначе два поля об одном
+    и том же разъезжаются. Длительность работ на месте берётся из норматива, но её можно
+    задать своей: заявка бывает тяжелее норматива.
+    """
+    references = await load_reference_lookup(session)
+    norm = references.work_type_norms.get(payload.work_type_id)
+    if norm is not None:
+        payload.skill_id = norm.skill_id
+        if payload.duration_minutes is None:
+            payload.duration_minutes = norm.work_minutes
+
+    problems = []
+    if payload.duration_minutes is None:
+        problems.append("укажите длительность работ или выберите тип работ")
+    if payload.skill_id is None:
+        problems.append("укажите навык или выберите тип работ")
+    if problems:
+        raise RequestDataError(problems)
+
+
 async def check_references_exist(session: AsyncSession, payload: RequestWrite) -> None:
-    """Проверяет, что приоритет, навык и транспорт заявки есть в справочниках."""
+    """Проверяет, что приоритет, навык, транспорт и тип работ заявки есть в справочниках."""
     references = await load_reference_lookup(session)
     problems = []
     if str(payload.priority_id) not in references.priorities.id_by_key:
         problems.append(f"приоритета №{payload.priority_id} нет в справочнике")
-    if str(payload.skill_id) not in references.skills.id_by_key:
+    if payload.skill_id is not None and str(payload.skill_id) not in references.skills.id_by_key:
         problems.append(f"навыка №{payload.skill_id} нет в справочнике")
+    if payload.work_type_id is not None and str(payload.work_type_id) not in references.work_types.id_by_key:
+        problems.append(f"типа работ №{payload.work_type_id} нет в справочнике")
     if payload.transport_id is not None and str(payload.transport_id) not in references.transports.id_by_key:
         problems.append(f"транспорта №{payload.transport_id} нет в справочнике")
     if problems:

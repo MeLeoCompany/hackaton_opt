@@ -8,6 +8,6 @@ from src.services.references import references_service
 router = APIRouter()
 
 
-@router.get("", response_model=ReferencesRead, summary="Навыки, приоритеты и типы транспорта")
+@router.get("", response_model=ReferencesRead, summary="Навыки, приоритеты, транспорт и типы работ")
 async def get_references(session: AsyncSession = Depends(get_db)) -> ReferencesRead:
     return await references_service.get_references(session)

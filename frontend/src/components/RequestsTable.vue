@@ -17,7 +17,7 @@ const props = defineProps({
   selectedId: { type: Number, default: null },
   emptyText: { type: String, default: 'Заявок нет' },
 })
-defineEmits(['edit', 'cancel', 'save', 'remove', 'sort', 'select', 'toggle-active'])
+defineEmits(['edit', 'cancel', 'save', 'remove', 'sort', 'select', 'toggle-active', 'work-type-picked'])
 
 // sortKey: null — по колонке не сортируем
 const COLUMNS = [
@@ -25,10 +25,10 @@ const COLUMNS = [
   { label: 'Активна', sortKey: 'is_active' },
   { label: 'Адрес', sortKey: 'address' },
   { label: 'Координаты', sortKey: null },
+  { label: 'Тип работ', sortKey: 'work_type' },
   { label: 'Работа, мин', sortKey: 'duration_minutes' },
   { label: 'Окно (МСК)', sortKey: 'window_start' },
   { label: 'Приоритет', sortKey: 'priority' },
-  { label: 'Навык', sortKey: 'skill' },
   { label: 'Транспорт', sortKey: 'transport' },
   { label: '', sortKey: null },
 ]
@@ -96,6 +96,7 @@ onMounted(scrollToSelected)
             :context-points="contextPoints"
             @save="$emit('save')"
             @cancel="$emit('cancel')"
+            @work-type-picked="$emit('work-type-picked', $event)"
           />
         </tr>
 
@@ -120,6 +121,7 @@ onMounted(scrollToSelected)
             :context-points="contextPoints"
             @save="$emit('save')"
             @cancel="$emit('cancel')"
+            @work-type-picked="$emit('work-type-picked', $event)"
           />
 
           <template v-else>
@@ -140,6 +142,7 @@ onMounted(scrollToSelected)
             </td>
             <td class="wide-cell">{{ request.address }}</td>
             <td class="number-cell nowrap">{{ request.latitude.toFixed(4) }}, {{ request.longitude.toFixed(4) }}</td>
+            <td>{{ referenceName(references, 'work_types', request.work_type_id) }}</td>
             <td class="number-cell">{{ request.duration_minutes }}</td>
             <td class="nowrap">{{ formatMoscowWindow(request.window_start, request.window_end) }}</td>
             <td>
@@ -147,7 +150,6 @@ onMounted(scrollToSelected)
                 {{ referenceName(references, 'priorities', request.priority_id) }}
               </span>
             </td>
-            <td>{{ referenceName(references, 'skills', request.skill_id) }}</td>
             <td>{{ referenceName(references, 'transports', request.transport_id) }}</td>
             <td>
               <div class="row-actions">

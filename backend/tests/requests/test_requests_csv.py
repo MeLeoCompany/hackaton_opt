@@ -2,7 +2,12 @@
 
 from datetime import timedelta, timezone
 
-from src.services.requests.requests_csv import ReferenceLookup, parse_requests_csv, reference_options
+from src.services.requests.requests_csv import (
+    ReferenceLookup,
+    WorkTypeNorm,
+    parse_requests_csv,
+    reference_options,
+)
 
 MOSCOW = timezone(timedelta(hours=3))
 
@@ -14,6 +19,14 @@ REFERENCES = ReferenceLookup(
     transports=reference_options(
         [(1, "Автомобиль"), (2, "Пешеход"), (3, "Велосипед"), (4, "Общественный транспорт")]
     ),
+    work_types=reference_options(
+        [(1, "Подключение клиентов, базовая"), (2, "Авария на ТКД"), (4, "Локальная заявка / ремонт у клиента")]
+    ),
+    work_type_norms={
+        1: WorkTypeNorm(skill_id=2, work_minutes=70),
+        2: WorkTypeNorm(skill_id=3, work_minutes=80),
+        4: WorkTypeNorm(skill_id=1, work_minutes=30),
+    },
 )
 
 HEADER = "id;адрес;широта;долгота;длительность_мин;окно_начало;окно_конец;приоритет;навык;транспорт"
@@ -142,3 +155,40 @@ def test_empty_file():
     result = parse_requests_csv(b"", REFERENCES, MOSCOW)
 
     assert result.errors == ["файл пустой"]
+
+
+WORK_TYPE_HEADER = "адрес;широта;долгота;тип_работ;длительность_мин;окно_начало;окно_конец;приоритет;навык"
+
+
+def test_work_type_fills_duration_and_skill():
+    result = parse(
+        WORK_TYPE_HEADER,
+        "ул. Ленина, 1;55.74;37.658;Авария на ТКД;;17.08.2026 10:00;17.08.2026 12:00;Срочная;",
+    )
+
+    assert result.errors == []
+    row = result.rows[0]
+    assert (row["work_type_id"], row["duration_minutes"], row["skill_id"]) == (2, 80, 3)
+
+
+def test_own_duration_wins_but_skill_follows_work_type():
+    """Длительность можно задать свою, а навык определяется типом работ."""
+    result = parse(
+        WORK_TYPE_HEADER,
+        "ул. Ленина, 1;55.74;37.658;Авария на ТКД;25;17.08.2026 10:00;17.08.2026 12:00;Срочная;Локальные работы",
+    )
+
+    assert result.errors == []
+    row = result.rows[0]
+    assert (row["work_type_id"], row["duration_minutes"], row["skill_id"]) == (2, 25, 3)
+
+
+def test_without_work_type_duration_and_skill_are_required():
+    result = parse(
+        WORK_TYPE_HEADER,
+        "ул. Ленина, 1;55.74;37.658;;;17.08.2026 10:00;17.08.2026 12:00;Срочная;",
+    )
+
+    assert result.rows == []
+    assert any("длительность_мин" in message and "тип_работ" in message for message in result.errors)
+    assert any("навык" in message and "тип_работ" in message for message in result.errors)

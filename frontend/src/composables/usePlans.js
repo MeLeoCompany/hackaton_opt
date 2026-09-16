@@ -12,7 +12,7 @@ export function usePlans() {
   const plans = ref([]) // планы выбранного дня, новые первыми
   const selectedPlanId = ref(null)
   const plan = ref(null) // выбранный план с маршрутами
-  const references = ref({ skills: [], priorities: [], transports: [] })
+  const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
   // чей маршрут подсвечен на карте и в списке; null — показываем все
   const selectedEngineerId = ref(null)
 

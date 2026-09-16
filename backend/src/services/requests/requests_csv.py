@@ -2,9 +2,12 @@
 
 Формат файла (шаблон отдаёт GET /api/v1/requests/csv-template):
 
-    id;адрес;широта;долгота;длительность_мин;окно_начало;окно_конец;приоритет;навык;транспорт;активна
+    id;адрес;широта;долгота;тип_работ;длительность_мин;окно_начало;окно_конец;приоритет;навык;транспорт;активна
 
 - разделитель «;»; подойдут также «,» и табуляция — определяется по строке заголовка;
+- «тип_работ» — из справочника нормативов; он задаёт нужный навык, а «длительность_мин»
+  можно не заполнять: возьмётся норматив работы на месте. Колонка «навык» нужна только
+  строкам без типа работ;
 - «активна» — «да» или «нет» (учитывать ли заявку при планировании). Колонку можно не
   добавлять или оставить пустой: новая заявка станет активной, у существующей флаг не изменится;
 - кодировка UTF-8 или Windows-1251 (так сохраняет Excel);
@@ -25,6 +28,7 @@ COLUMNS = [
     "адрес",
     "широта",
     "долгота",
+    "тип_работ",
     "длительность_мин",
     "окно_начало",
     "окно_конец",
@@ -33,7 +37,8 @@ COLUMNS = [
     "транспорт",
     "активна",
 ]
-OPTIONAL_COLUMNS = {"id", "транспорт", "активна"}
+# «длительность_мин» и «навык» необязательны, если указан «тип_работ»
+OPTIONAL_COLUMNS = {"id", "тип_работ", "длительность_мин", "навык", "транспорт", "активна"}
 
 DATETIME_FORMATS = ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S")
 
@@ -50,10 +55,20 @@ class ReferenceOptions:
 
 
 @dataclass
+class WorkTypeNorm:
+    """Нормативы типа работ: чем заполнить пустые «длительность_мин» и «навык»."""
+
+    skill_id: int
+    work_minutes: int
+
+
+@dataclass
 class ReferenceLookup:
     skills: ReferenceOptions
     priorities: ReferenceOptions
     transports: ReferenceOptions
+    work_types: ReferenceOptions
+    work_type_norms: dict[int, WorkTypeNorm]
 
 
 @dataclass
@@ -75,9 +90,10 @@ def build_csv_template() -> str:
     """Текст шаблона: заголовок и две строки-примера (с номером и без)."""
     lines = [
         ";".join(COLUMNS),
-        ";Город Москва, пер.Маяковского, д. 2;55.7400;37.6580;60;"
-        "17.08.2026 18:00;17.08.2026 20:00;Обычная;Работы на подключение и дозаказы;;да",
-        "400000001;Город Москва, ул.Саратовская, д. 16;55.7090;37.7368;90;"
+        # длительность и навык не заполнены: возьмутся из типа работ
+        ";Город Москва, пер.Маяковского, д. 2;55.7400;37.6580;Подключение клиентов, базовая;;"
+        "17.08.2026 18:00;17.08.2026 20:00;Обычная;;;да",
+        "400000001;Город Москва, ул.Саратовская, д. 16;55.7090;37.7368;Авария на ТКД;90;"
         "17.08.2026 20:00;17.08.2026 22:00;Срочная;Аварийные работы;Автомобиль;нет",
     ]
     return "\n".join(lines) + "\n"
@@ -175,6 +191,10 @@ def parse_row(
 
     latitude = parse_number(cell(raw_row, "широта"), "широта", -90, 90, errors)
     longitude = parse_number(cell(raw_row, "долгота"), "долгота", -180, 180, errors)
+
+    work_type_id = parse_reference(
+        cell(raw_row, "тип_работ"), "тип_работ", references.work_types, errors, required=False
+    )
     duration_minutes = parse_duration(cell(raw_row, "длительность_мин"), errors)
 
     window_start = parse_datetime(cell(raw_row, "окно_начало"), "окно_начало", local_timezone, errors)
@@ -185,7 +205,17 @@ def parse_row(
     priority_id = parse_reference(
         cell(raw_row, "приоритет"), "приоритет", references.priorities, errors, required=True
     )
-    skill_id = parse_reference(cell(raw_row, "навык"), "навык", references.skills, errors, required=True)
+    skill_id = parse_reference(cell(raw_row, "навык"), "навык", references.skills, errors, required=False)
+
+    # навык определяется типом работ, длительность берётся из норматива, если её не задали
+    norm = references.work_type_norms.get(work_type_id)
+    if norm is not None:
+        skill_id = norm.skill_id
+        duration_minutes = norm.work_minutes if duration_minutes is None else duration_minutes
+    if duration_minutes is None:
+        errors.append("не заполнено поле «длительность_мин» — заполните его или укажите «тип_работ»")
+    if skill_id is None:
+        errors.append("не заполнено поле «навык» — заполните его или укажите «тип_работ»")
     transport_id = parse_reference(
         cell(raw_row, "транспорт"), "транспорт", references.transports, errors, required=False
     )
@@ -202,6 +232,7 @@ def parse_row(
         "priority_id": priority_id,
         "skill_id": skill_id,
         "transport_id": transport_id,
+        "work_type_id": work_type_id,
         "is_active": is_active,
     }
 
@@ -247,8 +278,8 @@ def parse_number(
 
 
 def parse_duration(raw_value: str, errors: list[str]) -> int | None:
+    """Пусто — не ошибка: длительность может прийти из нормативов типа работ."""
     if not raw_value:
-        errors.append("не заполнено поле «длительность_мин»")
         return None
     if raw_value.isdigit() and int(raw_value) > 0:
         return int(raw_value)

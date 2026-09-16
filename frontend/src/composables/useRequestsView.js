@@ -16,7 +16,7 @@ function emptyFilters() {
     activity: '', // '' — все, 'active' — только активные, 'inactive' — только выключенные
     text: '', // часть номера или адреса
     priorityId: '', // '' — любой
-    skillId: '',
+    workTypeId: '', // '' — любой тип работ
     transportId: '', // '' — любой, NO_TRANSPORT — «не важен», иначе номер транспорта
     day: '', // 'YYYY-MM-DD' — московская дата начала окна
     timeFrom: '', // 'HH:MM' — окно начинается не раньше
@@ -52,7 +52,7 @@ export function useRequestsView(requests, references) {
       return false
     }
     if (filters.priorityId !== '' && request.priority_id !== filters.priorityId) return false
-    if (filters.skillId !== '' && request.skill_id !== filters.skillId) return false
+    if (filters.workTypeId !== '' && request.work_type_id !== filters.workTypeId) return false
 
     if (filters.transportId === NO_TRANSPORT) {
       if (request.transport_id !== null) return false
@@ -91,8 +91,8 @@ export function useRequestsView(requests, references) {
         return new Date(request.window_start).getTime()
       case 'priority':
         return referenceName(references.value, 'priorities', request.priority_id)
-      case 'skill':
-        return referenceName(references.value, 'skills', request.skill_id)
+      case 'work_type':
+        return request.work_type_id === null ? null : referenceName(references.value, 'work_types', request.work_type_id)
       case 'transport':
         return request.transport_id === null ? null : referenceName(references.value, 'transports', request.transport_id)
       default:

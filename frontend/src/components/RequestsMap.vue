@@ -57,12 +57,12 @@ function escapeHtml(text) {
 
 function tooltipHtml(request) {
   const window = formatMoscowWindow(request.window_start, request.window_end)
-  const skill = referenceName(props.references, 'skills', request.skill_id)
+  const workType = referenceName(props.references, 'work_types', request.work_type_id)
   const status = request.is_active ? '' : '<br><span style="color:#94a3b8">выключена из планирования</span>'
   return (
     `<b>№${request.id}</b> · ${window}<br>` +
     `${escapeHtml(request.address)}<br>` +
-    `<span style="color:#64748b">${escapeHtml(skill)}</span>` +
+    `<span style="color:#64748b">${escapeHtml(workType)}</span>` +
     status
   )
 }

@@ -9,12 +9,14 @@ class RequestWrite(BaseModel):
     address: str = Field(min_length=1)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
-    duration_minutes: int = Field(gt=0)
+    # длительность работ на месте и навык можно не указывать: они возьмутся из типа работ
+    duration_minutes: int | None = Field(default=None, gt=0)
     window_start: datetime
     window_end: datetime
     priority_id: int
-    skill_id: int
+    skill_id: int | None = None
     transport_id: int | None = None  # пусто — транспорт не важен
+    work_type_id: int | None = None  # тип работ из справочника нормативов
     is_active: bool = True  # выключенная заявка не попадает в сборку задачи планирования
 
     @model_validator(mode="after")

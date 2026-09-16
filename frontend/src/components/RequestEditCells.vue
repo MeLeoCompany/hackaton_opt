@@ -11,7 +11,7 @@ const props = defineProps({
   // остальные заявки — показываем на карте выбора, чтобы было видно, где ставим новую
   contextPoints: { type: Array, default: () => [] },
 })
-defineEmits(['save', 'cancel'])
+const emit = defineEmits(['save', 'cancel', 'work-type-picked'])
 
 function applyPickedPoint(latitude, longitude) {
   props.form.latitude = latitude
@@ -43,6 +43,12 @@ function applyPickedPoint(latitude, longitude) {
     </div>
   </td>
   <td>
+    <select v-model="form.work_type_id" @change="emit('work-type-picked', form.work_type_id)">
+      <option value="">не указан</option>
+      <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
+    </select>
+  </td>
+  <td>
     <input v-model="form.duration_minutes" type="number" min="1" class="short-input" />
   </td>
   <td>
@@ -51,11 +57,6 @@ function applyPickedPoint(latitude, longitude) {
   <td>
     <select v-model="form.priority_id">
       <option v-for="item in references.priorities" :key="item.id" :value="item.id">{{ item.name }}</option>
-    </select>
-  </td>
-  <td>
-    <select v-model="form.skill_id">
-      <option v-for="item in references.skills" :key="item.id" :value="item.id">{{ item.name }}</option>
     </select>
   </td>
   <td>

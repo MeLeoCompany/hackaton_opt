@@ -20,7 +20,7 @@ export const NEW_REQUEST = 'new'
 
 export function useRequestsTable() {
   const requests = ref([])
-  const references = ref({ skills: [], priorities: [], transports: [] })
+  const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
 
   const loading = ref(false)
   const saving = ref(false)
@@ -53,14 +53,24 @@ export function useRequestsTable() {
       address: '',
       latitude: '',
       longitude: '',
-      duration_minutes: 60,
+      duration_minutes: references.value.work_types[0]?.work_minutes ?? 60,
       window_start: '',
       window_end: '',
       priority_id: references.value.priorities[0]?.id ?? '',
-      skill_id: references.value.skills[0]?.id ?? '',
+      skill_id: references.value.work_types[0]?.skill_id ?? '',
       transport_id: '',
+      work_type_id: references.value.work_types[0]?.id ?? '',
       is_active: true,
     }
+  }
+
+  // выбрали тип работ — подставляем норматив работы на месте и нужный навык:
+  // навык отдельно не выбирают, он определяется типом работ
+  function applyWorkTypeNorms(workTypeId) {
+    const workType = references.value.work_types.find((item) => item.id === Number(workTypeId))
+    if (!workType) return
+    form.value.duration_minutes = workType.work_minutes
+    form.value.skill_id = workType.skill_id
   }
 
   function startEdit(request) {
@@ -77,6 +87,7 @@ export function useRequestsTable() {
       priority_id: request.priority_id,
       skill_id: request.skill_id,
       transport_id: request.transport_id ?? '',
+      work_type_id: request.work_type_id ?? '',
       is_active: request.is_active,
     }
   }
@@ -103,6 +114,7 @@ export function useRequestsTable() {
       priority_id: numberOrNull(values.priority_id),
       skill_id: numberOrNull(values.skill_id),
       transport_id: numberOrNull(values.transport_id),
+      work_type_id: numberOrNull(values.work_type_id),
       is_active: values.is_active,
     }
   }
@@ -190,6 +202,7 @@ export function useRequestsTable() {
   return {
     requests,
     references,
+    applyWorkTypeNorms,
     loading,
     saving,
     errorMessage,
