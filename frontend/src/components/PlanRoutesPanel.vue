@@ -69,14 +69,17 @@ const visibleRoutes = computed(() => {
     .filter(({ route }) => !query || route.engineer_name.toLowerCase().includes(query) || visitsMatch(route, query))
 })
 
-// открыли другой план — поиск от прошлого плана не переносим
-watch(
-  () => props.plan.id,
-  () => {
-    Object.assign(routeFilters, EMPTY_ROUTE_FILTERS)
-    routeQuery.value = ''
-  },
+const activeRouteFilterCount = computed(
+  () => Object.keys(EMPTY_ROUTE_FILTERS).filter((name) => routeFilters[name] !== EMPTY_ROUTE_FILTERS[name]).length,
 )
+
+function resetRouteFilters() {
+  Object.assign(routeFilters, EMPTY_ROUTE_FILTERS)
+  routeQuery.value = ''
+}
+
+// открыли другой план — поиск от прошлого плана не переносим
+watch(() => props.plan.id, resetRouteFilters)
 
 function formatDuration(minutes) {
   const hours = Math.floor(minutes / 60)
@@ -180,7 +183,13 @@ function formatDuration(minutes) {
                 </div>
               </th>
               <th>
-                <input v-model="routeFilters.visit" placeholder="№ или адрес заявки" aria-label="поиск по заявкам маршрута" />
+                <!-- у маршрутов нет колонки с кнопками, поэтому сброс стоит рядом с последним фильтром -->
+                <div class="filter-with-reset">
+                  <input v-model="routeFilters.visit" placeholder="№ или адрес заявки" aria-label="поиск по заявкам маршрута" />
+                  <button class="link" :disabled="activeRouteFilterCount === 0" @click="resetRouteFilters">
+                    Сбросить{{ activeRouteFilterCount ? ` (${activeRouteFilterCount})` : '' }}
+                  </button>
+                </div>
               </th>
             </tr>
           </thead>
@@ -346,6 +355,16 @@ function formatDuration(minutes) {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.filter-with-reset {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-with-reset input {
+  flex: 1;
 }
 
 /* шаги маршрута столбиком: «Старт», дальше каждая заявка со стрелкой перехода слева */
