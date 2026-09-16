@@ -5,16 +5,26 @@ import fs from 'node:fs'
 function harness() {
   const source = fs.readFileSync(new URL('../src/composables/usePlans.js', import.meta.url), 'utf8')
     .replace(/^import .*$/mg, '').replace('export function', 'function')
-  const details = {}, lists = {}, errors = []
+  const details = {}, lists = {}, builds = {}, errors = [], notices = []
   const day = { value: '2026-08-17' }
-  const make = new Function('ref', 'watch', 'getPlan', 'listPlans', 'useMessages', 'useSelectedDay',
+  const make = new Function(
+    'ref', 'watch', 'buildPlan', 'deletePlan', 'getPlan', 'listPlans', 'fetchReferences',
+    'useMessages', 'useSelectedDay',
     source + '; return usePlans()')
-  const plans = make(value => ({ value }), () => {},
+  const plans = make(
+    value => ({ value }), () => {},
+    day => new Promise(resolve => { builds[day] = resolve }),
+    async () => {},
     id => new Promise(resolve => { details[id] = resolve }),
     day => new Promise(resolve => { lists[day] = resolve }),
-    () => ({ showError: error => errors.push(error), clearMessages() {} }),
+    async () => ({ skills: [], priorities: [], transports: [], work_types: [] }),
+    () => ({
+      showError: error => errors.push(error),
+      showNotice: notice => notices.push(notice),
+      clearMessages() {},
+    }),
     () => ({ selectedDay: day }))
-  return { plans, details, lists }
+  return { plans, details, lists, builds, notices }
 }
 
 test('late detail response cannot replace the selected plan', async () => {
@@ -39,4 +49,16 @@ test('switching day invalidates pending plan details and lists', async () => {
   assert.equal(plans.plan.value, null)
   assert.deepEqual(plans.plans.value, [])
   assert.equal(plans.loadingPlan.value, false)
+})
+
+test('switching day ignores a completed build for the previous day', async () => {
+  const { plans, builds, notices } = harness()
+  const build = plans.buildDayPlan()
+  plans.selectedDay.value = '2026-08-18'
+  builds['2026-08-17']({ id: 7, assigned_count: 3, unassigned_count: 1, engineers_used: 2 })
+  await build
+
+  assert.deepEqual(plans.plans.value, [])
+  assert.equal(plans.selectedPlanId.value, null)
+  assert.deepEqual(notices, [])
 })

@@ -194,7 +194,11 @@ async def apply_work_type_norms(session: AsyncSession, payload: RequestWrite) ->
     задать своей: заявка бывает тяжелее норматива.
     """
     references = await load_reference_lookup(session)
-    norm = references.work_type_norms.get(payload.work_type_id)
+    norm = (
+        references.work_type_norms.get(payload.work_type_id)
+        if payload.work_type_id is not None
+        else None
+    )
     if norm is not None:
         payload.skill_id = norm.skill_id
         if payload.duration_minutes is None:

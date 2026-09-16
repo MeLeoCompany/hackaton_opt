@@ -4,6 +4,7 @@ import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,7 @@ from src.services.planner.planner_loader import LoadedDay
 from src.services.travel import build_route
 
 SOLVER_NAME = "cuopt"
+AssignmentView = Assignment | SimpleNamespace
 
 SCHEDULE_REASON = (
     "Не включена в найденный план: при расчёте учитывались время дороги, "
@@ -72,7 +74,7 @@ async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSumm
     solution = await cuopt_solver.solve_day(loaded.instance)
     plan = await save_solution(session, loaded, solution)
     distance = await total_route_distance(loaded, solution)
-    plan.total_distance_km = distance.distance_km
+    plan.total_distance_km = Decimal(str(distance.distance_km))
     plan.distance_provider = distance.provider
     await session.commit()
     return (await summarize_plans(session, [plan]))[0]
@@ -205,6 +207,8 @@ def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
     if not engineers_with_skill:
         return f"На этот день нет исполнителя с навыком «{skill_name}»"
 
+    if request.transport_id is None:
+        return SCHEDULE_REASON
     transport_name = loaded.transport_names.get(request.transport_id, f"№{request.transport_id}")
     return f"Исполнители с навыком «{skill_name}» есть, но ни у одного нет транспорта «{transport_name}»"
 
@@ -244,20 +248,19 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
     if plan is None:
         raise PlanNotFoundError(f"План №{plan_id} не найден")
 
-    assignments = await plans_repository.list_plan_assignments(session, plan_id)
+    stored_assignments = await plans_repository.list_plan_assignments(session, plan_id)
+    assignments: list[AssignmentView] = list(stored_assignments)
     if plan.input_snapshot:
-        assignments = [snapshot_assignment(a, plan.input_snapshot) for a in assignments]
-    assignments_by_engineer: dict[int, list[Assignment]] = defaultdict(list)
+        assignments = [snapshot_assignment(a, plan.input_snapshot) for a in stored_assignments]
+    assignments_by_engineer: dict[int, list[AssignmentView]] = defaultdict(list)
     unassigned = []
     for assignment in assignments:
-        if assignment.engineer is None:
+        if assignment.engineer is None or assignment.engineer_id is None:
             unassigned.append(to_unassigned_request(assignment))
         else:
             assignments_by_engineer[assignment.engineer_id].append(assignment)
 
-    engineer_assignments = sorted(
-        assignments_by_engineer.values(), key=lambda group: group[0].engineer.name
-    )
+    engineer_assignments = sorted(assignments_by_engineer.values(), key=assigned_engineer_name)
     routes = await asyncio.gather(*(build_engineer_route(group) for group in engineer_assignments))
 
     summary = (await summarize_plans(session, [plan]))[0]
@@ -269,14 +272,26 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
     )
 
 
-async def build_engineer_route(assignments: list[Assignment]) -> EngineerRoute:
+async def build_engineer_route(assignments: list[AssignmentView]) -> EngineerRoute:
     """Маршрут одного исполнителя: визиты по порядку, пробег и линия для карты.
 
     Пробег берётся из маршрутизатора (/route) по порядку визитов, а не из матрицы:
     матрица приближённая и занижает длинные плечи.
     """
-    ordered = sorted(assignments, key=lambda assignment: assignment.visit_order)
+    if not assignments:
+        raise ValueError("маршрут не содержит назначений")
+    if any(
+        assignment.engineer is None
+        or assignment.visit_order is None
+        or assignment.planned_arrival_time is None
+        for assignment in assignments
+    ):
+        raise ValueError("назначенный маршрут содержит неполные данные")
+
+    ordered = sorted(assignments, key=assigned_visit_order)
     engineer = ordered[0].engineer
+    if engineer is None:  # narrowing for static analysis; guarded above
+        raise ValueError("у маршрута нет исполнителя")
 
     points = [
         Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))
@@ -304,7 +319,24 @@ async def build_engineer_route(assignments: list[Assignment]) -> EngineerRoute:
     )
 
 
-def to_plan_visit(assignment: Assignment) -> PlanVisit:
+def assigned_engineer_name(assignments: list[AssignmentView]) -> str:
+    """Ключ сортировки маршрутов; назначение по ограничению БД всегда имеет инженера."""
+    engineer = assignments[0].engineer
+    if engineer is None:
+        raise ValueError("у маршрута нет исполнителя")
+    return str(engineer.name)
+
+
+def assigned_visit_order(assignment: AssignmentView) -> int:
+    """Ключ сортировки визитов; у назначенной строки порядок не может быть NULL."""
+    if assignment.visit_order is None:
+        raise ValueError("у назначения нет порядка посещения")
+    return int(assignment.visit_order)
+
+
+def to_plan_visit(assignment: AssignmentView) -> PlanVisit:
+    if assignment.visit_order is None or assignment.planned_arrival_time is None:
+        raise ValueError("назначение содержит неполные данные")
     request = assignment.request
     return PlanVisit(
         visit_order=assignment.visit_order,
@@ -320,7 +352,7 @@ def to_plan_visit(assignment: Assignment) -> PlanVisit:
     )
 
 
-def to_unassigned_request(assignment: Assignment) -> UnassignedRequest:
+def to_unassigned_request(assignment: AssignmentView) -> UnassignedRequest:
     request = assignment.request
     return UnassignedRequest(
         request_id=request.id,

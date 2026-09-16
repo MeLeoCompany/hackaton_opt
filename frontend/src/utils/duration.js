@@ -16,11 +16,17 @@ export function parseDuration(rawValue) {
   if (!text) return null
 
   const clock = text.match(/^(\d+):(\d{1,2})$/)
-  if (clock) return Number(clock[2]) < 60 ? Number(clock[1]) * 60 + Number(clock[2]) : null
+  if (clock) return validMinutes(Number(clock[1]) * 60 + Number(clock[2]), Number(clock[2]))
 
-  if (/^\d+$/.test(text)) return Number(text)
+  if (/^\d+$/.test(text)) return validMinutes(Number(text))
 
   const parts = text.match(/^(?:(\d+)\s*ч[а-я]*)?\s*(?:(\d+)\s*м[а-я]*)?$/)
   if (!parts || (parts[1] === undefined && parts[2] === undefined)) return null
-  return Number(parts[1] ?? 0) * 60 + Number(parts[2] ?? 0)
+  const rest = Number(parts[2] ?? 0)
+  return validMinutes(Number(parts[1] ?? 0) * 60 + rest, parts[1] === undefined ? undefined : rest)
+}
+
+function validMinutes(total, minutePart) {
+  if (!Number.isSafeInteger(total) || (minutePart !== undefined && minutePart >= 60)) return null
+  return total
 }

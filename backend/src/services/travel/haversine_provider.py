@@ -66,8 +66,8 @@ def estimate(origin: Point, destination: Point, transport: TransportKind) -> Tra
 def build_matrix(points: list[Point], transport: TransportKind) -> TravelMatrix:
     """Матрица «из каждой точки в каждую»: километры и минуты для всех пар точек."""
     size = len(points)
-    distances_km = [[0.0] * size for _ in range(size)]
-    durations_min = [[0.0] * size for _ in range(size)]
+    distances_km: list[list[float | None]] = [[0.0] * size for _ in range(size)]
+    durations_min: list[list[float | None]] = [[0.0] * size for _ in range(size)]
 
     # «туда» и «обратно» считаются отдельно: у настоящего роутера они различаются
     # (односторонние улицы), и форма матрицы должна быть одинаковой у обоих провайдеров

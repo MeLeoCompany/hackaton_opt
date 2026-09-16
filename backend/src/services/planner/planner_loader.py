@@ -166,7 +166,7 @@ async def build_day_matrices(
     return distance_km, travel_min
 
 
-def replace_unreachable(values: list[list[float]], unreachable: float) -> np.ndarray:
+def replace_unreachable(values: list[list[float | None]], unreachable: float) -> np.ndarray:
     """Матрица из маршрутизатора -> numpy; пары без дороги (бесконечность) -> значение unreachable."""
     matrix = np.array(values, dtype=float)
     matrix[~np.isfinite(matrix)] = unreachable

@@ -14,4 +14,5 @@ class Settings(BaseSettings):
     local_utc_offset_hours: int = 3
 
 
-settings = Settings()
+# Значение database_url приходит из окружения/.env; статический анализатор этого не видит.
+settings = Settings()  # type: ignore[call-arg]

@@ -19,15 +19,24 @@ const invalid = ref(false)
 watch(
   () => props.modelValue,
   (value) => {
-    if (value === '' && !invalid.value) text.value = ''
+    text.value = value === '' ? '' : formatDuration(value)
+    invalid.value = false
   },
 )
 
 function finish() {
+  if (text.value.trim() === '') {
+    invalid.value = false
+    emit('update:modelValue', '')
+    return
+  }
+
   const minutes = parseDuration(text.value)
-  invalid.value = text.value.trim() !== '' && minutes === null
-  if (minutes !== null) text.value = formatDuration(minutes)
-  emit('update:modelValue', minutes === null ? '' : minutes)
+  invalid.value = minutes === null
+  if (minutes === null) return
+
+  text.value = formatDuration(minutes)
+  emit('update:modelValue', minutes)
 }
 </script>
 

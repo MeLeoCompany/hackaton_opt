@@ -137,7 +137,7 @@ def build_solver_inputs(instance: ProblemInstance, task_request_indices: list[in
 def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
     """Загружает задачу в DataModel, решает и возвращает таблицу маршрутов строками."""
     try:
-        from cuopt import routing
+        from cuopt import routing  # type: ignore[import-untyped]
     except ImportError as error:
         raise ExternalServiceError(
             "Решатель cuOpt не установлен: pip install cuopt-cu13 --extra-index-url https://pypi.nvidia.com"
@@ -208,7 +208,7 @@ def validate_solution(instance: ProblemInstance, solution: DaySolution) -> None:
             raise ExternalServiceError("cuOpt вернул неизвестного исполнителя")
         engineer = instance.engineers[engineer_index]
         previous_node = instance.start_node(engineer_index)
-        available = engineer.shift_start_min
+        available: float = engineer.shift_start_min
         for visit in visits:
             index = visit.request_index
             if not 0 <= index < instance.n_requests or index in seen:

@@ -22,5 +22,7 @@ test('длительность набирается как удобно', () => 
 test('непонятная длительность не принимается', () => {
   assert.equal(parseDuration(''), null)
   assert.equal(parseDuration('1:75'), null)
+  assert.equal(parseDuration('1 ч 75 мин'), null)
+  assert.equal(parseDuration('999999999999999999999999'), null)
   assert.equal(parseDuration('долго'), null)
 })

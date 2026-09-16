@@ -85,8 +85,8 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
     costing = COSTING[transport]
     waiting_minutes = _waiting_minutes(transport)
 
-    distances_km = [[0.0] * size for _ in range(size)]
-    durations_min = [[0.0] * size for _ in range(size)]
+    distances_km: list[list[float | None]] = [[0.0] * size for _ in range(size)]
+    durations_min: list[list[float | None]] = [[0.0] * size for _ in range(size)]
 
     async with httpx.AsyncClient(base_url=settings.valhalla_url, timeout=180.0) as client:
         blocks = await asyncio.gather(

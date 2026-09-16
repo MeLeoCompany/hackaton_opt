@@ -74,15 +74,19 @@ export function usePlans() {
 
   async function buildDayPlan() {
     if (building.value) return
+    const day = selectedDay.value
     building.value = true
     clearMessages()
     try {
-      const summary = await buildPlan(selectedDay.value)
+      const summary = await buildPlan(day)
+      if (day !== selectedDay.value) return
       showNotice(
         `План №${summary.id} построен: назначено ${summary.assigned_count}, ` +
           `не назначено ${summary.unassigned_count}, исполнителей ${summary.engineers_used}`,
       )
-      plans.value = await listPlans(selectedDay.value)
+      const summaries = await listPlans(day)
+      if (day !== selectedDay.value) return
+      plans.value = summaries
       await selectPlan(summary.id)
     } catch (error) {
       showError(error)
@@ -94,11 +98,15 @@ export function usePlans() {
   async function removePlan(summary) {
     if (building.value) return
     if (!window.confirm(`Удалить план №${summary.id}? Его назначения будут удалены.`)) return
+    const day = selectedDay.value
     building.value = true
     clearMessages()
     try {
       await deletePlan(summary.id)
-      plans.value = await listPlans(selectedDay.value)
+      if (day !== selectedDay.value) return
+      const summaries = await listPlans(day)
+      if (day !== selectedDay.value) return
+      plans.value = summaries
       plan.value = null
       selectedPlanId.value = null
       if (plans.value.length) await selectPlan(plans.value[0].id)

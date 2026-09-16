@@ -214,7 +214,7 @@ def parse_row(
     )
 
     # навык определяется типом работ, длительность берётся из норматива, если её не задали
-    norm = references.work_type_norms.get(work_type_id)
+    norm = references.work_type_norms.get(work_type_id) if work_type_id is not None else None
     if norm is not None:
         skill_id = norm.skill_id
         duration_minutes = norm.work_minutes if duration_minutes is None else duration_minutes
