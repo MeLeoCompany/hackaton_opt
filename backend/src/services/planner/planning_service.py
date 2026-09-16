@@ -72,6 +72,15 @@ async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSumm
     return (await summarize_plans(session, [plan]))[0]
 
 
+async def delete_plan(session: AsyncSession, plan_id: int) -> None:
+    """Удаляет план вместе с его назначениями — чтобы день можно было пересчитать заново."""
+    plan = await plans_repository.get_plan(session, plan_id)
+    if plan is None:
+        raise PlanNotFoundError(f"План №{plan_id} не найден")
+    await plans_repository.delete_plan(session, plan)
+    await session.commit()
+
+
 async def save_solution(
     session: AsyncSession, loaded: LoadedDay, solution: cuopt_solver.DaySolution
 ) -> Plan:
@@ -270,7 +279,15 @@ def snapshot_inputs(loaded: LoadedDay) -> dict:
             "engineer_order": [e.id for e in loaded.engineers]}
 
 
-def snapshot_assignment(assignment: Assignment, snapshot: dict) -> SimpleNamespace:
+def snapshot_assignment(assignment: Assignment, snapshot: dict) -> Assignment | SimpleNamespace:
+    """Заявка и исполнитель такими, какими они были при расчёте плана.
+
+    Если заявки нет в снимке (её добавили или перенумеровали после расчёта), показываем
+    текущие данные: лучше показать план по живым данным, чем не показать вовсе.
+    """
+    if str(assignment.request_id) not in snapshot["requests"]:
+        return assignment
+
     request = dict(snapshot["requests"][str(assignment.request_id)])
     for key in ("window_start", "window_end"):
         request[key] = datetime.fromisoformat(request[key])

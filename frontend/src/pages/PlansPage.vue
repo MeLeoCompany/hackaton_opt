@@ -1,10 +1,11 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 
 import PlanMap from '../components/PlanMap.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
+import PlansList from '../components/PlansList.vue'
 import { usePlans } from '../composables/usePlans.js'
-import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
+import { formatDay } from '../utils/moscowTime.js'
 
 const {
   days,
@@ -24,22 +25,22 @@ const {
   loadPlans,
   selectPlan,
   buildDayPlan,
+  removePlan,
   selectEngineer,
 } = usePlans()
 
-const RUN_TYPE_LABELS = {
-  optimized: 'оптимизированный',
-  replanned: 'после перепланирования',
+// «Характеристики» — сводка и маршруты списком, «Карта» — те же маршруты линиями на карте
+const viewMode = ref('details')
+
+// клик по маршруту в списке открывает карту с этим маршрутом
+function showRouteOnMap(engineerId) {
+  selectEngineer(engineerId)
+  if (selectedEngineerId.value !== null) viewMode.value = 'map'
 }
 
-function planLabel(summary) {
-  const solver = summary.solver ?? 'без решателя'
-  return (
-    `№${summary.id} · ${RUN_TYPE_LABELS[summary.run_type] ?? summary.run_type} · ${solver} · ` +
-    `${moscowTimeOf(summary.created_at)} · назначено ${summary.assigned_count} из ` +
-    `${summary.assigned_count + summary.unassigned_count}`
-  )
-}
+watch(selectedDay, () => {
+  viewMode.value = 'details'
+})
 
 onMounted(loadDays)
 </script>
@@ -64,13 +65,6 @@ onMounted(loadDays)
       <button class="primary" :disabled="!selectedDay || building" @click="buildDayPlan">
         {{ building ? 'Строю план…' : 'Построить план' }}
       </button>
-
-      <label v-if="plans.length" class="field plan-field">
-        <span>План</span>
-        <select :value="selectedPlanId" :disabled="building" @change="selectPlan(Number($event.target.value))">
-          <option v-for="summary in plans" :key="summary.id" :value="summary.id">{{ planLabel(summary) }}</option>
-        </select>
-      </label>
     </section>
 
     <div v-if="errorMessage" class="message error">
@@ -82,22 +76,62 @@ onMounted(loadDays)
 
     <p v-if="loadingDays" class="muted">Загружаю дни…</p>
     <p v-else-if="!days.length" class="muted">Нет активных заявок ни на один день — планировать нечего.</p>
-    <p v-else-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
-    <p v-else-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 
-    <div v-if="plan" class="plan-view">
-      <div class="map-area">
-        <PlanMap :plan="plan" :selected-engineer-id="selectedEngineerId" @select-engineer="selectEngineer" />
-      </div>
-      <div class="panel-area">
-        <PlanRoutesPanel
-          :plan="plan"
-          :references="references"
-          :selected-engineer-id="selectedEngineerId"
-          @select-engineer="selectEngineer"
+    <template v-else>
+      <p v-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
+
+      <section v-else class="plans-block">
+        <h2>Планы на {{ formatDay(selectedDay) }} · {{ plans.length }}</h2>
+        <p class="muted">Клик по строке открывает план: характеристики, маршруты и карту</p>
+        <PlansList
+          :plans="plans"
+          :selected-plan-id="selectedPlanId"
+          :busy="building"
+          @select="selectPlan"
+          @remove="removePlan"
         />
-      </div>
-    </div>
+      </section>
+
+      <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
+
+      <template v-if="plan">
+        <div class="list-bar">
+          <div class="view-switch" role="tablist">
+            <button
+              role="tab"
+              :aria-selected="viewMode === 'details'"
+              :class="{ active: viewMode === 'details' }"
+              @click="viewMode = 'details'"
+            >
+              Характеристики плана №{{ plan.id }}
+            </button>
+            <button
+              role="tab"
+              :aria-selected="viewMode === 'map'"
+              :class="{ active: viewMode === 'map' }"
+              @click="viewMode = 'map'"
+            >
+              Карта плана №{{ plan.id }} · маршрутов {{ plan.routes.length }}
+            </button>
+          </div>
+        </div>
+
+        <div :class="['plan-view', { 'with-map': viewMode === 'map' }]">
+          <div v-if="viewMode === 'map'" class="map-area">
+            <PlanMap :plan="plan" :selected-engineer-id="selectedEngineerId" @select-engineer="selectEngineer" />
+          </div>
+          <div class="panel-area">
+            <PlanRoutesPanel
+              :plan="plan"
+              :references="references"
+              :selected-engineer-id="selectedEngineerId"
+              :with-characteristics="viewMode === 'details'"
+              @select-engineer="viewMode === 'details' ? showRouteOnMap($event) : selectEngineer($event)"
+            />
+          </div>
+        </div>
+      </template>
+    </template>
 
     <Transition name="toast">
       <div v-if="noticeMessage" class="toast" role="status">{{ noticeMessage }}</div>
@@ -117,30 +151,44 @@ onMounted(loadDays)
   width: 280px;
 }
 
-.plan-field {
-  width: 460px;
-  max-width: 100%;
+.plans-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plans-block h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.plans-block p {
+  margin: 0;
 }
 
 .plan-view {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
 
-.panel-area {
-  max-height: max(480px, calc(100vh - 300px));
+.plan-view.with-map {
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+.plan-view.with-map .panel-area {
+  max-height: max(480px, calc(100vh - 380px));
   overflow: auto;
   padding-right: 4px;
 }
 
 @media (max-width: 1000px) {
-  .plan-view {
+  .plan-view.with-map {
     grid-template-columns: 1fr;
   }
 
-  .panel-area {
+  .plan-view.with-map .panel-area {
     max-height: none;
   }
 }

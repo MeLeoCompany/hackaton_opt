@@ -25,6 +25,11 @@ async def get_plan(session: AsyncSession, plan_id: int) -> Plan | None:
     return await session.get(Plan, plan_id)
 
 
+async def delete_plan(session: AsyncSession, plan: Plan) -> None:
+    """Удаляет план; назначения уходят вместе с ним по ON DELETE CASCADE."""
+    await session.delete(plan)
+
+
 async def list_plans(session: AsyncSession, plan_date: date | None) -> list[Plan]:
     """Планы, новые первыми; если указан день — только на этот день."""
     query = select(Plan).order_by(Plan.created_at.desc(), Plan.id.desc())

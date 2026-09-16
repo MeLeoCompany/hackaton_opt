@@ -2,7 +2,7 @@
 
 import { ref } from 'vue'
 
-import { buildPlan, getPlan, listPlanningDays, listPlans } from '../api/plansApi.js'
+import { buildPlan, deletePlan, getPlan, listPlanningDays, listPlans } from '../api/plansApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
 import { useMessages } from './useMessages.js'
 
@@ -94,6 +94,25 @@ export function usePlans() {
     }
   }
 
+  async function removePlan(summary) {
+    if (building.value) return
+    if (!window.confirm(`Удалить план №${summary.id}? Его назначения будут удалены.`)) return
+    building.value = true
+    clearMessages()
+    try {
+      await deletePlan(summary.id)
+      plans.value = await listPlans(selectedDay.value)
+      plan.value = null
+      selectedPlanId.value = null
+      if (plans.value.length) await selectPlan(plans.value[0].id)
+      showNotice(`План №${summary.id} удалён`)
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
   // повторный клик по тому же исполнителю снимает подсветку
   function selectEngineer(engineerId) {
     selectedEngineerId.value = selectedEngineerId.value === engineerId ? null : engineerId
@@ -117,6 +136,7 @@ export function usePlans() {
     loadPlans,
     selectPlan,
     buildDayPlan,
+    removePlan,
     selectEngineer,
   }
 }

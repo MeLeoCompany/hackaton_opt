@@ -17,3 +17,7 @@ export function buildPlan(planDate) {
 export function getPlan(planId) {
   return apiRequest('GET', `/plans/${planId}`)
 }
+
+export function deletePlan(planId) {
+  return apiRequest('DELETE', `/plans/${planId}`)
+}

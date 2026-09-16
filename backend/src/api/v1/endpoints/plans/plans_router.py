@@ -39,3 +39,8 @@ async def build_plan(payload: PlanBuildRequest, session: AsyncSession = Depends(
 @router.get("/{plan_id}", response_model=PlanDetail, summary="План с маршрутами исполнителей")
 async def get_plan(plan_id: int, session: AsyncSession = Depends(get_db)):
     return await planning_service.get_plan_detail(session, plan_id)
+
+
+@router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить план")
+async def delete_plan(plan_id: int, session: AsyncSession = Depends(get_db)):
+    await planning_service.delete_plan(session, plan_id)

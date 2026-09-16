@@ -30,13 +30,13 @@ function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>"']/g, (symbol) => `&#${symbol.charCodeAt(0)};`)
 }
 
-function visitIcon(visitOrder, color, isDimmed) {
+function visitIcon(visitOrder, color) {
   return L.divIcon({
     className: '',
     html:
       `<span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;` +
       `border-radius:50%;background:${color};color:#fff;font:600 11px/1 system-ui,sans-serif;` +
-      `border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0 / 40%);opacity:${isDimmed ? 0.3 : 1}">` +
+      `border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0 / 40%)">` +
       `${visitOrder}</span>`,
     iconSize: [22, 22],
     iconAnchor: [11, 11],
@@ -50,10 +50,12 @@ function routePoints(route) {
 function drawPlan() {
   planLayer.clearLayers()
 
+  // выбран исполнитель — рисуем только его маршрут: с десятком маршрутов карта иначе тормозит
   props.plan.routes.forEach((route, routeIndex) => {
+    if (props.selectedEngineerId !== null && props.selectedEngineerId !== route.engineer_id) return
+
     const color = routeColor(routeIndex)
-    const isDimmed = props.selectedEngineerId !== null && props.selectedEngineerId !== route.engineer_id
-    const lineStyle = { color, weight: isDimmed ? 3 : 5, opacity: isDimmed ? 0.2 : 0.85 }
+    const lineStyle = { color, weight: 5, opacity: 0.85 }
     const selectThisRoute = () => emit('select-engineer', route.engineer_id)
 
     if (route.geometry.length > 0) {
@@ -71,14 +73,13 @@ function drawPlan() {
       weight: 3,
       fillColor: '#ffffff',
       fillOpacity: 1,
-      opacity: isDimmed ? 0.3 : 1,
     })
       .bindTooltip(`Старт: <b>${escapeHtml(route.engineer_name)}</b>`, { direction: 'top' })
       .on('click', selectThisRoute)
       .addTo(planLayer)
 
     for (const visit of route.visits) {
-      L.marker([visit.latitude, visit.longitude], { icon: visitIcon(visit.visit_order, color, isDimmed) })
+      L.marker([visit.latitude, visit.longitude], { icon: visitIcon(visit.visit_order, color) })
         .bindTooltip(
           `<b>${visit.visit_order}. ${moscowTimeOf(visit.planned_arrival_time)}</b> · заявка №${visit.request_id}<br>` +
             `${escapeHtml(visit.address)}<br>` +
@@ -121,11 +122,18 @@ function fitTo(points) {
   if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 })
 }
 
-// выбрали исполнителя — перерисовываем с приглушением остальных и показываем его маршрут целиком
+// выбрали исполнителя — остаётся только его маршрут; сняли выбор — возвращаются все
 function showSelectedRoute() {
   drawPlan()
   const selectedRoute = props.plan.routes.find((route) => route.engineer_id === props.selectedEngineerId)
-  if (selectedRoute) fitTo(routePoints(selectedRoute))
+  fitTo(
+    selectedRoute
+      ? routePoints(selectedRoute)
+      : [
+          ...props.plan.routes.flatMap(routePoints),
+          ...props.plan.unassigned.map((request) => [request.latitude, request.longitude]),
+        ],
+  )
 }
 
 onMounted(async () => {
