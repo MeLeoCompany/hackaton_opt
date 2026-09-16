@@ -31,8 +31,12 @@ SOLVER_NAME = "cuopt"
 AssignmentView = Assignment | SimpleNamespace
 
 SCHEDULE_REASON = (
-    "Не включена в найденный план: при расчёте учитывались время дороги, "
-    "окна заявок, длительность работ, смены и приоритеты других заявок"
+    "Подходящий исполнитель может выполнить заявку отдельно, но она не поместилась "
+    "в общий план с учётом срочности, других заявок, времени дороги и смен"
+)
+TIME_REASON = (
+    "Подходящие исполнители есть, но ни один не успевает приехать от начала смены, "
+    "начать работу в окне заявки и закончить её до конца смены"
 )
 
 
@@ -191,11 +195,14 @@ async def save_solution(
 def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
     """Почему заявка не назначена — понятным диспетчеру языком.
 
-    Для заявок, которые кому-то подходят, причина в расписании. Иначе уточняем,
-    чего именно не хватило: навыка или транспорта.
+    Для совместимых исполнителей различаем невозможный отдельный первый выезд и
+    конфликт с общим расписанием. Иначе уточняем, чего не хватило: навыка или транспорта.
     """
-    if loaded.instance.compatible[request_index].any():
-        return SCHEDULE_REASON
+    candidates = loaded.instance.candidates(request_index)
+    if candidates:
+        if any(can_serve_as_first_visit(loaded, request_index, index) for index in candidates):
+            return SCHEDULE_REASON
+        return TIME_REASON
 
     request = loaded.requests[request_index]
     skill_name = loaded.skill_names.get(request.skill_id, f"№{request.skill_id}")
@@ -211,6 +218,23 @@ def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
         return SCHEDULE_REASON
     transport_name = loaded.transport_names.get(request.transport_id, f"№{request.transport_id}")
     return f"Исполнители с навыком «{skill_name}» есть, но ни у одного нет транспорта «{transport_name}»"
+
+
+def can_serve_as_first_visit(loaded: LoadedDay, request_index: int, engineer_index: int) -> bool:
+    """Успеет ли совместимый исполнитель выполнить заявку отдельным первым выездом."""
+    instance = loaded.instance
+    request = instance.requests[request_index]
+    engineer = instance.engineers[engineer_index]
+    travel = float(
+        instance.travel_min[engineer.transport_id][
+            instance.start_node(engineer_index), instance.request_node(request_index)
+        ]
+    )
+    work_start = max(engineer.shift_start_min + travel, request.window_start_min)
+    return (
+        work_start <= request.window_end_min
+        and work_start + request.duration_min <= engineer.shift_end_min
+    )
 
 
 async def list_plans(session: AsyncSession, plan_date: date | None) -> list[PlanSummary]:
@@ -315,7 +339,7 @@ async def build_engineer_route(assignments: list[AssignmentView]) -> EngineerRou
         duration_min=travel.duration_min,
         provider=travel.provider.value,
         geometry=travel.geometry,
-        visits=[to_plan_visit(assignment) for assignment in ordered],
+        visits=[to_plan_visit(assignment, engineer.name) for assignment in ordered],
     )
 
 
@@ -334,7 +358,7 @@ def assigned_visit_order(assignment: AssignmentView) -> int:
     return int(assignment.visit_order)
 
 
-def to_plan_visit(assignment: AssignmentView) -> PlanVisit:
+def to_plan_visit(assignment: AssignmentView, engineer_name: str) -> PlanVisit:
     if assignment.visit_order is None or assignment.planned_arrival_time is None:
         raise ValueError("назначение содержит неполные данные")
     request = assignment.request
@@ -349,6 +373,23 @@ def to_plan_visit(assignment: AssignmentView) -> PlanVisit:
         window_end=request.window_end,
         duration_minutes=request.duration_minutes,
         priority_id=request.priority_id,
+        explanation=assignment_explanation(assignment, engineer_name),
+    )
+
+
+def assignment_explanation(assignment: AssignmentView, engineer_name: str) -> str:
+    """Краткое объяснение назначения на языке диспетчера."""
+    request = assignment.request
+    transport = (
+        "ограничений по транспорту у заявки нет"
+        if request.transport_id is None
+        else "транспорт соответствует требованию заявки"
+    )
+    return (
+        f"Назначена исполнителю «{engineer_name}»: квалификация подходит, {transport}; "
+        "работа начинается в окне заявки и заканчивается в пределах смены. "
+        f"Позиция №{assignment.visit_order} выбрана при совместной оптимизации срочности, "
+        "числа выполненных заявок, числа исполнителей и пробега."
     )
 
 

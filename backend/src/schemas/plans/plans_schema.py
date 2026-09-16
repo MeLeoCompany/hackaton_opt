@@ -38,6 +38,7 @@ class PlanVisit(BaseModel):
     window_end: datetime
     duration_minutes: int
     priority_id: int
+    explanation: str
 
 
 class EngineerRoute(BaseModel):

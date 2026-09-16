@@ -111,8 +111,11 @@ watch(() => props.plan.id, resetRouteFilters)
             </p>
             <ol class="visits">
               <li v-for="visit in route.visits" :key="visit.request_id">
-                <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
-                <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+                <div class="visit-main">
+                  <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
+                  <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+                </div>
+                <p class="visit-explanation">{{ visit.explanation }}</p>
               </li>
             </ol>
           </article>
@@ -209,9 +212,12 @@ watch(() => props.plan.id, resetRouteFilters)
                 <ol class="route-steps">
                   <li class="route-start">Старт</li>
                   <li v-for="visit in route.visits" :key="visit.request_id">
-                    <span class="route-arrow" aria-hidden="true">↓</span>
-                    <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
-                    <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+                    <div class="visit-main">
+                      <span class="route-arrow" aria-hidden="true">↓</span>
+                      <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
+                      <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+                    </div>
+                    <p class="visit-explanation">{{ visit.explanation }}</p>
                   </li>
                 </ol>
               </td>
@@ -345,6 +351,19 @@ watch(() => props.plan.id, resetRouteFilters)
   gap: 2px;
 }
 
+.visit-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.visit-explanation {
+  margin: 2px 0 5px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .filter-with-reset {
   display: flex;
   align-items: center;
@@ -366,9 +385,7 @@ watch(() => props.plan.id, resetRouteFilters)
 }
 
 .route-steps li {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+  display: block;
 }
 
 .route-start {
