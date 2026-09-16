@@ -6,9 +6,10 @@ import { computed, reactive, ref, watch } from 'vue'
 
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
+import { formatDuration } from '../utils/duration.js'
 import { routeColor } from '../utils/routeColors.js'
 
-import TimeInput from './TimeInput.vue'
+import DurationInput from './DurationInput.vue'
 
 const props = defineProps({
   plan: { type: Object, required: true },
@@ -27,7 +28,7 @@ const EMPTY_ROUTE_FILTERS = {
   visitsTo: '', // и не больше
   distanceFrom: '', // пробег, км, не меньше
   distanceTo: '', // и не больше
-  durationFrom: '', // в пути 'ЧЧ:ММ', не меньше
+  durationFrom: '', // в пути, минут не меньше
   durationTo: '', // и не больше
   visit: '', // номер или часть адреса заявки в маршруте
 }
@@ -38,12 +39,6 @@ function visitsMatch(route, query) {
   return route.visits.some(
     (visit) => String(visit.request_id).includes(query) || visit.address.toLowerCase().includes(query),
   )
-}
-
-// 185.4 минуты -> "03:05" — чтобы сравнивать с полями «чч:мм» фильтра «В пути»
-function asClock(minutes) {
-  const whole = Math.round(minutes)
-  return `${String(Math.floor(whole / 60)).padStart(2, '0')}:${String(whole % 60).padStart(2, '0')}`
 }
 
 function inRange(value, from, to) {
@@ -63,8 +58,7 @@ const visibleRoutes = computed(() => {
     .filter(({ route }) => routeFilters.transportId === '' || route.transport_id === routeFilters.transportId)
     .filter(({ route }) => inRange(route.visits.length, routeFilters.visitsFrom, routeFilters.visitsTo))
     .filter(({ route }) => inRange(route.distance_km, routeFilters.distanceFrom, routeFilters.distanceTo))
-    .filter(({ route }) => !routeFilters.durationFrom || asClock(route.duration_min) >= routeFilters.durationFrom)
-    .filter(({ route }) => !routeFilters.durationTo || asClock(route.duration_min) <= routeFilters.durationTo)
+    .filter(({ route }) => inRange(Math.round(route.duration_min), routeFilters.durationFrom, routeFilters.durationTo))
     .filter(({ route }) => !visit || visitsMatch(route, visit))
     .filter(({ route }) => !query || route.engineer_name.toLowerCase().includes(query) || visitsMatch(route, query))
 })
@@ -80,12 +74,6 @@ function resetRouteFilters() {
 
 // открыли другой план — поиск от прошлого плана не переносим
 watch(() => props.plan.id, resetRouteFilters)
-
-function formatDuration(minutes) {
-  const hours = Math.floor(minutes / 60)
-  const rest = Math.round(minutes % 60)
-  return hours > 0 ? `${hours} ч ${rest} мин` : `${rest} мин`
-}
 </script>
 
 <template>
@@ -141,7 +129,7 @@ function formatDuration(minutes) {
             <col style="width: 170px" />
             <col style="width: 110px" />
             <col style="width: 110px" />
-            <col style="width: 130px" />
+            <col style="width: 180px" />
             <col />
           </colgroup>
           <thead>
@@ -176,10 +164,10 @@ function formatDuration(minutes) {
                 </div>
               </th>
               <th>
-                <div class="time-range">
-                  <TimeInput v-model="routeFilters.durationFrom" aria-label="в пути не меньше" />
+                <div class="range-pair">
+                  <DurationInput v-model="routeFilters.durationFrom" placeholder="от" aria-label="в пути не меньше" />
                   <span>–</span>
-                  <TimeInput v-model="routeFilters.durationTo" aria-label="в пути не больше" />
+                  <DurationInput v-model="routeFilters.durationTo" placeholder="до" aria-label="в пути не больше" />
                 </div>
               </th>
               <th>
