@@ -650,10 +650,12 @@ button.link:disabled {
 
 /* ---- карта и карточка выбранной записи ---- */
 
-/* Карта и карточка стоят по сетке шапки таблицы над ними: ширину карточки страница задаёт
-   суммой двух последних колонок (--details-width). Промежутка между колонками грида нет,
-   отступ даёт карта справа — поэтому левый край карточки ровно на линии колонки. */
+/* Карта и карточка стоят по сетке шапки таблицы над ними: ширину правой колонки страница
+   задаёт суммой двух последних колонок таблицы (--details-width). Небольшой промежуток
+   делится поровну по обе стороны линии колонки «Старт» («Транспорт» у заявок): карта не
+   доходит до неё на половину промежутка, карточка отступает на ту же половину. */
 .map-view {
+  --map-card-gap: 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--details-width, 300px);
   column-gap: 0;
@@ -662,7 +664,16 @@ button.link:disabled {
 }
 
 .map-view > .map-area {
-  margin-right: 14px;
+  margin-right: calc(var(--map-card-gap) / 2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.map-view > .details-card {
+  margin-left: calc(var(--map-card-gap) / 2);
+  /* элемент грида по умолчанию не уже своего содержимого и вылез бы за край таблицы;
+     так карточка сжимается до колонки, а длинные значения переносятся */
+  min-width: 0;
 }
 
 /* на карте нет шапки таблицы, поэтому фильтры показываются панелью — во всю ширину над картой */
@@ -679,7 +690,9 @@ button.link:disabled {
     grid-template-columns: 1fr;
   }
 
-  .map-view > .map-area {
+  .map-view > .map-area,
+  .map-view > .details-card {
+    margin-left: 0;
     margin-right: 0;
   }
 
@@ -777,8 +790,10 @@ button.link:disabled {
 }
 
 .details-card dd {
+  min-width: 0;
   margin: 0;
   text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .details-actions {
