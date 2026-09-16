@@ -78,19 +78,10 @@ async def count_request_usages(session: AsyncSession, request_id: int) -> tuple[
     return int(assignments or 0), int(events or 0)
 
 
-async def sync_request_id_sequence(session: AsyncSession, minimum: int = 1) -> None:
-    """Сдвигает автонумерацию за существующие ID и переданный minimum.
-
-    minimum резервирует явные номера CSV до вставки строк с автоматическими ID.
-    Текущее значение последовательности не уменьшается.
-    """
-    await session.execute(
-        text(
-            "SELECT setval(pg_get_serial_sequence('request', 'id'), "
-            "GREATEST((SELECT MAX(id) FROM request), "
-            "pg_sequence_last_value(pg_get_serial_sequence('request', 'id')::regclass), :minimum))"
-        ), {"minimum": minimum}
-    )
+async def list_request_ids(session: AsyncSession) -> set[int]:
+    """Номера всех заявок — из них выбирается номер для новой."""
+    result = await session.execute(select(Request.id))
+    return set(result.scalars().all())
 
 
 async def lock_request_ids(session: AsyncSession) -> None:

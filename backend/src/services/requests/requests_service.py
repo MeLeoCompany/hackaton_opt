@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.errors import DataError, InUseError, NotFoundError
+from src.core.free_id import smallest_free_id
 from src.models import Request
 from src.repositories.references import references_repository
 from src.repositories.requests import requests_repository
@@ -60,12 +61,10 @@ async def create_request(session: AsyncSession, payload: RequestCreate) -> Reque
 
     fields = payload.model_dump()
     if fields["id"] is None:
-        del fields["id"]
+        fields["id"] = smallest_free_id(await requests_repository.list_request_ids(session))
 
     request = requests_repository.add_request(session, fields)
     await session.flush()
-    if payload.id is not None:
-        await requests_repository.sync_request_id_sequence(session)
     await session.commit()
     return request
 
@@ -128,11 +127,13 @@ async def import_requests_csv(session: AsyncSession, content: bytes) -> RequestI
     ids_in_file = [row["id"] for row in parsed.rows if row["id"] is not None]
     existing_by_id = await requests_repository.get_requests_by_ids(session, ids_in_file)
 
+    # номера строк без номера подбираем заранее: они не должны совпасть ни с занятыми
+    # в БД, ни с явными номерами из файла, ни друг с другом
+    taken_ids = await requests_repository.list_request_ids(session)
+    taken_ids.update(ids_in_file)
+
     created = 0
     updated = 0
-    # Reserve IDs first, then insert in CSV order so baseline follows arrival order.
-    if ids_in_file:
-        await requests_repository.sync_request_id_sequence(session, minimum=max(ids_in_file))
     for fields in parsed.rows:
         existing_request = existing_by_id.get(fields["id"])
         fields_without_id = {name: value for name, value in fields.items() if name != "id"}
@@ -149,14 +150,13 @@ async def import_requests_csv(session: AsyncSession, content: bytes) -> RequestI
         # новая заявка без указанной активности — активна
         if fields_without_id["is_active"] is None:
             fields_without_id["is_active"] = True
-        if fields["id"] is not None:
-            fields_without_id["id"] = fields["id"]
+        identifier = fields["id"] if fields["id"] is not None else smallest_free_id(taken_ids)
+        taken_ids.add(identifier)
+        fields_without_id["id"] = identifier
         requests_repository.add_request(session, fields_without_id)
         created += 1
 
     await session.flush()
-    if ids_in_file:
-        await requests_repository.sync_request_id_sequence(session)
     await session.commit()
     return RequestImportReport(created=created, updated=updated)
 

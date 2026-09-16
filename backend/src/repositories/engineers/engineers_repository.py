@@ -73,18 +73,10 @@ async def count_engineer_usages(session: AsyncSession, engineer_id: int) -> tupl
     return int(assignments or 0), int(events or 0)
 
 
-async def sync_engineer_id_sequence(session: AsyncSession) -> None:
-    """Сдвигает автонумерацию исполнителей за самый большой номер в таблице.
-
-    Нужно после вставки исполнителя с явным номером: иначе следующий исполнитель без номера
-    получит из автонумерации номер, который уже занят.
-    """
-    await session.execute(
-        text(
-            "SELECT setval(pg_get_serial_sequence('engineer', 'id'), "
-            "GREATEST((SELECT MAX(id) FROM engineer), 1))"
-        )
-    )
+async def list_engineer_ids(session: AsyncSession) -> set[int]:
+    """Номера всех исполнителей — из них выбирается номер для нового."""
+    result = await session.execute(select(Engineer.id))
+    return set(result.scalars().all())
 
 
 async def lock_engineer_ids(session: AsyncSession) -> None:

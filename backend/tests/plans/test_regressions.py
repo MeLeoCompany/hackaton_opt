@@ -51,37 +51,33 @@ def test_snapshot_survives_edits_to_live_data():
 
 
 @pytest.mark.asyncio
-async def test_import_reserves_explicit_ids_before_automatic_ids():
+async def test_import_gives_rows_without_id_the_smallest_free_numbers():
+    """Строки без номера получают свободные номера, порядок строк файла сохраняется."""
     from src.services.requests import requests_service as service
     repository = service.requests_repository
-    rows = [dict(id=None, is_active=None), dict(id=1, is_active=None)]
-    inserted = set()
-    next_id = 1
+    rows = [dict(id=None, is_active=None), dict(id=1, is_active=None), dict(id=None, is_active=None)]
     insertion_order = []
-
-    def add_request(session, fields):
-        nonlocal next_id
-        identifier = fields.get('id')
-        if identifier is None:
-            identifier = next_id
-            next_id += 1
-        assert identifier not in inserted, 'automatic ID collided with explicit ID'
-        inserted.add(identifier)
-        insertion_order.append(identifier)
-
-    async def sync(session, minimum=1):
-        nonlocal next_id
-        next_id = max(next_id - 1, max(inserted, default=0), minimum) + 1
 
     session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock())
     with patch.object(repository, 'lock_request_ids', AsyncMock()), \
          patch.object(service, 'load_reference_lookup', AsyncMock()), \
          patch.object(service, 'parse_requests_csv', return_value=SimpleNamespace(rows=rows, errors=[])), \
          patch.object(repository, 'get_requests_by_ids', AsyncMock(return_value={})), \
-         patch.object(repository, 'add_request', side_effect=add_request), \
-         patch.object(repository, 'sync_request_id_sequence', side_effect=sync):
+         patch.object(repository, 'list_request_ids', AsyncMock(return_value={2})), \
+         patch.object(repository, 'add_request', side_effect=lambda s, f: insertion_order.append(f['id'])):
         report = await service.import_requests_csv(session, b'csv')
-    assert inserted == {1, 2}
-    assert insertion_order == [2, 1]  # CSV order survives ID reservation
-    assert report.created == 2
+
+    # 1 занят явной строкой файла, 2 — заявкой в БД
+    assert insertion_order == [3, 1, 4]
+    assert report.created == 3
     session.commit.assert_awaited_once()
+
+
+def test_new_record_gets_smallest_free_number():
+    from src.core.free_id import smallest_free_id
+
+    assert smallest_free_id(set()) == 1
+    assert smallest_free_id({1, 2, 3}) == 4
+    assert smallest_free_id({1, 3}) == 2
+    # девятизначные номера из реальных выгрузок не должны тянуть за собой новые
+    assert smallest_free_id({32840, 900000011}) == 1

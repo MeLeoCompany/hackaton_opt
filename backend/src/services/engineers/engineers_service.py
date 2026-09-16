@@ -3,6 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
+from src.core.free_id import smallest_free_id
 from src.models import Engineer, Skill
 from src.repositories.engineers import engineers_repository
 from src.repositories.references import references_repository
@@ -55,12 +56,10 @@ async def create_engineer(session: AsyncSession, payload: EngineerCreate) -> Eng
 
     fields = payload.model_dump(exclude={"skill_ids"})
     if fields["id"] is None:
-        del fields["id"]
+        fields["id"] = smallest_free_id(await engineers_repository.list_engineer_ids(session))
 
     engineer = engineers_repository.add_engineer(session, fields, skills)
     await session.flush()
-    if payload.id is not None:
-        await engineers_repository.sync_engineer_id_sequence(session)
     await session.commit()
     return to_engineer_read(engineer)
 
