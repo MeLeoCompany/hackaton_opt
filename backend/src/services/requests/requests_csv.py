@@ -115,7 +115,9 @@ def parse_requests_csv(
     reader.fieldnames = [normalize_column_name(name) for name in reader.fieldnames or []]
 
     missing_columns = [
-        column for column in COLUMNS if column not in OPTIONAL_COLUMNS and column not in reader.fieldnames
+        column
+        for column in COLUMNS
+        if column not in OPTIONAL_COLUMNS and column not in reader.fieldnames
     ]
     if missing_columns:
         return CsvParseResult(
@@ -197,7 +199,9 @@ def parse_row(
     )
     duration_minutes = parse_duration(cell(raw_row, "длительность_мин"), errors)
 
-    window_start = parse_datetime(cell(raw_row, "окно_начало"), "окно_начало", local_timezone, errors)
+    window_start = parse_datetime(
+        cell(raw_row, "окно_начало"), "окно_начало", local_timezone, errors
+    )
     window_end = parse_datetime(cell(raw_row, "окно_конец"), "окно_конец", local_timezone, errors)
     if window_start and window_end and window_end <= window_start:
         errors.append("«окно_конец» должно быть позже, чем «окно_начало»")
@@ -205,7 +209,9 @@ def parse_row(
     priority_id = parse_reference(
         cell(raw_row, "приоритет"), "приоритет", references.priorities, errors, required=True
     )
-    skill_id = parse_reference(cell(raw_row, "навык"), "навык", references.skills, errors, required=False)
+    skill_id = parse_reference(
+        cell(raw_row, "навык"), "навык", references.skills, errors, required=False
+    )
 
     # навык определяется типом работ, длительность берётся из норматива, если её не задали
     norm = references.work_type_norms.get(work_type_id)
@@ -213,7 +219,9 @@ def parse_row(
         skill_id = norm.skill_id
         duration_minutes = norm.work_minutes if duration_minutes is None else duration_minutes
     if duration_minutes is None:
-        errors.append("не заполнено поле «длительность_мин» — заполните его или укажите «тип_работ»")
+        errors.append(
+            "не заполнено поле «длительность_мин» — заполните его или укажите «тип_работ»"
+        )
     if skill_id is None:
         errors.append("не заполнено поле «навык» — заполните его или укажите «тип_работ»")
     transport_id = parse_reference(
@@ -272,7 +280,9 @@ def parse_number(
         errors.append(f"«{raw_value}» в поле «{column}» — не число")
         return None
     if not minimum <= value <= maximum:
-        errors.append(f"поле «{column}» должно быть от {minimum} до {maximum}, а в файле {raw_value}")
+        errors.append(
+            f"поле «{column}» должно быть от {minimum} до {maximum}, а в файле {raw_value}"
+        )
         return None
     return value
 
@@ -283,7 +293,9 @@ def parse_duration(raw_value: str, errors: list[str]) -> int | None:
         return None
     if raw_value.isdigit() and int(raw_value) > 0:
         return int(raw_value)
-    errors.append(f"«{raw_value}» в поле «длительность_мин» — должно быть целое число минут больше нуля")
+    errors.append(
+        f"«{raw_value}» в поле «длительность_мин» — должно быть целое число минут больше нуля"
+    )
     return None
 
 
@@ -301,7 +313,8 @@ def parse_datetime(
     except ValueError:
         for date_format in DATETIME_FORMATS:
             try:
-                moment = datetime.strptime(raw_value, date_format)
+                # Часовой пояс добавляется ниже из настройки локального времени.
+                moment = datetime.strptime(raw_value, date_format)  # noqa: DTZ007
                 break
             except ValueError:
                 continue

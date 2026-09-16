@@ -10,7 +10,7 @@ import pytest
 
 pytest.importorskip("cuopt")
 
-from planner_test_helpers import (  # noqa: E402
+from planner_test_helpers import (
     BIKE,
     CAR,
     URGENT,
@@ -25,7 +25,7 @@ from planner_test_helpers import (  # noqa: E402
     solve,
 )
 
-from src.core.config import settings  # noqa: E402
+from src.core.config import settings
 
 
 @pytest.fixture(autouse=True)

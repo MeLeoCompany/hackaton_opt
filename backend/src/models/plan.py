@@ -37,3 +37,5 @@ class Plan(Base):
     input_snapshot: Mapped[dict | None] = mapped_column(JSONB)
     # общий пробег по дорогам, считается при построении плана
     total_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    # valhalla, haversine или mixed; у старых планов и плана без маршрутов — NULL
+    distance_provider: Mapped[str | None] = mapped_column(Text)

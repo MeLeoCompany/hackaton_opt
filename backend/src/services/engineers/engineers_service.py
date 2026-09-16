@@ -5,8 +5,8 @@ from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
-from src.core.local_day import day_bounds
 from src.core.free_id import smallest_free_id
+from src.core.local_day import day_bounds
 from src.models import Engineer, Skill
 from src.repositories.engineers import engineers_repository
 from src.repositories.references import references_repository
@@ -39,7 +39,9 @@ def to_engineer_read(engineer: Engineer) -> EngineerRead:
     )
 
 
-async def list_engineers(session: AsyncSession, plan_date: date | None = None) -> list[EngineerRead]:
+async def list_engineers(
+    session: AsyncSession, plan_date: date | None = None
+) -> list[EngineerRead]:
     """Все исполнители или только те, чья смена попадает в выбранный день."""
     if plan_date is None:
         engineers = await engineers_repository.list_engineers(session)
@@ -57,7 +59,10 @@ async def create_engineer(session: AsyncSession, payload: EngineerCreate) -> Eng
     await engineers_repository.lock_engineer_ids(session)
     skills = await check_references(session, payload)
 
-    if payload.id is not None and await engineers_repository.get_engineer(session, payload.id) is not None:
+    if (
+        payload.id is not None
+        and await engineers_repository.get_engineer(session, payload.id) is not None
+    ):
         raise EngineerDataError(
             [f"исполнитель №{payload.id} уже существует — измените его или укажите другой номер"]
         )
@@ -72,7 +77,9 @@ async def create_engineer(session: AsyncSession, payload: EngineerCreate) -> Eng
     return to_engineer_read(engineer)
 
 
-async def update_engineer(session: AsyncSession, engineer_id: int, payload: EngineerWrite) -> EngineerRead:
+async def update_engineer(
+    session: AsyncSession, engineer_id: int, payload: EngineerWrite
+) -> EngineerRead:
     engineer = await find_engineer(session, engineer_id)
     skills = await check_references(session, payload)
     engineers_repository.apply_changes(engineer, payload.model_dump(exclude={"skill_ids"}), skills)

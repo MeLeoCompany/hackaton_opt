@@ -24,6 +24,7 @@ class PlanSummary(BaseModel):
     assigned_count: int
     unassigned_count: int
     total_distance_km: float | None = None  # общий пробег по дорогам; у старых планов может не быть
+    distance_provider: str | None = None  # valhalla / haversine / mixed; NULL у старых планов
 
 
 class PlanVisit(BaseModel):

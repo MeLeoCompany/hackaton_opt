@@ -9,6 +9,18 @@ defineProps({
   busy: { type: Boolean, default: false },
 })
 defineEmits(['select', 'remove'])
+
+function distanceLabel(summary) {
+  if (summary.total_distance_km === null) return '—'
+  const approximate = summary.distance_provider === 'haversine' || summary.distance_provider === 'mixed'
+  return `${approximate ? '≈ ' : ''}${summary.total_distance_km.toFixed(1)}`
+}
+
+function distanceTitle(summary) {
+  if (summary.distance_provider === 'haversine') return 'Приближённо: Valhalla была недоступна'
+  if (summary.distance_provider === 'mixed') return 'Часть маршрутов рассчитана приближённо'
+  return summary.distance_provider === 'valhalla' ? 'Рассчитано по дорогам через Valhalla' : ''
+}
 </script>
 
 <template>
@@ -39,7 +51,7 @@ defineEmits(['select', 'remove'])
           <td class="number-cell">{{ summary.assigned_count }}</td>
           <td class="number-cell">{{ summary.unassigned_count }}</td>
           <td class="number-cell">{{ summary.engineers_used }}</td>
-          <td class="number-cell">{{ summary.total_distance_km === null ? '—' : summary.total_distance_km.toFixed(1) }}</td>
+          <td class="number-cell" :title="distanceTitle(summary)">{{ distanceLabel(summary) }}</td>
           <td>
             <div class="row-actions">
               <button class="danger" :disabled="busy" @click.stop="$emit('remove', summary)">Удалить</button>

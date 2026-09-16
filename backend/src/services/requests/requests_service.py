@@ -5,8 +5,8 @@ from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
-from src.core.local_day import day_bounds, local_timezone
 from src.core.free_id import smallest_free_id
+from src.core.local_day import day_bounds, local_timezone
 from src.models import Request
 from src.repositories.references import references_repository
 from src.repositories.requests import requests_repository
@@ -56,7 +56,10 @@ async def create_request(session: AsyncSession, payload: RequestCreate) -> Reque
     await check_references_exist(session, payload)
     await apply_work_type_norms(session, payload)
 
-    if payload.id is not None and await requests_repository.get_request(session, payload.id) is not None:
+    if (
+        payload.id is not None
+        and await requests_repository.get_request(session, payload.id) is not None
+    ):
         raise RequestDataError(
             [f"заявка №{payload.id} уже существует — измените её или укажите другой номер"]
         )
@@ -175,7 +178,9 @@ async def load_reference_lookup(session: AsyncSession) -> ReferenceLookup:
         transports=reference_options([(transport.id, transport.name) for transport in transports]),
         work_types=reference_options([(work_type.id, work_type.name) for work_type in work_types]),
         work_type_norms={
-            work_type.id: WorkTypeNorm(skill_id=work_type.skill_id, work_minutes=work_type.work_minutes)
+            work_type.id: WorkTypeNorm(
+                skill_id=work_type.skill_id, work_minutes=work_type.work_minutes
+            )
             for work_type in work_types
         },
     )
@@ -212,9 +217,15 @@ async def check_references_exist(session: AsyncSession, payload: RequestWrite) -
         problems.append(f"приоритета №{payload.priority_id} нет в справочнике")
     if payload.skill_id is not None and str(payload.skill_id) not in references.skills.id_by_key:
         problems.append(f"навыка №{payload.skill_id} нет в справочнике")
-    if payload.work_type_id is not None and str(payload.work_type_id) not in references.work_types.id_by_key:
+    if (
+        payload.work_type_id is not None
+        and str(payload.work_type_id) not in references.work_types.id_by_key
+    ):
         problems.append(f"типа работ №{payload.work_type_id} нет в справочнике")
-    if payload.transport_id is not None and str(payload.transport_id) not in references.transports.id_by_key:
+    if (
+        payload.transport_id is not None
+        and str(payload.transport_id) not in references.transports.id_by_key
+    ):
         problems.append(f"транспорта №{payload.transport_id} нет в справочнике")
     if problems:
         raise RequestDataError(problems)

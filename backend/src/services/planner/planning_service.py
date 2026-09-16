@@ -2,12 +2,14 @@
 
 import asyncio
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime
 from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, NotFoundError
+from src.core.local_day import intersected_local_dates
 from src.models import Assignment, Plan, PlanRunType
 from src.repositories.plans import plans_repository
 from src.repositories.requests import requests_repository
@@ -19,7 +21,7 @@ from src.schemas.plans import (
     PlanVisit,
     UnassignedRequest,
 )
-from src.schemas.travel import Point, TransportKind
+from src.schemas.travel import Point, TransportKind, TravelProvider
 from src.services.planner import cuopt_solver, planner_loader
 from src.services.planner.planner_loader import LoadedDay
 from src.services.travel import build_route
@@ -41,11 +43,12 @@ class PlanDataError(DataError):
 
 
 async def list_planning_days(session: AsyncSession) -> list[PlanningDayOption]:
-    """Дни, на которые есть активные заявки (по московской дате начала окна)."""
+    """Московские дни, с которыми пересекаются окна активных заявок."""
     requests = await requests_repository.list_active_requests(session)
     request_count_by_day: dict[date, int] = defaultdict(int)
     for request in requests:
-        request_count_by_day[planner_loader.local_date_of(request.window_start)] += 1
+        for plan_date in intersected_local_dates(request.window_start, request.window_end):
+            request_count_by_day[plan_date] += 1
     return [
         PlanningDayOption(plan_date=plan_date, active_requests=count)
         for plan_date, count in sorted(request_count_by_day.items())
@@ -68,19 +71,35 @@ async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSumm
     loaded = await load_planning_day(session, plan_date)
     solution = await cuopt_solver.solve_day(loaded.instance)
     plan = await save_solution(session, loaded, solution)
-    plan.total_distance_km = await total_route_distance_km(loaded, solution)
+    distance = await total_route_distance(loaded, solution)
+    plan.total_distance_km = distance.distance_km
+    plan.distance_provider = distance.provider
     await session.commit()
     return (await summarize_plans(session, [plan]))[0]
 
 
-async def total_route_distance_km(loaded: LoadedDay, solution: cuopt_solver.DaySolution) -> float:
+@dataclass(frozen=True)
+class PlanDistance:
+    distance_km: float
+    provider: str | None
+
+
+async def total_route_distance(
+    loaded: LoadedDay, solution: cuopt_solver.DaySolution
+) -> PlanDistance:
     """Общий пробег плана по дорогам — так же, как в просмотре плана: по /route от старта
     исполнителя через его заявки по порядку. Сохраняется в план, чтобы список планов
     показывал пробег без пересчёта маршрутов."""
 
-    async def route_distance(engineer_index: int, visits: list[cuopt_solver.PlannedVisit]) -> float:
+    async def route_distance(
+        engineer_index: int, visits: list[cuopt_solver.PlannedVisit]
+    ) -> tuple[float, str]:
         engineer = loaded.engineers[engineer_index]
-        points = [Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))]
+        points = [
+            Point(
+                latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude)
+            )
+        ]
         points += [
             Point(
                 latitude=float(loaded.requests[visit.request_index].latitude),
@@ -88,13 +107,28 @@ async def total_route_distance_km(loaded: LoadedDay, solution: cuopt_solver.DayS
             )
             for visit in visits
         ]
+        # TODO: сделать fallback управляемым: retry/cached route и сохранять источник
+        # отдельно для каждого маршрута. Пока хотя бы честно помечаем весь пробег плана.
         travel = await build_route(points, TransportKind(engineer.transport_id))
-        return travel.distance_km
+        provider = (
+            travel.provider.value
+            if isinstance(travel.provider, TravelProvider)
+            else str(travel.provider)
+        )
+        return travel.distance_km, provider
 
-    distances = await asyncio.gather(
-        *(route_distance(engineer_index, visits) for engineer_index, visits in solution.routes.items() if visits)
+    routes = await asyncio.gather(
+        *(
+            route_distance(engineer_index, visits)
+            for engineer_index, visits in solution.routes.items()
+            if visits
+        )
     )
-    return round(sum(distances), 3)
+    providers = {provider for _, provider in routes}
+    provider = providers.pop() if len(providers) == 1 else "mixed" if providers else None
+    return PlanDistance(
+        distance_km=round(sum(distance for distance, _ in routes), 3), provider=provider
+    )
 
 
 async def delete_plan(session: AsyncSession, plan_id: int) -> None:
@@ -164,7 +198,9 @@ def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
     request = loaded.requests[request_index]
     skill_name = loaded.skill_names.get(request.skill_id, f"№{request.skill_id}")
     engineers_with_skill = [
-        engineer for engineer in loaded.engineers if request.skill_id in {skill.id for skill in engineer.skills}
+        engineer
+        for engineer in loaded.engineers
+        if request.skill_id in {skill.id for skill in engineer.skills}
     ]
     if not engineers_with_skill:
         return f"На этот день нет исполнителя с навыком «{skill_name}»"
@@ -193,7 +229,10 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 engineers_used=engineers_used,
                 assigned_count=assigned,
                 unassigned_count=unassigned,
-                total_distance_km=float(plan.total_distance_km) if plan.total_distance_km is not None else None,
+                total_distance_km=float(plan.total_distance_km)
+                if plan.total_distance_km is not None
+                else None,
+                distance_provider=plan.distance_provider,
             )
         )
     return summaries
@@ -216,7 +255,9 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
         else:
             assignments_by_engineer[assignment.engineer_id].append(assignment)
 
-    engineer_assignments = sorted(assignments_by_engineer.values(), key=lambda group: group[0].engineer.name)
+    engineer_assignments = sorted(
+        assignments_by_engineer.values(), key=lambda group: group[0].engineer.name
+    )
     routes = await asyncio.gather(*(build_engineer_route(group) for group in engineer_assignments))
 
     summary = (await summarize_plans(session, [plan]))[0]
@@ -237,9 +278,14 @@ async def build_engineer_route(assignments: list[Assignment]) -> EngineerRoute:
     ordered = sorted(assignments, key=lambda assignment: assignment.visit_order)
     engineer = ordered[0].engineer
 
-    points = [Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))]
+    points = [
+        Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))
+    ]
     points += [
-        Point(latitude=float(assignment.request.latitude), longitude=float(assignment.request.longitude))
+        Point(
+            latitude=float(assignment.request.latitude),
+            longitude=float(assignment.request.longitude),
+        )
         for assignment in ordered
     ]
     travel = await build_route(points, TransportKind(engineer.transport_id))
@@ -288,21 +334,40 @@ def to_unassigned_request(assignment: Assignment) -> UnassignedRequest:
 
 
 def snapshot_inputs(loaded: LoadedDay) -> dict:
-    requests = {str(r.id): {
-        "id": r.id, "address": r.address, "latitude": float(r.latitude),
-        "longitude": float(r.longitude), "window_start": r.window_start.isoformat(),
-        "window_end": r.window_end.isoformat(), "duration_minutes": r.duration_minutes,
-        "priority_id": r.priority_id, "skill_id": r.skill_id, "transport_id": r.transport_id,
-    } for r in loaded.requests}
-    engineers = {str(e.id): {
-        "id": e.id, "name": e.name, "start_latitude": float(e.start_latitude),
-        "start_longitude": float(e.start_longitude), "transport_id": e.transport_id,
-        "shift_start": e.shift_start.isoformat(), "shift_end": e.shift_end.isoformat(),
-        "skill_ids": [skill.id for skill in e.skills],
-    } for e in loaded.engineers}
-    return {"requests": requests, "engineers": engineers,
-            "request_order": [r.id for r in loaded.requests],
-            "engineer_order": [e.id for e in loaded.engineers]}
+    requests = {
+        str(r.id): {
+            "id": r.id,
+            "address": r.address,
+            "latitude": float(r.latitude),
+            "longitude": float(r.longitude),
+            "window_start": r.window_start.isoformat(),
+            "window_end": r.window_end.isoformat(),
+            "duration_minutes": r.duration_minutes,
+            "priority_id": r.priority_id,
+            "skill_id": r.skill_id,
+            "transport_id": r.transport_id,
+        }
+        for r in loaded.requests
+    }
+    engineers = {
+        str(e.id): {
+            "id": e.id,
+            "name": e.name,
+            "start_latitude": float(e.start_latitude),
+            "start_longitude": float(e.start_longitude),
+            "transport_id": e.transport_id,
+            "shift_start": e.shift_start.isoformat(),
+            "shift_end": e.shift_end.isoformat(),
+            "skill_ids": [skill.id for skill in e.skills],
+        }
+        for e in loaded.engineers
+    }
+    return {
+        "requests": requests,
+        "engineers": engineers,
+        "request_order": [r.id for r in loaded.requests],
+        "engineer_order": [e.id for e in loaded.engineers],
+    }
 
 
 def snapshot_assignment(assignment: Assignment, snapshot: dict) -> Assignment | SimpleNamespace:
@@ -321,7 +386,8 @@ def snapshot_assignment(assignment: Assignment, snapshot: dict) -> Assignment | 
     return SimpleNamespace(
         request=SimpleNamespace(**request),
         engineer=SimpleNamespace(**engineer) if engineer else None,
-        engineer_id=assignment.engineer_id, visit_order=assignment.visit_order,
+        engineer_id=assignment.engineer_id,
+        visit_order=assignment.visit_order,
         planned_arrival_time=assignment.planned_arrival_time,
         unassigned_reason=assignment.unassigned_reason,
     )

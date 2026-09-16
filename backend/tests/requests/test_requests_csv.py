@@ -1,6 +1,6 @@
 """Разбор CSV с заявками — без БД, справочники заданы прямо в тесте."""
 
-from datetime import timedelta, timezone
+from datetime import UTC, timedelta, timezone
 
 from src.services.requests.requests_csv import (
     ReferenceLookup,
@@ -47,7 +47,7 @@ def test_valid_row_with_names():
     assert row["latitude"] == 55.74  # запятая в дробной части тоже понимается
     assert (row["priority_id"], row["skill_id"], row["transport_id"]) == (2, 3, 1)
     # 18:00 по Москве = 15:00 UTC
-    assert row["window_start"].astimezone(timezone.utc).hour == 15
+    assert row["window_start"].astimezone(UTC).hour == 15
 
 
 def test_references_by_number_empty_id_and_empty_transport():
@@ -84,7 +84,7 @@ def test_time_with_explicit_timezone_is_kept():
     result = parse(HEADER, row)
 
     assert result.errors == []
-    assert result.rows[0]["window_start"].astimezone(timezone.utc).hour == 18
+    assert result.rows[0]["window_start"].astimezone(UTC).hour == 18
 
 
 def test_missing_required_columns():

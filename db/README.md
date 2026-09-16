@@ -131,3 +131,11 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 ```bash
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/010_plan_distance.sql
 ```
+
+`init/011_plan_distance_provider.sql` добавляет источник пробега: `valhalla`,
+`haversine` или `mixed`. Поэтому fallback остаётся рабочим, но приближённая цифра
+больше не выглядит как точный дорожный расчёт.
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/011_plan_distance_provider.sql
+```

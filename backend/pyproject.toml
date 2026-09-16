@@ -43,6 +43,10 @@ testpaths = ["tests"]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# FastAPI штатно объявляет Depends()/File() в значениях параметров.
+ignore = ["B008", "ISC004"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
