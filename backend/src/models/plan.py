@@ -1,7 +1,8 @@
 import enum
 from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Enum, Text, func
+from sqlalchemy import BigInteger, Date, DateTime, Enum, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,3 +35,5 @@ class Plan(Base):
     solver: Mapped[str | None] = mapped_column(Text)
 
     input_snapshot: Mapped[dict | None] = mapped_column(JSONB)
+    # общий пробег по дорогам, считается при построении плана
+    total_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))

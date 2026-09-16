@@ -121,3 +121,13 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 ```bash
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/009_work_type.sql
 ```
+
+## Пробег плана (`plan.total_distance_km`)
+
+`init/010_plan_distance.sql` добавляет общий пробег плана по дорогам. Он считается при
+построении плана, чтобы список планов показывал его без пересчёта маршрутов. У планов,
+построенных до миграции, поле пустое — такие планы достаточно пересчитать.
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/010_plan_distance.sql
+```

@@ -23,6 +23,7 @@ class PlanSummary(BaseModel):
     engineers_used: int
     assigned_count: int
     unassigned_count: int
+    total_distance_km: float | None = None  # общий пробег по дорогам; у старых планов может не быть
 
 
 class PlanVisit(BaseModel):

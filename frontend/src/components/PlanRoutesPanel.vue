@@ -1,18 +1,82 @@
 <script setup>
 // Маршруты исполнителей: кто, куда и во сколько едет (ТЗ 2.4.2), и неназначенные заявки
-// с причинами. Характеристики плана показываются только рядом со списком: на карте
-// те же цифры повторять незачем.
+// с причинами. Характеристики плана (назначено, исполнителей, пробег) — в строке плана
+// в списке планов, здесь их не повторяем.
+import { computed, reactive, ref, watch } from 'vue'
+
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
 import { routeColor } from '../utils/routeColors.js'
 
-defineProps({
+import TimeInput from './TimeInput.vue'
+
+const props = defineProps({
   plan: { type: Object, required: true },
   references: { type: Object, required: true },
   selectedEngineerId: { type: Number, default: null },
-  withCharacteristics: { type: Boolean, default: true },
+  besideMap: { type: Boolean, default: false }, // рядом с картой: карточки вместо таблицы
 })
 const emit = defineEmits(['select-engineer'])
+
+// Поиск маршрутов. В таблице — по колонкам в её шапке, как в заявках и исполнителях;
+// в карточках рядом с картой шапки нет, там одно общее поле.
+const EMPTY_ROUTE_FILTERS = {
+  name: '', // часть названия бригады
+  transportId: '', // '' — любой транспорт
+  visitsFrom: '', // заявок в маршруте не меньше
+  visitsTo: '', // и не больше
+  distanceFrom: '', // пробег, км, не меньше
+  distanceTo: '', // и не больше
+  durationFrom: '', // в пути 'ЧЧ:ММ', не меньше
+  durationTo: '', // и не больше
+  visit: '', // номер или часть адреса заявки в маршруте
+}
+const routeFilters = reactive({ ...EMPTY_ROUTE_FILTERS })
+const routeQuery = ref('')
+
+function visitsMatch(route, query) {
+  return route.visits.some(
+    (visit) => String(visit.request_id).includes(query) || visit.address.toLowerCase().includes(query),
+  )
+}
+
+// 185.4 минуты -> "03:05" — чтобы сравнивать с полями «чч:мм» фильтра «В пути»
+function asClock(minutes) {
+  const whole = Math.round(minutes)
+  return `${String(Math.floor(whole / 60)).padStart(2, '0')}:${String(whole % 60).padStart(2, '0')}`
+}
+
+function inRange(value, from, to) {
+  return (from === '' || value >= Number(from)) && (to === '' || value <= Number(to))
+}
+
+// номер маршрута в плане хранится вместе с маршрутом: по нему выбирается цвет,
+// и после поиска у бригады остаётся тот же цвет, что на карте
+const visibleRoutes = computed(() => {
+  const name = routeFilters.name.trim().toLowerCase()
+  const visit = routeFilters.visit.trim().toLowerCase()
+  const query = routeQuery.value.trim().toLowerCase()
+
+  return props.plan.routes
+    .map((route, routeIndex) => ({ route, routeIndex }))
+    .filter(({ route }) => !name || route.engineer_name.toLowerCase().includes(name))
+    .filter(({ route }) => routeFilters.transportId === '' || route.transport_id === routeFilters.transportId)
+    .filter(({ route }) => inRange(route.visits.length, routeFilters.visitsFrom, routeFilters.visitsTo))
+    .filter(({ route }) => inRange(route.distance_km, routeFilters.distanceFrom, routeFilters.distanceTo))
+    .filter(({ route }) => !routeFilters.durationFrom || asClock(route.duration_min) >= routeFilters.durationFrom)
+    .filter(({ route }) => !routeFilters.durationTo || asClock(route.duration_min) <= routeFilters.durationTo)
+    .filter(({ route }) => !visit || visitsMatch(route, visit))
+    .filter(({ route }) => !query || route.engineer_name.toLowerCase().includes(query) || visitsMatch(route, query))
+})
+
+// открыли другой план — поиск от прошлого плана не переносим
+watch(
+  () => props.plan.id,
+  () => {
+    Object.assign(routeFilters, EMPTY_ROUTE_FILTERS)
+    routeQuery.value = ''
+  },
+)
 
 function formatDuration(minutes) {
   const hours = Math.floor(minutes / 60)
@@ -23,69 +87,169 @@ function formatDuration(minutes) {
 
 <template>
   <section class="routes-panel">
-    <header v-if="withCharacteristics" class="plan-title">
+    <header v-if="!besideMap" class="plan-title">
       <h2>План №{{ plan.id }} на {{ formatDay(plan.plan_date) }}</h2>
-      <p class="muted">рассчитан в {{ moscowTimeOf(plan.created_at) }} · решатель {{ plan.solver ?? '—' }}</p>
     </header>
 
-    <section v-if="withCharacteristics" class="plan-block">
-      <h3>Характеристики плана №{{ plan.id }}</h3>
-      <div class="plan-metrics">
-        <div>
-          <strong>{{ plan.engineers_used }}</strong><span>исполнителей задействовано</span>
-        </div>
-        <div>
-          <strong>{{ plan.assigned_count }}</strong><span>заявок назначено</span>
-        </div>
-        <div>
-          <strong>{{ plan.unassigned_count }}</strong><span>заявок не назначено</span>
-        </div>
-        <div>
-          <strong>{{ plan.total_distance_km.toFixed(1) }}</strong><span>км общий пробег</span>
-        </div>
-      </div>
-    </section>
 
     <section class="plan-block">
       <h3>Маршруты исполнителей</h3>
-      <p v-if="selectedEngineerId !== null" class="muted">
-        На карте показан один маршрут — кликните по нему ещё раз, чтобы вернуть все
-      </p>
-      <div class="route-cards">
-        <article
-          v-for="(route, routeIndex) in plan.routes"
-          :key="route.engineer_id"
-          :class="['route-card', { selected: route.engineer_id === selectedEngineerId }]"
-          @click="emit('select-engineer', route.engineer_id)"
-        >
-          <header>
-            <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
-            <strong>{{ route.engineer_name }}</strong>
-            <span class="muted">{{ referenceName(references, 'transports', route.transport_id) }}</span>
-          </header>
-          <p class="muted">
-            {{ route.visits.length }} заявок · {{ route.distance_km.toFixed(1) }} км ·
-            {{ formatDuration(route.duration_min) }} в пути
-            <template v-if="route.provider !== 'valhalla'"> · оценка по прямой</template>
-          </p>
-          <ol>
-            <li v-for="visit in route.visits" :key="visit.request_id">
-              <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
-              <span>№{{ visit.request_id }} · {{ visit.address }}</span>
-            </li>
-          </ol>
-        </article>
+
+      <!-- рядом с картой места мало: маршруты карточками и одно поле поиска -->
+      <template v-if="besideMap">
+        <div class="filter-controls route-search">
+          <input v-model="routeQuery" placeholder="Поиск: бригада, № заявки или адрес" aria-label="поиск маршрута" />
+        </div>
+        <p v-if="!visibleRoutes.length" class="muted">Ни один маршрут не подходит под поиск</p>
+        <div class="route-cards">
+          <article
+            v-for="{ route, routeIndex } in visibleRoutes"
+            :key="route.engineer_id"
+            :class="['route-card', { selected: route.engineer_id === selectedEngineerId }]"
+            @click="emit('select-engineer', route.engineer_id)"
+          >
+            <header>
+              <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
+              <strong>{{ route.engineer_name }}</strong>
+              <span class="muted">{{ referenceName(references, 'transports', route.transport_id) }}</span>
+            </header>
+            <p class="muted">
+              {{ route.visits.length }} заявок · {{ route.distance_km.toFixed(1) }} км ·
+              {{ formatDuration(route.duration_min) }} в пути
+              <template v-if="route.provider !== 'valhalla'"> · оценка по прямой</template>
+            </p>
+            <ol class="visits">
+              <li v-for="visit in route.visits" :key="visit.request_id">
+                <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
+                <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+              </li>
+            </ol>
+          </article>
+        </div>
+      </template>
+
+      <!-- в характеристиках — таблицей, поиск по колонкам в её шапке -->
+      <div v-else class="table-scroll">
+        <!-- ширины колонок фиксированы: иначе таблица разъезжается при каждом вводе в фильтр;
+             узкие колонки с числами, всё остальное место — маршруту с адресами -->
+        <table class="data-table fixed-columns routes-table">
+          <colgroup>
+            <col style="width: 220px" />
+            <col style="width: 170px" />
+            <col style="width: 110px" />
+            <col style="width: 110px" />
+            <col style="width: 130px" />
+            <col />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Бригада</th>
+              <th>Транспорт</th>
+              <th>Заявок</th>
+              <th>Пробег, км</th>
+              <th>В пути</th>
+              <th>Маршрут</th>
+            </tr>
+            <tr class="filter-row filter-controls">
+              <th><input v-model="routeFilters.name" placeholder="бригада" aria-label="поиск по бригаде" /></th>
+              <th>
+                <select v-model="routeFilters.transportId" aria-label="фильтр по транспорту">
+                  <option value="">любой</option>
+                  <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
+                </select>
+              </th>
+              <th>
+                <div class="range-pair">
+                  <input v-model="routeFilters.visitsFrom" type="number" min="0" placeholder="от" aria-label="заявок не меньше" />
+                  <span>–</span>
+                  <input v-model="routeFilters.visitsTo" type="number" min="0" placeholder="до" aria-label="заявок не больше" />
+                </div>
+              </th>
+              <th>
+                <div class="range-pair">
+                  <input v-model="routeFilters.distanceFrom" type="number" min="0" placeholder="от" aria-label="пробег не меньше, км" />
+                  <span>–</span>
+                  <input v-model="routeFilters.distanceTo" type="number" min="0" placeholder="до" aria-label="пробег не больше, км" />
+                </div>
+              </th>
+              <th>
+                <div class="time-range">
+                  <TimeInput v-model="routeFilters.durationFrom" aria-label="в пути не меньше" />
+                  <span>–</span>
+                  <TimeInput v-model="routeFilters.durationTo" aria-label="в пути не больше" />
+                </div>
+              </th>
+              <th>
+                <input v-model="routeFilters.visit" placeholder="№ или адрес заявки" aria-label="поиск по заявкам маршрута" />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!visibleRoutes.length">
+              <td colspan="6" class="muted">Ни один маршрут не подходит под фильтры</td>
+            </tr>
+            <tr
+              v-for="{ route, routeIndex } in visibleRoutes"
+              :key="route.engineer_id"
+              :class="{ selected: route.engineer_id === selectedEngineerId }"
+              @click="emit('select-engineer', route.engineer_id)"
+            >
+              <td class="nowrap">
+                <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
+                <strong>{{ route.engineer_name }}</strong>
+              </td>
+              <td class="nowrap">{{ referenceName(references, 'transports', route.transport_id) }}</td>
+              <td class="under-range-filter">{{ route.visits.length }}</td>
+              <td
+                class="under-range-filter"
+                :title="route.provider !== 'valhalla' ? 'Оценка по прямой: маршрутизатор был недоступен' : ''"
+              >
+                {{ route.distance_km.toFixed(1) }}<template v-if="route.provider !== 'valhalla'">*</template>
+              </td>
+              <td class="under-range-filter nowrap">{{ formatDuration(route.duration_min) }}</td>
+              <td>
+                <!-- маршрут сверху вниз: старт бригады, затем заявки по порядку, между ними стрелки -->
+                <ol class="route-steps">
+                  <li class="route-start">Старт</li>
+                  <li v-for="visit in route.visits" :key="visit.request_id">
+                    <span class="route-arrow" aria-hidden="true">↓</span>
+                    <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
+                    <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+                  </li>
+                </ol>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
     <section v-if="plan.unassigned.length" class="plan-block">
       <h3>Не назначены в этом плане</h3>
-      <ul class="unassigned">
-        <li v-for="request in plan.unassigned" :key="request.request_id">
-          <strong>№{{ request.request_id }}</strong> · {{ request.address }}
-          <p class="muted">{{ request.reason }}</p>
-        </li>
-      </ul>
+      <div class="table-scroll">
+        <!-- рядом с картой панель узкая — там ширины подбираются сами -->
+        <table :class="['data-table', { 'fixed-columns': !besideMap }]">
+          <colgroup v-if="!besideMap">
+            <col style="width: 110px" />
+            <col style="width: 45%" />
+            <col />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Адрес</th>
+              <th v-if="!besideMap">Причина</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="request in plan.unassigned" :key="request.request_id" :title="request.reason">
+              <td class="nowrap">{{ request.request_id }}</td>
+              <td>{{ request.address }}</td>
+              <td v-if="!besideMap" class="muted">{{ request.reason }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </section>
 </template>
@@ -101,10 +265,6 @@ function formatDuration(minutes) {
 .plan-title h2 {
   margin: 0;
   font-size: 16px;
-}
-
-.plan-title p {
-  margin: 2px 0 0;
 }
 
 .plan-block {
@@ -127,30 +287,13 @@ function formatDuration(minutes) {
   letter-spacing: 0.04em;
 }
 
-.plan-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px;
+/* поиск отдельной строкой под заголовком: подсказка помещается целиком */
+.route-search {
+  width: 340px;
+  max-width: 100%;
 }
 
-.plan-metrics div {
-  display: flex;
-  flex-direction: column;
-  padding: 8px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.plan-metrics strong {
-  font-size: 18px;
-}
-
-.plan-metrics span {
-  font-size: 12px;
-  color: #64748b;
-}
-
-/* в узкой колонке рядом с картой карточки встают в один столбец сами */
+/* карточки маршрутов рядом с картой: в узкой колонке встают в один столбец */
 .route-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -184,12 +327,52 @@ function formatDuration(minutes) {
   margin: 4px 0 6px;
 }
 
-.route-card ol {
+/* маршруты — строками, как остальные таблицы; клик по строке показывает маршрут на карте */
+.routes-table tbody tr {
+  cursor: pointer;
+}
+
+.routes-table td.under-range-filter {
+  font-variant-numeric: tabular-nums;
+}
+
+.routes-table .legend-dot {
+  margin-right: 6px;
+}
+
+.visits {
   margin: 0;
   padding-left: 18px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+}
+
+/* шаги маршрута столбиком: «Старт», дальше каждая заявка со стрелкой перехода слева */
+.route-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.route-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.route-start {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.route-arrow {
+  width: 12px;
+  color: #94a3b8;
+  text-align: center;
 }
 
 .time {
@@ -197,17 +380,5 @@ function formatDuration(minutes) {
   min-width: 42px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.unassigned {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.unassigned p {
-  margin: 2px 0 0;
 }
 </style>

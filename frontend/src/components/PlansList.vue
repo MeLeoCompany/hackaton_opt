@@ -22,6 +22,7 @@ defineEmits(['select', 'remove'])
           <th>Назначено</th>
           <th>Не назначено</th>
           <th>Исполнителей</th>
+          <th>Пробег, км</th>
           <th></th>
         </tr>
       </thead>
@@ -38,6 +39,7 @@ defineEmits(['select', 'remove'])
           <td class="number-cell">{{ summary.assigned_count }}</td>
           <td class="number-cell">{{ summary.unassigned_count }}</td>
           <td class="number-cell">{{ summary.engineers_used }}</td>
+          <td class="number-cell">{{ summary.total_distance_km === null ? '—' : summary.total_distance_km.toFixed(1) }}</td>
           <td>
             <div class="row-actions">
               <button class="danger" :disabled="busy" @click.stop="$emit('remove', summary)">Удалить</button>

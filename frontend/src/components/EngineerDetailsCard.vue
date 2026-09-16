@@ -65,7 +65,16 @@ p {
   margin: 0;
 }
 
+/* навыки столбиком по правому краю: длинный навык переносится внутри своей плашки
+   и не залезает на подпись слева */
 .skills {
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.skills .badge {
+  max-width: 100%;
+  white-space: normal;
+  text-align: right;
 }
 </style>

@@ -29,7 +29,7 @@ const {
   selectEngineer,
 } = usePlans()
 
-// «Характеристики» — сводка и маршруты списком, «Карта» — те же маршруты линиями на карте
+// «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
 const viewMode = ref('details')
 
 // клик по маршруту в списке открывает карту с этим маршрутом
@@ -74,7 +74,6 @@ onMounted(load)
 
       <section v-else class="plans-block">
         <h2>Планы на {{ formatDay(selectedDay) }} · {{ plans.length }}</h2>
-        <p class="muted">Клик по строке открывает план: характеристики, маршруты и карту</p>
         <PlansList
           :plans="plans"
           :selected-plan-id="selectedPlanId"
@@ -95,7 +94,7 @@ onMounted(load)
               :class="{ active: viewMode === 'details' }"
               @click="viewMode = 'details'"
             >
-              Характеристики плана №{{ plan.id }}
+              Маршруты плана №{{ plan.id }}
             </button>
             <button
               role="tab"
@@ -117,7 +116,7 @@ onMounted(load)
               :plan="plan"
               :references="references"
               :selected-engineer-id="selectedEngineerId"
-              :with-characteristics="viewMode === 'details'"
+              :beside-map="viewMode === 'map'"
               @select-engineer="viewMode === 'details' ? showRouteOnMap($event) : selectEngineer($event)"
             />
           </div>
@@ -148,10 +147,6 @@ onMounted(load)
 .plans-block h2 {
   margin: 0;
   font-size: 16px;
-}
-
-.plans-block p {
-  margin: 0;
 }
 
 .plan-view {

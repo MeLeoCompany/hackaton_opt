@@ -68,8 +68,33 @@ async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSumm
     loaded = await load_planning_day(session, plan_date)
     solution = await cuopt_solver.solve_day(loaded.instance)
     plan = await save_solution(session, loaded, solution)
+    plan.total_distance_km = await total_route_distance_km(loaded, solution)
     await session.commit()
     return (await summarize_plans(session, [plan]))[0]
+
+
+async def total_route_distance_km(loaded: LoadedDay, solution: cuopt_solver.DaySolution) -> float:
+    """Общий пробег плана по дорогам — так же, как в просмотре плана: по /route от старта
+    исполнителя через его заявки по порядку. Сохраняется в план, чтобы список планов
+    показывал пробег без пересчёта маршрутов."""
+
+    async def route_distance(engineer_index: int, visits: list[cuopt_solver.PlannedVisit]) -> float:
+        engineer = loaded.engineers[engineer_index]
+        points = [Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))]
+        points += [
+            Point(
+                latitude=float(loaded.requests[visit.request_index].latitude),
+                longitude=float(loaded.requests[visit.request_index].longitude),
+            )
+            for visit in visits
+        ]
+        travel = await build_route(points, TransportKind(engineer.transport_id))
+        return travel.distance_km
+
+    distances = await asyncio.gather(
+        *(route_distance(engineer_index, visits) for engineer_index, visits in solution.routes.items() if visits)
+    )
+    return round(sum(distances), 3)
 
 
 async def delete_plan(session: AsyncSession, plan_id: int) -> None:
@@ -168,6 +193,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 engineers_used=engineers_used,
                 assigned_count=assigned,
                 unassigned_count=unassigned,
+                total_distance_km=float(plan.total_distance_km) if plan.total_distance_km is not None else None,
             )
         )
     return summaries
@@ -195,7 +221,7 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
 
     summary = (await summarize_plans(session, [plan]))[0]
     return PlanDetail(
-        **summary.model_dump(),
+        **summary.model_dump(exclude={"total_distance_km"}),
         total_distance_km=round(sum(route.distance_km for route in routes), 3),
         routes=list(routes),
         unassigned=unassigned,
