@@ -2,6 +2,7 @@
 // Ячейки строки таблицы заявок в режиме редактирования (всё, кроме номера заявки).
 // form — объект формы из useRequestsTable, поля ввода меняют его напрямую.
 import DayTimeRange from './DayTimeRange.vue'
+import IconButton from './IconButton.vue'
 import PointPickerButton from './PointPickerButton.vue'
 
 const props = defineProps({
@@ -21,7 +22,11 @@ function applyPickedPoint(latitude, longitude) {
 
 <template>
   <td>
-    <input v-model="form.is_active" type="checkbox" class="active-checkbox" title="Учитывать при планировании" />
+    <!-- тот же переключатель, что в обычной строке: при переходе в правку он не должен пропадать -->
+    <label class="switch" :title="form.is_active ? 'Учитывается при планировании' : 'Не учитывается при планировании'">
+      <input v-model="form.is_active" type="checkbox" />
+      <span class="slider"></span>
+    </label>
   </td>
   <td>
     <input v-model="form.address" class="wide-input" placeholder="Город Москва, ул. …" />
@@ -67,10 +72,14 @@ function applyPickedPoint(latitude, longitude) {
   </td>
   <td>
     <div class="row-actions">
-      <button class="primary" :disabled="saving" @click="$emit('save')">
-        {{ saving ? 'Сохраняю…' : 'Сохранить' }}
-      </button>
-      <button :disabled="saving" @click="$emit('cancel')">Отмена</button>
+      <IconButton
+        icon="save"
+        :label="saving ? 'Сохраняю…' : 'Сохранить'"
+        variant="primary"
+        :disabled="saving"
+        @click="emit('save')"
+      />
+      <IconButton icon="cancel" label="Отмена" :disabled="saving" @click="emit('cancel')" />
     </div>
   </td>
 </template>
@@ -84,19 +93,10 @@ function applyPickedPoint(latitude, longitude) {
 
 .coordinate-inputs {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 4px;
-}
-
-.coordinate-inputs input {
-  width: 108px;
   min-width: 0;
 }
 
-input.active-checkbox {
-  width: 16px;
-  min-width: 0;
-  height: 16px;
-  padding: 0;
-}
 </style>

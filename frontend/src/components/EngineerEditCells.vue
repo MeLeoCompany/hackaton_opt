@@ -2,6 +2,7 @@
 // Ячейки строки таблицы исполнителей в режиме редактирования (всё, кроме номера).
 // form — объект формы из useEngineersTable, поля ввода меняют его напрямую.
 import DayTimeRange from './DayTimeRange.vue'
+import IconButton from './IconButton.vue'
 import PointPickerButton from './PointPickerButton.vue'
 
 const props = defineProps({
@@ -11,7 +12,7 @@ const props = defineProps({
   // старты других бригад — ориентир на карте выбора
   contextPoints: { type: Array, default: () => [] },
 })
-defineEmits(['save', 'cancel'])
+const emit = defineEmits(['save', 'cancel'])
 
 function applyPickedPoint(latitude, longitude) {
   props.form.start_latitude = latitude
@@ -57,10 +58,14 @@ function applyPickedPoint(latitude, longitude) {
   </td>
   <td>
     <div class="row-actions">
-      <button class="primary" :disabled="saving" @click="$emit('save')">
-        {{ saving ? 'Сохраняю…' : 'Сохранить' }}
-      </button>
-      <button :disabled="saving" @click="$emit('cancel')">Отмена</button>
+      <IconButton
+        icon="save"
+        :label="saving ? 'Сохраняю…' : 'Сохранить'"
+        variant="primary"
+        :disabled="saving"
+        @click="emit('save')"
+      />
+      <IconButton icon="cancel" label="Отмена" :disabled="saving" @click="emit('cancel')" />
     </div>
   </td>
 </template>
@@ -80,12 +85,9 @@ function applyPickedPoint(latitude, longitude) {
 
 .coordinate-inputs {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 4px;
-}
-
-.coordinate-inputs input {
-  width: 108px;
   min-width: 0;
 }
 

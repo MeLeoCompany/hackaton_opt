@@ -70,6 +70,12 @@ function showInTable(requestId) {
   viewMode.value = 'table'
 }
 
+// двойной клик по строке — та же заявка на карте
+function showOnMap(requestId) {
+  selectRequest(requestId)
+  viewMode.value = 'map'
+}
+
 function toggleActive(request) {
   setActive([request.id], !request.is_active)
 }
@@ -103,12 +109,6 @@ onMounted(load)
 
     <DayPanel :summary="`заявок на этот день ${requests.length}, активных ${activeTotal}`" />
 
-    <RequestsFilters
-      :filters="filters"
-      :references="references"
-      :active-count="activeFilterCount"
-      @reset="resetFilters"
-    />
 
     <div v-if="errorMessage" class="message error">
       <strong>{{ errorMessage }}</strong>
@@ -166,6 +166,8 @@ onMounted(load)
           :sort-direction="sortDirection"
           :selected-id="selectedId"
           :empty-text="requests.length ? 'По фильтрам ничего не найдено' : 'Заявок нет'"
+          :filters="filters"
+          :active-filter-count="activeFilterCount"
           @sort="toggleSort"
           @select="selectRequest"
           @toggle-active="toggleActive"
@@ -174,6 +176,8 @@ onMounted(load)
           @save="saveForm"
           @remove="remove"
           @work-type-picked="applyWorkTypeNorms"
+          @reset-filters="resetFilters"
+          @show-on-map="showOnMap"
         />
         <RequestsPagination
           v-model:page-size="pageSize"
@@ -185,6 +189,13 @@ onMounted(load)
       </div>
 
       <div v-else class="map-view">
+        <RequestsFilters
+          :filters="filters"
+          :references="references"
+          :active-count="activeFilterCount"
+          @reset="resetFilters"
+        />
+
         <div class="map-area">
           <RequestsMap
             :requests="filteredRequests"

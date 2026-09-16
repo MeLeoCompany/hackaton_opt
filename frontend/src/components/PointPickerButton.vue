@@ -25,7 +25,7 @@ function pick(latitude, longitude) {
 
 <template>
   <button type="button" class="map-button" :title="hint" :aria-label="hint" @click="open = true">
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
       <path
         d="M12 2c3.9 0 7 3.1 7 7 0 5.2-7 13-7 13S5 14.2 5 9c0-3.9 3.1-7 7-7z"
         fill="none"
@@ -48,12 +48,14 @@ function pick(latitude, longitude) {
 </template>
 
 <style scoped>
+/* кнопка стоит в строке правки таблицы — той же высоты, что и поля рядом */
 .map-button {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   color: #2563eb;
 }

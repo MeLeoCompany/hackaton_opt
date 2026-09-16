@@ -274,6 +274,13 @@ button.link:disabled {
   font-size: 13px;
 }
 
+/* таблицы с colgroup: ширины колонок фиксированы, иначе таблица переставляет их
+   на каждую фильтрацию и при переходе строки в режим правки */
+.data-table.fixed-columns {
+  table-layout: fixed;
+  min-width: 1180px;
+}
+
 .data-table th {
   position: sticky;
   top: 0;
@@ -307,6 +314,116 @@ button.link:disabled {
   opacity: 1;
 }
 
+/* в таблицах с фиксированными колонками шапка разделена вертикальными линиями:
+   без них фильтр одной колонки визуально прилипает к соседней */
+.data-table.fixed-columns thead th + th {
+  border-left: 1px solid #e2e8f0;
+}
+
+/* строка фильтров: отдельной строкой под названиями колонок, поля узкие и с воронкой справа */
+.data-table thead tr.filter-row th {
+  top: 33px; /* прилипает под строкой с названиями колонок */
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Строка фильтров и строка правки устроены одинаково: те же отступы ячеек, те же размеры
+   полей. Поэтому поле правки стоит ровно под фильтром своей колонки. */
+.data-table thead tr.filter-row th {
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.data-table thead tr.filter-row input,
+.data-table thead tr.filter-row select,
+.data-table.fixed-columns tbody tr.editing input:not([type='checkbox']),
+.data-table.fixed-columns tbody tr.editing select {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 2px 6px;
+  font-size: 12px;
+  background-color: #fff;
+}
+
+/* у текстовых полей справа воронка — видно, что поле фильтрует колонку;
+   у выпадающих списков своя стрелка, воронка там только мешала бы */
+.data-table thead tr.filter-row input {
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2394a3b8' stroke-width='1.3'><path d='M2 3h12l-4.6 5.4v4.2l-2.8 1.4V8.4z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 12px 12px;
+}
+
+/* диапазон «с — по» и «от — до» выглядит одним полем: общая рамка той же высоты,
+   что и соседние фильтры, внутри два поля без рамок через тире */
+.data-table thead tr.filter-row .time-range,
+.data-table thead tr.filter-row .range-pair {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 24px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+}
+
+/* шаблон «чч:мм – чч:мм» не растягиваем на всю колонку: ему хватает места под два времени */
+.data-table thead tr.filter-row .time-range {
+  width: 110px;
+}
+
+.data-table thead tr.filter-row .time-range:focus-within,
+.data-table thead tr.filter-row .range-pair:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 15%);
+}
+
+.data-table thead tr.filter-row .time-range input,
+.data-table thead tr.filter-row .range-pair input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  text-align: center;
+}
+
+.data-table thead tr.filter-row .time-range input:focus,
+.data-table thead tr.filter-row .range-pair input:focus {
+  box-shadow: none;
+}
+
+.data-table thead tr.filter-row .time-range > span,
+.data-table thead tr.filter-row .range-pair > span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* стрелки у числовых полей в узком диапазоне только съедают место под цифры */
+.data-table thead tr.filter-row input[type='number'] {
+  appearance: textfield;
+}
+
+.data-table thead tr.filter-row input[type='number']::-webkit-inner-spin-button,
+.data-table thead tr.filter-row input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.data-table thead tr.filter-row th.actions-cell {
+  text-align: right;
+}
+
+.data-table thead tr.filter-row button.link {
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .data-table td {
   padding: 7px 10px;
   border-bottom: 1px solid #f1f5f9;
@@ -326,6 +443,59 @@ button.link:disabled {
 
 .data-table td input.wide-input {
   min-width: 220px;
+}
+
+/* Выравнивание строк таблиц с фиксированными колонками. Все ячейки прижаты к верху,
+   и первая «строка» каждой ячейки занимает одну и ту же полосу высотой 24 пикселя —
+   ровно по кнопкам. Поэтому при переходе строки в правку не прыгают ни номер,
+   ни переключатель, ни кнопки, а поля в одну строку стоят на уровне кнопок. */
+.data-table.fixed-columns tbody td {
+  /* тонкая сетка: таблица читается по строкам и колонкам */
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+  /* текст: 8 сверху + строка 16 = центр на 16, как у поля высотой 24 с отступом 4;
+     13 по бокам = 6 отступ ячейки + 1 рамка поля + 6 отступ внутри поля */
+  padding: 8px 13px 4px;
+  line-height: 16px;
+}
+
+.data-table.fixed-columns tbody td + td {
+  border-left: 1px solid #e2e8f0;
+}
+
+/* ячейки с полями и кнопками: отступ 4 сверху, дальше поле или кнопка высотой 24 */
+.data-table.fixed-columns tbody td:has(input:not([type='checkbox']), select, .row-actions) {
+  padding: 4px 6px;
+}
+
+/* переключатель высотой 18 — по центру той же полосы в 24 пикселя */
+.data-table.fixed-columns tbody td:has(.switch) {
+  padding: 7px 13px 4px;
+  line-height: 18px;
+}
+
+.data-table.fixed-columns tbody .switch {
+  vertical-align: top;
+}
+
+/* кнопки строки — значки одного размера и в обычной строке, и в строке правки:
+   карандаш сменяется галочкой, корзина — крестиком, и кнопки не прыгают.
+   Вдвоём они занимают всю ширину колонки — ровно под «Сбросить» в шапке. */
+.data-table.fixed-columns tbody .row-actions {
+  gap: 6px;
+}
+
+.data-table.fixed-columns tbody .row-actions .icon-button {
+  flex: 1;
+  width: auto;
+}
+
+/* фокус у полей таблицы — синей рамкой, а не толстым чёрным контуром браузера */
+.data-table input:not([type='checkbox']):focus,
+.data-table select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 15%);
 }
 
 .data-table tbody tr:not(.editing) {
@@ -361,6 +531,45 @@ button.link:disabled {
 
 .data-table td.nowrap {
   white-space: nowrap;
+}
+
+/* под фильтром «от – до» число стоит по центру — там же, где цифры в поле фильтра */
+.data-table td.under-range-filter {
+  text-align: center;
+}
+
+/* Окно и смена повторяют геометрию фильтра «чч:мм – чч:мм» над ними: тот же отступ ячейки
+   и рамка (6 + 1), две половины поровну и тире посередине. Начало стоит ровно под левым
+   «чч:мм», конец — под правым. */
+.data-table.fixed-columns tbody td.range-cell {
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.range-value {
+  display: flex;
+  align-items: baseline;
+  /* ширина шаблона фильтра (110) без его рамки — цифры остаются под «чч:мм» */
+  width: 108px;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-value > span:not(.range-dash) {
+  flex: 1;
+  padding: 0 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.range-value .range-dash {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.range-value sup {
+  margin-left: 1px;
+  font-size: 10px;
+  color: #b45309;
 }
 
 .data-table td.wide-cell {
@@ -469,6 +678,11 @@ button.link:disabled {
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 14px;
   align-items: start;
+}
+
+/* на карте нет шапки таблицы, поэтому фильтры показываются панелью — во всю ширину над картой */
+.map-view > .filters {
+  grid-column: 1 / -1;
 }
 
 .map-area {

@@ -11,15 +11,20 @@ export const NO_TRANSPORT = 'none'
 
 export const PAGE_SIZES = [10, 25, 50, 100]
 
+// по фильтру на каждую колонку таблицы
 function emptyFilters() {
   return {
+    idText: '', // часть номера заявки
     activity: '', // '' — все, 'active' — только активные, 'inactive' — только выключенные
-    text: '', // часть номера или адреса
-    priorityId: '', // '' — любой
+    text: '', // часть адреса
+    coordinates: '', // часть координат, как они показаны в таблице
     workTypeId: '', // '' — любой тип работ
-    transportId: '', // '' — любой, NO_TRANSPORT — «не важен», иначе номер транспорта
+    durationFrom: '', // минуты работы на месте, не меньше
+    durationTo: '', // минуты работы на месте, не больше
     timeFrom: '', // 'HH:MM' — окно начинается не раньше
     timeTo: '', // 'HH:MM' — окно начинается не позже
+    priorityId: '', // '' — любой
+    transportId: '', // '' — любой, NO_TRANSPORT — «не важен», иначе номер транспорта
   }
 }
 
@@ -33,7 +38,6 @@ export function useRequestsView(requests, references) {
 
   // ---- фильтры ----
 
-
   const activeFilterCount = computed(
     () => Object.entries(emptyFilters()).filter(([name, emptyValue]) => filters[name] !== emptyValue).length,
   )
@@ -42,10 +46,19 @@ export function useRequestsView(requests, references) {
     if (filters.activity === 'active' && !request.is_active) return false
     if (filters.activity === 'inactive' && request.is_active) return false
 
+    if (filters.idText && !String(request.id).includes(filters.idText.trim())) return false
+
     const query = filters.text.trim().toLowerCase()
-    if (query && !String(request.id).includes(query) && !request.address.toLowerCase().includes(query)) {
+    if (query && !request.address.toLowerCase().includes(query)) return false
+
+    const coordinates = filters.coordinates.trim().replace(',', '').toLowerCase()
+    if (coordinates && !`${request.latitude.toFixed(4)} ${request.longitude.toFixed(4)}`.includes(coordinates)) {
       return false
     }
+
+    if (filters.durationFrom !== '' && request.duration_minutes < Number(filters.durationFrom)) return false
+    if (filters.durationTo !== '' && request.duration_minutes > Number(filters.durationTo)) return false
+
     if (filters.priorityId !== '' && request.priority_id !== filters.priorityId) return false
     if (filters.workTypeId !== '' && request.work_type_id !== filters.workTypeId) return false
 

@@ -3,13 +3,19 @@
 
 import { computed, reactive, ref, watch } from 'vue'
 
+import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
 
+// по фильтру на каждую колонку таблицы
 function emptyFilters() {
   return {
-    text: '', // часть имени или номера
+    idText: '', // часть номера исполнителя
+    text: '', // часть имени
     transportId: '', // '' — любой
     skillId: '', // '' — любой; иначе исполнитель должен уметь этот навык
+    shiftFrom: '', // 'HH:MM' — смена начинается не раньше
+    shiftTo: '', // 'HH:MM' — смена начинается не позже
+    startText: '', // часть координат старта, как они показаны в таблице
   }
 }
 
@@ -24,12 +30,26 @@ export function useEngineersView(engineers, references) {
   )
 
   function matchesFilters(engineer) {
+    if (filters.idText && !String(engineer.id).includes(filters.idText.trim())) return false
+
     const query = filters.text.trim().toLowerCase()
-    if (query && !String(engineer.id).includes(query) && !engineer.name.toLowerCase().includes(query)) {
-      return false
-    }
+    if (query && !engineer.name.toLowerCase().includes(query)) return false
+
     if (filters.transportId !== '' && engineer.transport_id !== filters.transportId) return false
     if (filters.skillId !== '' && !engineer.skill_ids.includes(filters.skillId)) return false
+
+    const shiftStart = moscowTimeOf(engineer.shift_start)
+    if (filters.shiftFrom && shiftStart < filters.shiftFrom) return false
+    if (filters.shiftTo && shiftStart > filters.shiftTo) return false
+
+    const start = filters.startText.trim().replace(',', '').toLowerCase()
+    if (
+      start &&
+      !`${engineer.start_latitude.toFixed(4)} ${engineer.start_longitude.toFixed(4)}`.includes(start)
+    ) {
+      return false
+    }
+
     return true
   }
 

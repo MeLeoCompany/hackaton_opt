@@ -61,6 +61,12 @@ function showInTable() {
   viewMode.value = 'table'
 }
 
+// двойной клик по строке — тот же исполнитель на карте
+function showOnMap(engineerId) {
+  selectEngineer(engineerId)
+  viewMode.value = 'map'
+}
+
 onMounted(load)
 </script>
 
@@ -77,13 +83,6 @@ onMounted(load)
     </header>
 
     <DayPanel :summary="`исполнителей со сменой в этот день ${engineers.length}`" />
-
-    <EngineersFilters
-      :filters="filters"
-      :references="references"
-      :active-count="activeFilterCount"
-      @reset="resetFilters"
-    />
 
     <div v-if="errorMessage" class="message error">
       <strong>{{ errorMessage }}</strong>
@@ -131,16 +130,27 @@ onMounted(load)
           :sort-direction="sortDirection"
           :selected-id="selectedId"
           :empty-text="engineers.length ? 'По фильтрам никого не найдено' : 'Исполнителей нет'"
+          :filters="filters"
+          :active-filter-count="activeFilterCount"
           @sort="toggleSort"
           @select="selectEngineer"
           @edit="startEdit"
           @cancel="cancelEdit"
           @save="saveForm"
           @remove="remove"
+          @reset-filters="resetFilters"
+          @show-on-map="showOnMap"
         />
       </div>
 
       <div v-else class="map-view">
+        <EngineersFilters
+          :filters="filters"
+          :references="references"
+          :active-count="activeFilterCount"
+          @reset="resetFilters"
+        />
+
         <div class="map-area">
           <EngineersMap
             :engineers="filteredEngineers"

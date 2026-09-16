@@ -75,6 +75,12 @@ function apply() {
   font-size: 12px;
 }
 
+/* два поля времени делят строку поровну и вместе занимают ту же ширину, что и дата */
+.times :deep(.time-input) {
+  flex: 1;
+  width: auto;
+}
+
 .next-day {
   color: #b45309;
 }

@@ -89,7 +89,18 @@ export function previousDay(date) {
   return shiftDay(date, -DAY_MS)
 }
 
-// окно заявки для таблицы: "17.08.2026 18:00–20:00"
+// окно или смена в таблице выбранного дня: дата и так выбрана на форме, поэтому только время.
+// { start: "22:00", end: "02:00", endsNextDay: true } — таблица ставит начало и конец
+// каждое под своей половиной фильтра «чч:мм – чч:мм»
+export function moscowTimeRangeParts(startIso, endIso) {
+  return {
+    start: moscowTimeOf(startIso),
+    end: moscowTimeOf(endIso),
+    endsNextDay: moscowDateOf(endIso) > moscowDateOf(startIso),
+  }
+}
+
+// окно заявки с датой — для карточек и подсказок на карте: "17.08.2026 18:00–20:00"
 export function formatMoscowWindow(startIso, endIso) {
   const startDay = moscowDateOf(startIso)
   const endDay = moscowDateOf(endIso)

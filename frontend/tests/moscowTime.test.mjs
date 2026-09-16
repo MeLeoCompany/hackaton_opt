@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   completeTime,
+  moscowTimeRangeParts,
   joinMoscowInputValue,
   maskTimeInput,
   nextDay,
@@ -46,4 +47,22 @@ test('через полночь окончание переносится на �
   assert.equal(nextDay('2026-08-17'), '2026-08-18')
   assert.equal(nextDay('2026-08-31'), '2026-09-01')
   assert.equal(nextDay('2026-12-31'), '2027-01-01')
+})
+
+test('в таблице дня окно показывается без даты', () => {
+  // 07:00–09:00 UTC = 10:00–12:00 по Москве
+  assert.deepEqual(moscowTimeRangeParts('2026-08-17T07:00:00Z', '2026-08-17T09:00:00Z'), {
+    start: '10:00',
+    end: '12:00',
+    endsNextDay: false,
+  })
+})
+
+test('окно через полночь помечается следующими сутками', () => {
+  // 19:00 UTC = 22:00 МСК, 23:00 UTC = 02:00 МСК следующего дня
+  assert.deepEqual(moscowTimeRangeParts('2026-08-17T19:00:00Z', '2026-08-17T23:00:00Z'), {
+    start: '22:00',
+    end: '02:00',
+    endsNextDay: true,
+  })
 })

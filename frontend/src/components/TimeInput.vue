@@ -14,6 +14,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const STEP_MINUTES = 30
+const DROPDOWN_MIN_WIDTH = 72
 const SUGGESTIONS = Array.from({ length: (24 * 60) / STEP_MINUTES }, (_, index) => {
   const minutes = index * STEP_MINUTES
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
@@ -47,7 +48,9 @@ function onInput(event) {
 async function openDropdown() {
   const box = input.value.getBoundingClientRect()
   // список висит поверх прокручиваемой таблицы, поэтому позиция фиксированная
-  dropdownStyle.value = { top: `${box.bottom + 2}px`, left: `${box.left}px`, width: `${box.width}px` }
+  // поле бывает уже самого списка (узкий фильтр «чч:мм – чч:мм») — список не уже, чем нужно под «00:00»
+  const width = Math.max(box.width, DROPDOWN_MIN_WIDTH)
+  dropdownStyle.value = { top: `${box.bottom + 2}px`, left: `${box.left}px`, width: `${width}px` }
   open.value = true
   await nextTick()
   document.querySelector('.time-dropdown .current')?.scrollIntoView({ block: 'center' })
@@ -109,6 +112,7 @@ function finish() {
   max-height: 200px;
   margin: 0;
   padding: 4px 0;
+  overflow-x: hidden;
   overflow-y: auto;
   list-style: none;
   border: 1px solid #cbd5e1;
