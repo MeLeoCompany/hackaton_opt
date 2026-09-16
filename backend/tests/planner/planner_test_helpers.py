@@ -18,8 +18,8 @@ CAR = 1
 WALK = 2
 BIKE = 3
 
-REGULAR = 1.0
-URGENT = 100.0
+REGULAR = False
+URGENT = True
 
 # arrival_stamp у cuOpt дробный — сравниваем с небольшим допуском
 MINUTE_TOLERANCE = 1e-6

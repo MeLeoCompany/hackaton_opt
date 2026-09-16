@@ -192,6 +192,26 @@ def test_urgent_request_wins_when_only_one_fits():
     assert assigned_request_ids(instance, solution) == [11]
 
 
+def test_one_urgent_request_wins_over_two_regular_requests():
+    # Иерархия ТЗ: авария важнее общего количества обычных заявок.
+    skills = {1: {1}}
+    instance = make_instance(
+        engineers=[engineer(1, shift=("10:00", "11:30"))],
+        requests=[
+            request(10, skill=1, window=("10:00", "11:00"), duration=30),
+            request(11, skill=1, window=("10:00", "11:00"), duration=30),
+            request(12, skill=1, window=("10:00", "11:00"), duration=90, priority=URGENT),
+        ],
+        skills=skills,
+        travel_min=0,
+    )
+
+    solution = solve(instance)
+
+    assert constraint_violations(instance, skills, solution) == []
+    assert assigned_request_ids(instance, solution) == [12]
+
+
 def test_one_engineer_is_enough_when_he_can_do_everything():
     # за задействование каждого исполнителя платим — лишнего решатель брать не должен
     skills = {1: {1}, 2: {1}}
@@ -228,6 +248,25 @@ def test_second_engineer_is_used_when_one_cannot_manage():
     assert constraint_violations(instance, skills, solution) == []
     assert assigned_request_ids(instance, solution) == [10, 11]
     assert len(solution.routes) == 2
+
+
+def test_shorter_route_wins_after_requests_and_vehicle_count_are_equal():
+    skills = {1: {1}, 2: {1}}
+    instance = make_instance(
+        engineers=[engineer(1), engineer(2)],
+        requests=[request(10, skill=1, window=("10:00", "12:00"))],
+        skills=skills,
+        travel_min=10,
+    )
+    request_node = instance.request_node(0)
+    instance.distance_km[CAR][instance.start_node(0), request_node] = 1.0
+    instance.distance_km[CAR][instance.start_node(1), request_node] = 20.0
+
+    solution = solve(instance)
+
+    assert constraint_violations(instance, skills, solution) == []
+    assert route_request_ids(instance, solution, engineer_id=1) == [10]
+    assert route_request_ids(instance, solution, engineer_id=2) == []
 
 
 def test_slow_transport_does_not_get_request_it_cannot_reach_in_time():

@@ -2,11 +2,11 @@
 
 Как наша задача ложится на модель cuOpt:
   исполнитель          -> vehicle: старт в его точке, возврата нет, окно = смена, тип = транспорт
-  заявка               -> order: окно, длительность работы, приз по приоритету
+  заявка               -> order: окно, длительность работы, динамический prize
   навык и транспорт    -> order_vehicle_match: кому из исполнителей заявку вообще можно отдать
-  километры            -> cost-матрица: по ней минимизируется пробег
+  километры            -> нормализованная cost-матрица: последний уровень оптимизации
   минуты в пути        -> матрица времени в пути: по ней проверяется, что всё успеваем
-  неназначенная заявка -> недополученный приз (срочная стоит дороже)
+  неназначенная заявка -> недополученный prize
 
 Заявки, которые не подходят ни одному исполнителю, в cuOpt не отправляются.
 
@@ -26,11 +26,10 @@ from src.core.config import settings
 from src.core.errors import ExternalServiceError
 from src.services.planner.planner_problem import ProblemInstance
 
-# цены в тех же единицах, что cost-матрица, то есть в километрах:
-# выгоднее проехать лишнюю сотню километров, чем бросить заявку
-PRIZE_PER_REQUEST = 1000.0
-# цена задействования ещё одного исполнителя
-ENGINEER_FIXED_COST = 50.0
+# Objective cuOpt хранится в float32. Ограничиваем суммарный масштаб половиной точного
+# целочисленного диапазона: остаётся запас для сложения и единичных границ Big-M.
+# Более крупной задаче нужен многоэтапный solve, а не потеря иерархии из-за округления.
+FLOAT32_SAFE_OBJECTIVE = 2**23
 
 SOLVE_SUCCESS = 0
 
@@ -48,6 +47,21 @@ class DaySolution:
     routes: dict[int, list[PlannedVisit]] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ObjectivePolicy:
+    """Динамические коэффициенты строгой иерархии целевой функции.
+
+    Любая срочная заявка важнее всех обычных и нижних уровней вместе; одна обычная
+    важнее всех исполнителей и пробега; один исполнитель важнее любой разницы пробега.
+    """
+
+    urgent_reward: float
+    regular_reward: float
+    vehicle_cost: float
+    distance_weight: float
+    distance_scale: float
+
+
 @dataclass
 class SolverInputs:
     """Всё, что загружается в DataModel, — массивами numpy в тех типах, которые ждёт cuOpt.
@@ -56,7 +70,7 @@ class SolverInputs:
     """
 
     location_count: int
-    cost_matrices: dict[int, np.ndarray]  # тип транспорта -> км между точками, float32
+    cost_matrices: dict[int, np.ndarray]  # нормализованная цена переездов, float32
     travel_time_matrices: dict[int, np.ndarray]  # тип транспорта -> минуты в пути, float32
     vehicle_locations: np.ndarray  # int32: стартовая точка каждого исполнителя
     vehicle_types: np.ndarray  # uint8: тип транспорта исполнителя
@@ -69,6 +83,7 @@ class SolverInputs:
     order_service_minutes: np.ndarray  # int32: длительность работы
     order_prizes: np.ndarray  # float32
     order_allowed_vehicles: list[np.ndarray]  # int32: кому из исполнителей можно отдать заявку
+    objective: ObjectivePolicy
 
 
 async def solve_day(instance: ProblemInstance) -> DaySolution:
@@ -76,9 +91,11 @@ async def solve_day(instance: ProblemInstance) -> DaySolution:
     if not task_request_indices or instance.n_engineers == 0:
         return DaySolution()
 
-    inputs = build_solver_inputs(instance, task_request_indices)
     # решение занимает секунды — считаем в отдельном потоке, чтобы не блокировать остальные запросы
     try:
+        inputs = build_solver_inputs(
+            instance, task_request_indices, distance_weight=settings.cuopt_distance_weight
+        )
         route_records = await asyncio.to_thread(run_cuopt, inputs, settings.cuopt_time_limit_seconds)
         solution = parse_route_records(route_records, task_request_indices)
     except ExternalServiceError:
@@ -100,16 +117,29 @@ def schedulable_request_indices(instance: ProblemInstance) -> list[int]:
     ]
 
 
-def build_solver_inputs(instance: ProblemInstance, task_request_indices: list[int]) -> SolverInputs:
+def build_solver_inputs(
+    instance: ProblemInstance,
+    task_request_indices: list[int],
+    *,
+    distance_weight: float | None = None,
+) -> SolverInputs:
     """ProblemInstance -> массивы для DataModel. task_request_indices — какие заявки отправляем."""
     transport_ids = sorted({engineer.transport_id for engineer in instance.engineers})
     engineers = instance.engineers
     requests = [instance.requests[request_index] for request_index in task_request_indices]
+    objective = build_objective_policy(
+        instance,
+        task_request_indices,
+        settings.cuopt_distance_weight if distance_weight is None else distance_weight,
+    )
 
     return SolverInputs(
         location_count=instance.n_engineers + instance.n_requests,
         cost_matrices={
-            transport_id: instance.distance_km[transport_id].astype(np.float32) for transport_id in transport_ids
+            transport_id: (instance.distance_km[transport_id] / objective.distance_scale).astype(
+                np.float32
+            )
+            for transport_id in transport_ids
         },
         travel_time_matrices={
             transport_id: instance.travel_min[transport_id].astype(np.float32) for transport_id in transport_ids
@@ -120,17 +150,105 @@ def build_solver_inputs(instance: ProblemInstance, task_request_indices: list[in
         vehicle_types=np.array([engineer.transport_id for engineer in engineers], dtype=np.uint8),
         vehicle_shift_start=np.array([engineer.shift_start_min for engineer in engineers], dtype=np.int32),
         vehicle_shift_end=np.array([engineer.shift_end_min for engineer in engineers], dtype=np.int32),
-        vehicle_fixed_costs=np.full(instance.n_engineers, ENGINEER_FIXED_COST, dtype=np.float32),
+        vehicle_fixed_costs=np.full(
+            instance.n_engineers, objective.vehicle_cost, dtype=np.float32
+        ),
         order_locations=np.array(
             [instance.request_node(request_index) for request_index in task_request_indices], dtype=np.int32
         ),
         order_window_start=np.array([request.window_start_min for request in requests], dtype=np.int32),
         order_window_end=np.array([request.window_end_min for request in requests], dtype=np.int32),
         order_service_minutes=np.array([request.duration_min for request in requests], dtype=np.int32),
-        order_prizes=np.array([PRIZE_PER_REQUEST * request.priority_weight for request in requests], dtype=np.float32),
+        order_prizes=np.array(
+            [
+                objective.urgent_reward if request.is_urgent else objective.regular_reward
+                for request in requests
+            ],
+            dtype=np.float32,
+        ),
         order_allowed_vehicles=[
             np.array(instance.candidates(request_index), dtype=np.int32) for request_index in task_request_indices
         ],
+        objective=objective,
+    )
+
+
+def build_objective_policy(
+    instance: ProblemInstance,
+    task_request_indices: list[int],
+    distance_weight: float,
+) -> ObjectivePolicy:
+    """Строит безопасные Big-M коэффициенты для приоритетов ТЗ.
+
+    Cost-матрицы делятся на верхнюю границу суммарного пробега. Поэтому вклад COST
+    любого решения не больше distance_weight и остальные уровни можно отделить
+    небольшими динамическими коэффициентами, не зависящими от единиц расстояния.
+    """
+    if not math.isfinite(distance_weight) or distance_weight < 0:
+        raise ValueError("вес пробега cuOpt должен быть конечным неотрицательным числом")
+
+    request_count = len(task_request_indices)
+    regular_count = sum(
+        not instance.requests[index].is_urgent for index in task_request_indices
+    )
+    if any(
+        not np.isfinite(matrix).all() or np.any(matrix < 0)
+        for matrix in instance.distance_km.values()
+    ):
+        raise ValueError("матрица расстояний содержит недопустимые значения")
+
+    # Исключаем заведомо непроходимые sentinel-пары: одно плечо не может занимать
+    # больше самой длинной смены. Иначе 100_000 км раздули бы scale и съели точность
+    # реальных московских расстояний.
+    max_shift_span = max(
+        (engineer.shift_end_min - engineer.shift_start_min for engineer in instance.engineers),
+        default=0,
+    )
+    feasible_arc_distances = []
+    for transport_id, distance_matrix in instance.distance_km.items():
+        travel_matrix = instance.travel_min[transport_id]
+        feasible = (
+            np.isfinite(travel_matrix)
+            & (travel_matrix >= 0)
+            & (travel_matrix <= max_shift_span)
+        )
+        if feasible.any():
+            feasible_arc_distances.append(float(np.max(distance_matrix[feasible])))
+    max_arc_distance = max(feasible_arc_distances, default=0.0)
+
+    # Без возврата в депо у каждой выполненной заявки ровно одно входящее плечо.
+    distance_scale = max(request_count * max_arc_distance, 1.0)
+    lower_distance_cost = distance_weight
+    vehicle_cost = lower_distance_cost + 1.0
+    lower_regular_cost = instance.n_engineers * vehicle_cost + lower_distance_cost
+    regular_reward = lower_regular_cost + 1.0
+    lower_urgent_cost = regular_count * regular_reward + lower_regular_cost
+    urgent_reward = lower_urgent_cost + 1.0
+
+    maximum_objective_magnitude = (
+        request_count * urgent_reward + lower_regular_cost
+    )
+    values = (
+        distance_scale,
+        vehicle_cost,
+        regular_reward,
+        urgent_reward,
+        maximum_objective_magnitude,
+    )
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("коэффициенты целевой функции cuOpt вышли за допустимый диапазон")
+    if maximum_objective_magnitude > FLOAT32_SAFE_OBJECTIVE:
+        raise ValueError(
+            "задача слишком велика для безопасной одноэтапной float32 objective cuOpt; "
+            "нужен многоэтапный расчёт"
+        )
+
+    return ObjectivePolicy(
+        urgent_reward=urgent_reward,
+        regular_reward=regular_reward,
+        vehicle_cost=vehicle_cost,
+        distance_weight=distance_weight,
+        distance_scale=distance_scale,
     )
 
 
@@ -169,6 +287,18 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
     data_model.set_order_prizes(inputs.order_prizes)
     for order_index, allowed_vehicles in enumerate(inputs.order_allowed_vehicles):
         data_model.add_order_vehicle_match(order_index, allowed_vehicles)
+
+    data_model.set_objective_function(
+        np.array(
+            [
+                int(routing.Objective.PRIZE),
+                int(routing.Objective.VEHICLE_FIXED_COST),
+                int(routing.Objective.COST),
+            ],
+            dtype=np.int32,
+        ),
+        np.array([1.0, 1.0, inputs.objective.distance_weight], dtype=np.float32),
+    )
 
     solver_settings = routing.SolverSettings()
     solver_settings.set_time_limit(time_limit_seconds)

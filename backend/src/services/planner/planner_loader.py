@@ -35,8 +35,6 @@ from src.services.travel import build_matrix
 MINUTES_IN_DAY = 24 * 60
 
 URGENT_PRIORITY_NAME = "Срочная"
-URGENT_PRIORITY_WEIGHT = 100.0
-
 # если между точками нет дороги, пару заменяем заведомо непроходимым значением:
 # решатели не принимают бесконечность
 UNREACHABLE_MINUTES = 100_000
@@ -111,7 +109,7 @@ async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
                 window_end_min=day.to_minutes(request.window_end),
                 skill_id=request.skill_id,
                 required_transport_id=request.transport_id,
-                priority_weight=URGENT_PRIORITY_WEIGHT if request.priority_id in urgent_priority_ids else 1.0,
+                is_urgent=request.priority_id in urgent_priority_ids,
             )
             for request in requests
         ],

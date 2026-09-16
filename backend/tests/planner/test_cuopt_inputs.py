@@ -1,9 +1,13 @@
 """Что уходит в cuOpt и как разбирается его ответ — без видеокарты и без самого пакета cuopt."""
 
+from types import SimpleNamespace
+
 import numpy as np
+import pytest
 from planner_test_helpers import CAR, URGENT, WALK, engineer, hhmm, make_instance, request, solve
 
 from src.services.planner.cuopt_solver import (
+    build_objective_policy,
     build_solver_inputs,
     parse_route_records,
     schedulable_request_indices,
@@ -58,7 +62,9 @@ def test_requests_become_orders():
     assert inputs.order_window_start.tolist() == [hhmm("10:00"), hhmm("15:00")]
     assert inputs.order_window_end.tolist() == [hhmm("12:00"), hhmm("17:00")]
     assert inputs.order_service_minutes.tolist() == [60, 60]
-    assert inputs.order_prizes[1] == 100 * inputs.order_prizes[0]  # срочная дороже
+    assert inputs.order_prizes[0] == inputs.objective.regular_reward
+    assert inputs.order_prizes[1] == inputs.objective.urgent_reward
+    assert inputs.order_prizes[1] > inputs.order_prizes[0]
     assert [allowed.tolist() for allowed in inputs.order_allowed_vehicles] == [
         [0, 1],  # навык 1 есть у обоих
         [1],  # навык 2 — только у второго
@@ -75,6 +81,42 @@ def test_matrices_per_transport():
     assert set(inputs.travel_time_matrices) == {CAR, WALK}
     assert inputs.cost_matrices[CAR].shape == (point_count, point_count)
     assert inputs.travel_time_matrices[WALK].dtype == np.float32
+
+
+def test_dynamic_objective_has_strict_priority_levels():
+    instance = sample_instance()
+    inputs = build_solver_inputs(instance, [0, 1], distance_weight=1.0)
+    objective = inputs.objective
+
+    lower_than_request = instance.n_engineers * objective.vehicle_cost + objective.distance_weight
+    assert objective.vehicle_cost > objective.distance_weight
+    assert objective.regular_reward > lower_than_request
+    assert objective.urgent_reward > objective.regular_reward + lower_than_request
+
+
+def test_distance_matrices_are_normalized_without_unreachable_sentinel():
+    instance = sample_instance()
+    instance.distance_km[CAR][0, 1] = 100_000.0
+    instance.travel_min[CAR][0, 1] = 100_000
+
+    inputs = build_solver_inputs(instance, [0, 1], distance_weight=1.0)
+
+    assert inputs.objective.distance_scale < 100_000.0
+    assert inputs.cost_matrices[CAR][0, 1] > 1.0  # остаётся непроходимо дорогим
+
+
+def test_unsafe_float32_objective_is_rejected():
+    request_count = 5_000
+    fake_instance = SimpleNamespace(
+        n_engineers=1,
+        engineers=[SimpleNamespace(shift_start_min=0, shift_end_min=1_440)],
+        requests=[SimpleNamespace(is_urgent=False) for _ in range(request_count)],
+        distance_km={1: np.zeros((1, 1))},
+        travel_min={1: np.zeros((1, 1))},
+    )
+
+    with pytest.raises(ValueError, match="float32"):
+        build_objective_policy(fake_instance, list(range(request_count)), 1.0)
 
 
 def test_route_table_becomes_ordered_visits():

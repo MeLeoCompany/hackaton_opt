@@ -30,7 +30,7 @@ class RequestSpec:
     window_end_min: int  # позже этого времени начинать работу нельзя
     skill_id: int
     required_transport_id: int | None  # None — транспорт не важен
-    priority_weight: float  # во сколько раз дороже оставить заявку неназначенной
+    is_urgent: bool  # срочные аварии имеют высший приоритет в целевой функции
 
 
 @dataclass
