@@ -49,7 +49,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://routing:routing@postgres:5432/routing
       VALHALLA_URL: http://valhalla:8002
-      CUOPT_TIME_LIMIT_SECONDS: ${CUOPT_TIME_LIMIT_SECONDS:-10.0}
+      CUOPT_TIME_LIMIT_SECONDS: ${CUOPT_TIME_LIMIT_SECONDS:-1.0}
+      CUOPT_MAX_TIME_LIMIT_SECONDS: ${CUOPT_MAX_TIME_LIMIT_SECONDS:-120.0}
       CUOPT_DISTANCE_WEIGHT: ${CUOPT_DISTANCE_WEIGHT:-1.0}
     # решатель cuOpt работает внутри бэкенда и считает на видеокарте NVIDIA
     deploy:

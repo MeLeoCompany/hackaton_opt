@@ -18,6 +18,7 @@
 import asyncio
 import logging
 import math
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -31,7 +32,8 @@ from src.services.planner.planner_problem import ProblemInstance
 # Более крупной задаче нужен многоэтапный solve, а не потеря иерархии из-за округления.
 FLOAT32_SAFE_OBJECTIVE = 2**23
 
-SOLVE_SUCCESS = 0
+TIME_LIMIT_PER_LOCATION_SECONDS = 0.2
+ADAPTIVE_TIME_FREE_LOCATIONS = 20
 
 
 @dataclass
@@ -85,6 +87,18 @@ class SolverInputs:
     order_allowed_vehicles: list[np.ndarray]  # int32: кому из исполнителей можно отдать заявку
     objective: ObjectivePolicy
 
+    @property
+    def time_limit_seconds(self) -> float:
+        """До 20 точек хватает базового лимита; дальше добавляется время на поиск."""
+        adaptive = (
+            max(self.location_count - ADAPTIVE_TIME_FREE_LOCATIONS, 0)
+            * TIME_LIMIT_PER_LOCATION_SECONDS
+        )
+        return min(
+            max(settings.cuopt_time_limit_seconds, adaptive),
+            settings.cuopt_max_time_limit_seconds,
+        )
+
 
 async def solve_day(instance: ProblemInstance) -> DaySolution:
     task_request_indices = schedulable_request_indices(instance)
@@ -96,7 +110,7 @@ async def solve_day(instance: ProblemInstance) -> DaySolution:
         inputs = build_solver_inputs(
             instance, task_request_indices, distance_weight=settings.cuopt_distance_weight
         )
-        route_records = await asyncio.to_thread(run_cuopt, inputs, settings.cuopt_time_limit_seconds)
+        route_records = await asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
         solution = parse_route_records(route_records, task_request_indices)
     except ExternalServiceError:
         raise
@@ -127,6 +141,11 @@ def build_solver_inputs(
     transport_ids = sorted({engineer.transport_id for engineer in instance.engineers})
     engineers = instance.engineers
     requests = [instance.requests[request_index] for request_index in task_request_indices]
+    selected_nodes = np.array(
+        [instance.start_node(index) for index in range(instance.n_engineers)]
+        + [instance.request_node(index) for index in task_request_indices],
+        dtype=np.int32,
+    )
     objective = build_objective_policy(
         instance,
         task_request_indices,
@@ -134,15 +153,19 @@ def build_solver_inputs(
     )
 
     return SolverInputs(
-        location_count=instance.n_engineers + instance.n_requests,
+        location_count=len(selected_nodes),
         cost_matrices={
-            transport_id: (instance.distance_km[transport_id] / objective.distance_scale).astype(
-                np.float32
-            )
+            transport_id: (
+                instance.distance_km[transport_id][np.ix_(selected_nodes, selected_nodes)]
+                / objective.distance_scale
+            ).astype(np.float32)
             for transport_id in transport_ids
         },
         travel_time_matrices={
-            transport_id: instance.travel_min[transport_id].astype(np.float32) for transport_id in transport_ids
+            transport_id: instance.travel_min[transport_id][
+                np.ix_(selected_nodes, selected_nodes)
+            ].astype(np.float32)
+            for transport_id in transport_ids
         },
         vehicle_locations=np.array(
             [instance.start_node(engineer_index) for engineer_index in range(instance.n_engineers)], dtype=np.int32
@@ -154,7 +177,8 @@ def build_solver_inputs(
             instance.n_engineers, objective.vehicle_cost, dtype=np.float32
         ),
         order_locations=np.array(
-            [instance.request_node(request_index) for request_index in task_request_indices], dtype=np.int32
+            [instance.n_engineers + index for index in range(len(task_request_indices))],
+            dtype=np.int32,
         ),
         order_window_start=np.array([request.window_start_min for request in requests], dtype=np.int32),
         order_window_end=np.array([request.window_end_min for request in requests], dtype=np.int32),
@@ -191,6 +215,27 @@ def build_objective_policy(
     regular_count = sum(
         not instance.requests[index].is_urgent for index in task_request_indices
     )
+    lower_distance_cost = distance_weight
+    vehicle_cost = lower_distance_cost + 1.0
+    lower_regular_cost = instance.n_engineers * vehicle_cost + lower_distance_cost
+    regular_reward = lower_regular_cost + 1.0
+    lower_urgent_cost = regular_count * regular_reward + lower_regular_cost
+    urgent_reward = lower_urgent_cost + 1.0
+    maximum_objective_magnitude = request_count * urgent_reward + lower_regular_cost
+    coefficient_values = (
+        vehicle_cost,
+        regular_reward,
+        urgent_reward,
+        maximum_objective_magnitude,
+    )
+    if not all(math.isfinite(value) for value in coefficient_values):
+        raise ValueError("коэффициенты целевой функции cuOpt вышли за допустимый диапазон")
+    if maximum_objective_magnitude > FLOAT32_SAFE_OBJECTIVE:
+        raise ValueError(
+            "задача слишком велика для безопасной одноэтапной float32 objective cuOpt; "
+            "нужен многоэтапный расчёт"
+        )
+
     if any(
         not np.isfinite(matrix).all() or np.any(matrix < 0)
         for matrix in instance.distance_km.values()
@@ -204,9 +249,15 @@ def build_objective_policy(
         (engineer.shift_end_min - engineer.shift_start_min for engineer in instance.engineers),
         default=0,
     )
+    selected_nodes = np.array(
+        [instance.start_node(index) for index in range(instance.n_engineers)]
+        + [instance.request_node(index) for index in task_request_indices],
+        dtype=np.int32,
+    )
     feasible_arc_distances = []
     for transport_id, distance_matrix in instance.distance_km.items():
-        travel_matrix = instance.travel_min[transport_id]
+        distance_matrix = distance_matrix[np.ix_(selected_nodes, selected_nodes)]
+        travel_matrix = instance.travel_min[transport_id][np.ix_(selected_nodes, selected_nodes)]
         feasible = (
             np.isfinite(travel_matrix)
             & (travel_matrix >= 0)
@@ -218,30 +269,8 @@ def build_objective_policy(
 
     # Без возврата в депо у каждой выполненной заявки ровно одно входящее плечо.
     distance_scale = max(request_count * max_arc_distance, 1.0)
-    lower_distance_cost = distance_weight
-    vehicle_cost = lower_distance_cost + 1.0
-    lower_regular_cost = instance.n_engineers * vehicle_cost + lower_distance_cost
-    regular_reward = lower_regular_cost + 1.0
-    lower_urgent_cost = regular_count * regular_reward + lower_regular_cost
-    urgent_reward = lower_urgent_cost + 1.0
-
-    maximum_objective_magnitude = (
-        request_count * urgent_reward + lower_regular_cost
-    )
-    values = (
-        distance_scale,
-        vehicle_cost,
-        regular_reward,
-        urgent_reward,
-        maximum_objective_magnitude,
-    )
-    if not all(math.isfinite(value) for value in values):
-        raise ValueError("коэффициенты целевой функции cuOpt вышли за допустимый диапазон")
-    if maximum_objective_magnitude > FLOAT32_SAFE_OBJECTIVE:
-        raise ValueError(
-            "задача слишком велика для безопасной одноэтапной float32 objective cuOpt; "
-            "нужен многоэтапный расчёт"
-        )
+    if not math.isfinite(distance_scale):
+        raise ValueError("масштаб расстояний cuOpt вышел за допустимый диапазон")
 
     return ObjectivePolicy(
         urgent_reward=urgent_reward,
@@ -302,10 +331,26 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
 
     solver_settings = routing.SolverSettings()
     solver_settings.set_time_limit(time_limit_seconds)
+    started_at = time.perf_counter()
     assignment = routing.Solve(data_model, solver_settings)
+    elapsed_seconds = time.perf_counter() - started_at
 
-    if assignment.get_status() != SOLVE_SUCCESS:
-        raise ExternalServiceError(f"cuOpt не нашёл решение: статус {assignment.get_status()}")
+    if assignment.get_status() != routing.SolutionStatus.SUCCESS.value:
+        message = assignment.get_error_message() or assignment.get_message()
+        raise ExternalServiceError(
+            f"cuOpt не нашёл решение: статус {assignment.get_status()}, {message}"
+        )
+    logging.getLogger(__name__).info(
+        "cuOpt solved locations=%d orders=%d vehicles=%d objective=%s components=%s "
+        "elapsed=%.3fs limit=%.3fs",
+        inputs.location_count,
+        order_count,
+        assignment.get_vehicle_count(),
+        assignment.get_total_objective(),
+        assignment.get_objective_values(),
+        elapsed_seconds,
+        time_limit_seconds,
+    )
     return assignment.get_route().to_pandas().to_dict("records")
 
 

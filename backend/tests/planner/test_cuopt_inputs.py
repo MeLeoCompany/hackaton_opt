@@ -74,13 +74,49 @@ def test_requests_become_orders():
 def test_matrices_per_transport():
     instance = sample_instance()
     inputs = build_solver_inputs(instance, [0, 1])
-    point_count = instance.n_engineers + instance.n_requests
+    point_count = instance.n_engineers + 2
 
     assert inputs.location_count == point_count
     assert set(inputs.cost_matrices) == {CAR, WALK}
     assert set(inputs.travel_time_matrices) == {CAR, WALK}
     assert inputs.cost_matrices[CAR].shape == (point_count, point_count)
     assert inputs.travel_time_matrices[WALK].dtype == np.float32
+
+
+def test_solver_matrices_exclude_requests_not_sent_to_cuopt():
+    instance = sample_instance()
+    inputs = build_solver_inputs(instance, [0, 1])
+
+    assert inputs.location_count == 4
+    assert inputs.order_locations.tolist() == [2, 3]
+    assert inputs.cost_matrices[CAR].shape == (4, 4)
+
+
+def test_compact_order_locations_keep_original_request_mapping():
+    instance = sample_instance()
+    inputs = build_solver_inputs(instance, [0, 2])
+    records = [
+        {"truck_id": 0, "route": 1, "arrival_stamp": 600.0, "type": "Delivery"},
+    ]
+
+    solution = parse_route_records(records, task_request_indices=[0, 2])
+
+    assert inputs.order_locations.tolist() == [2, 3]
+    assert solution.routes[0][0].request_index == 2
+
+
+def test_time_limit_grows_with_problem_size_and_is_capped(monkeypatch):
+    monkeypatch.setattr("src.services.planner.cuopt_solver.settings.cuopt_time_limit_seconds", 2.0)
+    monkeypatch.setattr(
+        "src.services.planner.cuopt_solver.settings.cuopt_max_time_limit_seconds", 20.0
+    )
+    inputs = build_solver_inputs(sample_instance(), [0, 1])
+
+    assert inputs.time_limit_seconds == 2.0
+    inputs.location_count = 50
+    assert inputs.time_limit_seconds == 6.0
+    inputs.location_count = 1_000
+    assert inputs.time_limit_seconds == 20.0
 
 
 def test_dynamic_objective_has_strict_priority_levels():
