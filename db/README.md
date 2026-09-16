@@ -13,7 +13,7 @@ PostgreSQL 16, поднимается через `docker compose up` из кор
 ## Решения по открытым вопросам
 
 1. **plan / assignment хранятся в БД**, а не только в памяти приложения — это
-   единственный способ прозрачно сравнивать baseline / optimized / replanned прогоны
+   единственный способ прозрачно сравнивать optimized / replanned прогоны
    и разбирать причины неназначения задним числом.
 2. **Матрица расстояний/времени в пути не хранится** — считается на лету из координат
    и порядка визитов (`assignment.visit_order`), как прямо указано в ТЗ
@@ -65,7 +65,7 @@ docker exec -i routing_db psql -U routing -d routing < db/init/004_request_is_ac
 ## День и решатель плана (`plan.plan_date`, `plan.solver`)
 
 Добавлено миграцией `init/005_plan_day.sql`: `plan_date DATE` — день, на который построен план
-(по московскому времени), `solver TEXT` — чем посчитан (`cuopt`, `baseline` и т.п.).
+(по московскому времени), `solver TEXT` — чем посчитан (сейчас всегда `cuopt`).
 У уже существующих планов дата проставляется из их заявок.
 
 ```
@@ -84,7 +84,7 @@ docker exec -i routing_db psql -U routing -d routing < db/init/005_plan_day.sql
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/006_plan_snapshot.sql
 ```
 
-## Порядок поступления и сравнение алгоритмов
+## Порядок поступления заявок и исполнителей
 
 `init/007_baseline_comparison.sql` добавляет `request.input_order` и `engineer.input_order`
 с отдельными последовательностями: внешний ID и время окна не определяют порядок поступления.
@@ -92,12 +92,13 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 Редактирование не меняет порядок; импорт новых заявок сохраняет последовательность строк CSV.
 Снимок нового плана содержит также `request_order` и `engineer_order`.
 
-`plan.comparison_id` связывает два плана, рассчитанных на одинаковых входных данных и матрицах.
-У одиночных и старых планов поле пустое.
-На существующую БД примените миграцию до запуска обновлённого backend:
+Та же миграция добавляла `plan.comparison_id` для сравнения базового алгоритма с cuOpt;
+базовый алгоритм убран, поле снимает `init/008_drop_comparison.sql`.
+На существующую БД примените обе миграции до запуска обновлённого backend:
 
 ```bash
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/007_baseline_comparison.sql
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/008_drop_comparison.sql
 ```
 
 Повторный запуск безопасен. Новый Docker volume получает все миграции автоматически;

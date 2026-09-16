@@ -1,15 +1,15 @@
 import enum
 from datetime import date, datetime
-from uuid import UUID
 
 from sqlalchemy import BigInteger, Date, DateTime, Enum, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
 
 
 class PlanRunType(str, enum.Enum):
+    # baseline остался в типе БД от старых планов, новые планы считает только cuOpt
     BASELINE = "baseline"
     OPTIMIZED = "optimized"
     REPLANNED = "replanned"
@@ -30,9 +30,7 @@ class Plan(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # день, на который построен план (по московскому времени)
     plan_date: Mapped[date | None] = mapped_column(Date)
-    # чем посчитан план: cuopt, baseline и т.п.
+    # чем посчитан план
     solver: Mapped[str | None] = mapped_column(Text)
 
     input_snapshot: Mapped[dict | None] = mapped_column(JSONB)
-
-    comparison_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))

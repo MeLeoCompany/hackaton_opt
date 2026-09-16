@@ -1,16 +1,10 @@
 from datetime import date, datetime
-from typing import Literal
-from uuid import UUID
 
 from pydantic import BaseModel
 
 
-class PlanComparisonRequest(BaseModel):
+class PlanBuildRequest(BaseModel):
     plan_date: date
-
-
-class PlanBuildRequest(PlanComparisonRequest):
-    solver: Literal["cuopt", "baseline"] = "cuopt"
 
 
 class PlanningDayOption(BaseModel):
@@ -22,10 +16,9 @@ class PlanningDayOption(BaseModel):
 
 class PlanSummary(BaseModel):
     id: int
-    comparison_id: UUID | None = None
-    run_type: str  # baseline / optimized / replanned
+    run_type: str  # optimized / replanned
     plan_date: date | None
-    solver: str | None
+    solver: str | None  # чем посчитан план
     created_at: datetime
     engineers_used: int
     assigned_count: int
@@ -72,13 +65,3 @@ class PlanDetail(PlanSummary):
     total_distance_km: float
     routes: list[EngineerRoute]
     unassigned: list[UnassignedRequest]
-
-
-class PlanComparisonSummary(BaseModel):
-    baseline: PlanSummary
-    optimized: PlanSummary
-
-
-class PlanComparison(BaseModel):
-    baseline: PlanDetail
-    optimized: PlanDetail
