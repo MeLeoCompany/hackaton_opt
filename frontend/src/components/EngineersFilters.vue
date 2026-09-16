@@ -1,7 +1,13 @@
 <script setup>
-// filters — объект фильтров из useEngineersView, поля меняют его напрямую
+// Фильтры над картой исполнителей — это шапка таблицы исполнителей без строк: та же сетка
+// колонок (colgroup), те же подписи и те же поля. При переключении «Таблица ↔ Карта» каждое
+// поле остаётся на своём месте и своей ширины.
+import { ENGINEER_COLUMNS as COLUMNS } from '../composables/useEngineersView.js'
+
+import EngineersFilterControl from './EngineersFilterControl.vue'
+
 defineProps({
-  filters: { type: Object, required: true },
+  filters: { type: Object, required: true }, // объект из useEngineersView, меняется напрямую
   references: { type: Object, required: true },
   activeCount: { type: Number, required: true },
 })
@@ -9,35 +15,27 @@ defineEmits(['reset'])
 </script>
 
 <template>
-  <section class="filters">
-    <div class="filters-header">
-      <span>Фильтры</span>
-      <button class="link" :disabled="activeCount === 0" @click="$emit('reset')">
-        Сбросить{{ activeCount ? ` (${activeCount})` : '' }}
-      </button>
-    </div>
-
-    <div class="filters-fields">
-      <label class="field">
-        <span>Поиск</span>
-        <input v-model="filters.text" placeholder="Имя или номер" />
-      </label>
-
-      <label class="field">
-        <span>Транспорт</span>
-        <select v-model="filters.transportId">
-          <option value="">Любой</option>
-          <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Умеет</span>
-        <select v-model="filters.skillId">
-          <option value="">Любой навык</option>
-          <option v-for="item in references.skills" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-    </div>
-  </section>
+  <div class="table-scroll filters-head">
+    <table class="data-table fixed-columns">
+      <colgroup>
+        <col v-for="column in COLUMNS" :key="column.key" :style="column.width ? { width: column.width } : null" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th v-for="column in COLUMNS" :key="column.key">{{ column.label }}</th>
+        </tr>
+        <tr class="filter-row filter-controls">
+          <th v-for="column in COLUMNS" :key="column.key" :class="{ 'actions-cell': column.key === 'actions' }">
+            <EngineersFilterControl
+              :column="column.key"
+              :filters="filters"
+              :references="references"
+              :active-filter-count="activeCount"
+              @reset="$emit('reset')"
+            />
+          </th>
+        </tr>
+      </thead>
+    </table>
+  </div>
 </template>

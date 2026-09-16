@@ -7,7 +7,7 @@ import EngineersFilters from '../components/EngineersFilters.vue'
 import EngineersMap from '../components/EngineersMap.vue'
 import EngineersTable from '../components/EngineersTable.vue'
 import { useEngineersTable } from '../composables/useEngineersTable.js'
-import { useEngineersView } from '../composables/useEngineersView.js'
+import { ENGINEER_COLUMNS, useEngineersView } from '../composables/useEngineersView.js'
 
 // данные и их изменение
 const {
@@ -43,6 +43,11 @@ const {
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
+
+// карточка справа от карты занимает ровно две последние колонки таблицы: её левый край
+// совпадает с линией колонки в шапке фильтров, а карта заканчивается перед ней
+// +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
+const DETAILS_WIDTH = ENGINEER_COLUMNS.slice(-2).reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 1
 
 const selectedEngineer = computed(
   () => filteredEngineers.value.find((engineer) => engineer.id === selectedId.value) ?? null,
@@ -143,7 +148,7 @@ onMounted(load)
         />
       </div>
 
-      <div v-else class="map-view">
+      <div v-else class="map-view" :style="{ '--details-width': `${DETAILS_WIDTH}px` }">
         <EngineersFilters
           :filters="filters"
           :references="references"

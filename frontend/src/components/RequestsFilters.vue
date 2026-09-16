@@ -1,11 +1,13 @@
 <script setup>
-import { NO_TRANSPORT } from '../composables/useRequestsView.js'
+// Фильтры над картой заявок — это шапка таблицы заявок без строк: та же сетка колонок
+// (colgroup), те же подписи и те же поля. При переключении «Таблица ↔ Карта» каждое поле
+// остаётся на своём месте и своей ширины.
+import { REQUEST_COLUMNS as COLUMNS } from '../composables/useRequestsView.js'
 
-import TimeInput from './TimeInput.vue'
+import RequestsFilterControl from './RequestsFilterControl.vue'
 
-// filters — объект фильтров из useRequestsView, поля меняют его напрямую
 defineProps({
-  filters: { type: Object, required: true },
+  filters: { type: Object, required: true }, // объект из useRequestsView, меняется напрямую
   references: { type: Object, required: true },
   activeCount: { type: Number, required: true },
 })
@@ -13,62 +15,27 @@ defineEmits(['reset'])
 </script>
 
 <template>
-  <section class="filters">
-    <div class="filters-header">
-      <span>Фильтры</span>
-      <button class="link" :disabled="activeCount === 0" @click="$emit('reset')">
-        Сбросить{{ activeCount ? ` (${activeCount})` : '' }}
-      </button>
-    </div>
-
-    <div class="filters-fields">
-      <label class="field">
-        <span>Планирование</span>
-        <select v-model="filters.activity">
-          <option value="">Все заявки</option>
-          <option value="active">Только активные</option>
-          <option value="inactive">Только выключенные</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Поиск</span>
-        <input v-model="filters.text" placeholder="Номер или адрес" />
-      </label>
-
-      <label class="field">
-        <span>Приоритет</span>
-        <select v-model="filters.priorityId">
-          <option value="">Любой</option>
-          <option v-for="item in references.priorities" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Тип работ</span>
-        <select v-model="filters.workTypeId">
-          <option value="">Любой</option>
-          <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Транспорт</span>
-        <select v-model="filters.transportId">
-          <option value="">Любой</option>
-          <option :value="NO_TRANSPORT">Не важен</option>
-          <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-
-      <div class="field">
-        <span>Окно начинается (МСК)</span>
-        <div class="time-range">
-          <TimeInput v-model="filters.timeFrom" aria-label="не раньше" />
-          <span>—</span>
-          <TimeInput v-model="filters.timeTo" aria-label="не позже" />
-        </div>
-      </div>
-    </div>
-  </section>
+  <div class="table-scroll filters-head">
+    <table class="data-table fixed-columns">
+      <colgroup>
+        <col v-for="column in COLUMNS" :key="column.key" :style="column.width ? { width: column.width } : null" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th v-for="column in COLUMNS" :key="column.key">{{ column.label }}</th>
+        </tr>
+        <tr class="filter-row filter-controls">
+          <th v-for="column in COLUMNS" :key="column.key" :class="{ 'actions-cell': column.key === 'actions' }">
+            <RequestsFilterControl
+              :column="column.key"
+              :filters="filters"
+              :references="references"
+              :active-filter-count="activeCount"
+              @reset="$emit('reset')"
+            />
+          </th>
+        </tr>
+      </thead>
+    </table>
+  </div>
 </template>

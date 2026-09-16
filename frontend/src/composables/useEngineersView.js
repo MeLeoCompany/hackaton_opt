@@ -6,6 +6,21 @@ import { computed, reactive, ref, watch } from 'vue'
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
 
+// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
+// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
+export const ENGINEER_COLUMNS = [
+  { key: 'id', label: '№', sortKey: 'id', width: '90px' },
+  { key: 'name', label: 'Имя', sortKey: 'name', width: '260px' },
+  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '220px' },
+  { key: 'skills', label: 'Навыки', sortKey: 'skills', width: '' },
+  { key: 'shift', label: 'Смена (МСК)', sortKey: 'shift_start', width: '130px' },
+  { key: 'start', label: 'Старт', sortKey: null, width: '150px' },
+  { key: 'actions', label: '', sortKey: null, width: '130px' },
+]
+
+// '' — сортировка не выбрана: строки идут в порядке бэкенда
+const DEFAULT_SORT = ''
+
 // по фильтру на каждую колонку таблицы
 function emptyFilters() {
   return {
@@ -21,7 +36,7 @@ function emptyFilters() {
 
 export function useEngineersView(engineers, references) {
   const filters = reactive(emptyFilters())
-  const sortKey = ref('name')
+  const sortKey = ref(DEFAULT_SORT)
   const sortDirection = ref('asc')
   const selectedId = ref(null)
 
@@ -86,14 +101,21 @@ export function useEngineersView(engineers, references) {
     return first.id - second.id
   }
 
-  const sortedEngineers = computed(() => [...filteredEngineers.value].sort(compareEngineers))
+  // без выбранной сортировки — порядок бэкенда: в каком порядке исполнителей заводили
+  const sortedEngineers = computed(() =>
+    sortKey.value ? [...filteredEngineers.value].sort(compareEngineers) : filteredEngineers.value,
+  )
 
-  // клик по заголовку: та же колонка — меняем направление, другая — сортируем по ней по возрастанию
+  // клик по заголовку по кругу: по возрастанию -> по убыванию -> как по умолчанию.
+  // Другая колонка всегда начинает с возрастания.
   function toggleSort(key) {
-    if (sortKey.value === key) {
-      sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-    } else {
+    if (sortKey.value !== key) {
       sortKey.value = key
+      sortDirection.value = 'asc'
+    } else if (sortDirection.value === 'asc') {
+      sortDirection.value = 'desc'
+    } else {
+      sortKey.value = DEFAULT_SORT
       sortDirection.value = 'asc'
     }
   }

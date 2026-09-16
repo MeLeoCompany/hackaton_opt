@@ -213,27 +213,6 @@ button.link:disabled {
 
 /* ---- фильтры ---- */
 
-.filters {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.filters-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-}
-
-.filters-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px 12px;
-}
-
 .field {
   display: flex;
   flex-direction: column;
@@ -252,12 +231,6 @@ button.link:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.field .time-range input {
-  flex: 1;
-  width: auto;
-  min-width: 0;
 }
 
 /* ---- таблица данных ---- */
@@ -335,8 +308,8 @@ button.link:disabled {
   vertical-align: top;
 }
 
-.data-table thead tr.filter-row input,
-.data-table thead tr.filter-row select,
+.filter-controls input,
+.filter-controls select,
 .data-table.fixed-columns tbody tr.editing input:not([type='checkbox']),
 .data-table.fixed-columns tbody tr.editing select {
   width: 100%;
@@ -349,7 +322,7 @@ button.link:disabled {
 
 /* у текстовых полей справа воронка — видно, что поле фильтрует колонку;
    у выпадающих списков своя стрелка, воронка там только мешала бы */
-.data-table thead tr.filter-row input {
+.filter-controls input {
   padding-right: 22px;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2394a3b8' stroke-width='1.3'><path d='M2 3h12l-4.6 5.4v4.2l-2.8 1.4V8.4z'/></svg>");
   background-repeat: no-repeat;
@@ -359,8 +332,8 @@ button.link:disabled {
 
 /* диапазон «с — по» и «от — до» выглядит одним полем: общая рамка той же высоты,
    что и соседние фильтры, внутри два поля без рамок через тире */
-.data-table thead tr.filter-row .time-range,
-.data-table thead tr.filter-row .range-pair {
+.filter-controls .time-range,
+.filter-controls .range-pair {
   display: flex;
   align-items: center;
   gap: 0;
@@ -371,18 +344,18 @@ button.link:disabled {
 }
 
 /* шаблон «чч:мм – чч:мм» не растягиваем на всю колонку: ему хватает места под два времени */
-.data-table thead tr.filter-row .time-range {
+.filter-controls .time-range {
   width: 110px;
 }
 
-.data-table thead tr.filter-row .time-range:focus-within,
-.data-table thead tr.filter-row .range-pair:focus-within {
+.filter-controls .time-range:focus-within,
+.filter-controls .range-pair:focus-within {
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgb(37 99 235 / 15%);
 }
 
-.data-table thead tr.filter-row .time-range input,
-.data-table thead tr.filter-row .range-pair input {
+.filter-controls .time-range input,
+.filter-controls .range-pair input {
   flex: 1;
   width: auto;
   min-width: 0;
@@ -393,24 +366,35 @@ button.link:disabled {
   text-align: center;
 }
 
-.data-table thead tr.filter-row .time-range input:focus,
-.data-table thead tr.filter-row .range-pair input:focus {
+/* фокус у полей таблицы и фильтров — синей рамкой, а не толстым чёрным контуром браузера */
+.data-table input:not([type='checkbox']):focus,
+.data-table select:focus,
+.filter-controls input:focus,
+.filter-controls select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 15%);
+}
+
+/* внутри диапазона подсвечивается общая рамка, а не половинка */
+.filter-controls .time-range input:focus,
+.filter-controls .range-pair input:focus {
   box-shadow: none;
 }
 
-.data-table thead tr.filter-row .time-range > span,
-.data-table thead tr.filter-row .range-pair > span {
+.filter-controls .time-range > span,
+.filter-controls .range-pair > span {
   color: #94a3b8;
   font-size: 12px;
 }
 
 /* стрелки у числовых полей в узком диапазоне только съедают место под цифры */
-.data-table thead tr.filter-row input[type='number'] {
+.filter-controls input[type='number'] {
   appearance: textfield;
 }
 
-.data-table thead tr.filter-row input[type='number']::-webkit-inner-spin-button,
-.data-table thead tr.filter-row input[type='number']::-webkit-outer-spin-button {
+.filter-controls input[type='number']::-webkit-inner-spin-button,
+.filter-controls input[type='number']::-webkit-outer-spin-button {
   margin: 0;
   appearance: none;
 }
@@ -419,7 +403,7 @@ button.link:disabled {
   text-align: right;
 }
 
-.data-table thead tr.filter-row button.link {
+.filter-controls button.link {
   font-size: 12px;
   font-weight: 400;
 }
@@ -490,13 +474,6 @@ button.link:disabled {
   width: auto;
 }
 
-/* фокус у полей таблицы — синей рамкой, а не толстым чёрным контуром браузера */
-.data-table input:not([type='checkbox']):focus,
-.data-table select:focus {
-  outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgb(37 99 235 / 15%);
-}
 
 .data-table tbody tr:not(.editing) {
   cursor: pointer;
@@ -673,15 +650,23 @@ button.link:disabled {
 
 /* ---- карта и карточка выбранной записи ---- */
 
+/* Карта и карточка стоят по сетке шапки таблицы над ними: ширину карточки страница задаёт
+   суммой двух последних колонок (--details-width). Промежутка между колонками грида нет,
+   отступ даёт карта справа — поэтому левый край карточки ровно на линии колонки. */
 .map-view {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) var(--details-width, 300px);
+  column-gap: 0;
+  row-gap: 14px;
   align-items: start;
 }
 
+.map-view > .map-area {
+  margin-right: 14px;
+}
+
 /* на карте нет шапки таблицы, поэтому фильтры показываются панелью — во всю ширину над картой */
-.map-view > .filters {
+.map-view > .filters-head {
   grid-column: 1 / -1;
 }
 
@@ -692,6 +677,10 @@ button.link:disabled {
 @media (max-width: 900px) {
   .map-view {
     grid-template-columns: 1fr;
+  }
+
+  .map-view > .map-area {
+    margin-right: 0;
   }
 
   .map-area {
@@ -780,8 +769,11 @@ button.link:disabled {
   gap: 10px;
 }
 
+/* подпись слева в одну строку, длинное значение переносится справа, не выдавливая подпись */
 .details-card dt {
+  flex-shrink: 0;
   color: #64748b;
+  white-space: nowrap;
 }
 
 .details-card dd {

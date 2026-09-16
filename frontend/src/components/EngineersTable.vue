@@ -2,12 +2,13 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { NEW_ENGINEER } from '../composables/useEngineersTable.js'
+import { ENGINEER_COLUMNS as COLUMNS } from '../composables/useEngineersView.js'
 import { referenceName } from '../utils/referenceNames.js'
 import { transportColor } from '../utils/transportColors.js'
 import IconButton from './IconButton.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
 import EngineerEditCells from './EngineerEditCells.vue'
-import TimeInput from './TimeInput.vue'
+import EngineersFilterControl from './EngineersFilterControl.vue'
 
 const props = defineProps({
   engineers: { type: Array, required: true }, // уже отфильтрованные и отсортированные
@@ -23,18 +24,6 @@ const props = defineProps({
   activeFilterCount: { type: Number, required: true },
 })
 defineEmits(['edit', 'cancel', 'save', 'remove', 'sort', 'select', 'reset-filters', 'show-on-map'])
-
-// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
-// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
-const COLUMNS = [
-  { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'name', label: 'Имя', sortKey: 'name', width: '260px' },
-  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '170px' },
-  { key: 'skills', label: 'Навыки', sortKey: 'skills', width: '' },
-  { key: 'shift', label: 'Смена (МСК)', sortKey: 'shift_start', width: '130px' },
-  { key: 'start', label: 'Старт', sortKey: null, width: '190px' },
-  { key: 'actions', label: '', sortKey: null, width: '130px' },
-]
 
 // старты остальных бригад — ориентир на карте выбора координаты
 const contextPoints = computed(() =>
@@ -94,54 +83,15 @@ onMounted(scrollToSelected)
         </tr>
 
         <!-- отдельная строка фильтров под названиями колонок -->
-        <tr class="filter-row">
+        <tr class="filter-row filter-controls">
           <th v-for="column in COLUMNS" :key="column.key" :class="{ 'actions-cell': column.key === 'actions' }">
-            <input
-              v-if="column.key === 'id'"
-              v-model="filters.idText"
-              inputmode="numeric"
-              placeholder="номер"
-              aria-label="фильтр по номеру исполнителя"
+            <EngineersFilterControl
+              :column="column.key"
+              :filters="filters"
+              :references="references"
+              :active-filter-count="activeFilterCount"
+              @reset="$emit('reset-filters')"
             />
-
-            <input
-              v-else-if="column.key === 'name'"
-              v-model="filters.text"
-              placeholder="имя"
-              aria-label="фильтр по имени"
-            />
-
-            <select v-else-if="column.key === 'transport'" v-model="filters.transportId" aria-label="фильтр по транспорту">
-              <option value="">любой</option>
-              <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-
-            <select v-else-if="column.key === 'skills'" v-model="filters.skillId" aria-label="фильтр по навыку">
-              <option value="">любой навык</option>
-              <option v-for="item in references.skills" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-
-            <div v-else-if="column.key === 'shift'" class="time-range">
-              <TimeInput v-model="filters.shiftFrom" aria-label="смена начинается не раньше" />
-              <span>–</span>
-              <TimeInput v-model="filters.shiftTo" aria-label="смена начинается не позже" />
-            </div>
-
-            <input
-              v-else-if="column.key === 'start'"
-              v-model="filters.startText"
-              placeholder="55.74"
-              aria-label="фильтр по координатам старта"
-            />
-
-            <button
-              v-else-if="column.key === 'actions'"
-              class="link"
-              :disabled="activeFilterCount === 0"
-              @click="$emit('reset-filters')"
-            >
-              Сбросить{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
-            </button>
           </th>
         </tr>
       </thead>

@@ -8,7 +8,7 @@ import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
 import RequestsTable from '../components/RequestsTable.vue'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
-import { useRequestsView } from '../composables/useRequestsView.js'
+import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
 
 // данные и их изменение
 const {
@@ -51,6 +51,11 @@ const {
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
+
+// карточка справа от карты занимает ровно две последние колонки таблицы: её левый край
+// совпадает с линией колонки в шапке фильтров, а карта заканчивается перед ней
+// +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
+const DETAILS_WIDTH = REQUEST_COLUMNS.slice(-2).reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 1
 
 const selectedRequest = computed(
   () => filteredRequests.value.find((request) => request.id === selectedId.value) ?? null,
@@ -188,7 +193,7 @@ onMounted(load)
         />
       </div>
 
-      <div v-else class="map-view">
+      <div v-else class="map-view" :style="{ '--details-width': `${DETAILS_WIDTH}px` }">
         <RequestsFilters
           :filters="filters"
           :references="references"

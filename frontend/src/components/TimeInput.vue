@@ -86,16 +86,19 @@ function finish() {
     @keyup.esc="open = false"
   />
 
-  <ul v-if="open" class="time-dropdown" :style="dropdownStyle">
-    <li
-      v-for="time in suggestions"
-      :key="time"
-      :class="{ current: time === completeTime(text) }"
-      @mousedown.prevent="choose(time)"
-    >
-      {{ time }}
-    </li>
-  </ul>
+  <!-- список выносится в body: иначе он заперт в липкой шапке таблицы и уходит под карту -->
+  <Teleport to="body">
+    <ul v-if="open" class="time-dropdown" :style="dropdownStyle">
+      <li
+        v-for="time in suggestions"
+        :key="time"
+        :class="{ current: time === completeTime(text) }"
+        @mousedown.prevent="choose(time)"
+      >
+        {{ time }}
+      </li>
+    </ul>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -108,7 +111,7 @@ function finish() {
 
 .time-dropdown {
   position: fixed;
-  z-index: 900;
+  z-index: 1500; /* выше карты Leaflet (её слои и кнопки до 1000), ниже всплывающих уведомлений */
   max-height: 200px;
   margin: 0;
   padding: 4px 0;

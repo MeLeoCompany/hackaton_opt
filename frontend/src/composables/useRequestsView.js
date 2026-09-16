@@ -3,13 +3,31 @@
 
 import { computed, reactive, ref, watch } from 'vue'
 
-import { moscowDateOf, moscowTimeOf } from '../utils/moscowTime.js'
+import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
 
 // значение фильтра транспорта «транспорт не важен» (в заявке transport_id = null)
 export const NO_TRANSPORT = 'none'
 
 export const PAGE_SIZES = [10, 25, 50, 100]
+
+// '' — сортировка не выбрана: строки идут в порядке бэкенда
+const DEFAULT_SORT = ''
+
+// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
+// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
+export const REQUEST_COLUMNS = [
+  { key: 'id', label: '№', sortKey: 'id', width: '90px' },
+  { key: 'is_active', label: 'Активна', sortKey: 'is_active', width: '110px' },
+  { key: 'address', label: 'Адрес', sortKey: 'address', width: '' },
+  { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px' },
+  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', width: '320px' },
+  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '110px' },
+  { key: 'window', label: 'Окно (МСК)', sortKey: 'window_start', width: '130px' },
+  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '130px' },
+  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '190px' },
+  { key: 'actions', label: '', sortKey: null, width: '130px' },
+]
 
 // по фильтру на каждую колонку таблицы
 function emptyFilters() {
@@ -30,7 +48,7 @@ function emptyFilters() {
 
 export function useRequestsView(requests, references) {
   const filters = reactive(emptyFilters())
-  const sortKey = ref('window_start')
+  const sortKey = ref(DEFAULT_SORT)
   const sortDirection = ref('asc')
   const page = ref(1)
   const pageSize = ref(25)
@@ -123,14 +141,21 @@ export function useRequestsView(requests, references) {
     return first.id - second.id
   }
 
-  const sortedRequests = computed(() => [...filteredRequests.value].sort(compareRequests))
+  // без выбранной сортировки — порядок, в котором заявки пришли с бэкенда: по началу окна
+  const sortedRequests = computed(() =>
+    sortKey.value ? [...filteredRequests.value].sort(compareRequests) : filteredRequests.value,
+  )
 
-  // клик по заголовку: та же колонка — меняем направление, другая — сортируем по ней по возрастанию
+  // клик по заголовку по кругу: по возрастанию -> по убыванию -> как по умолчанию.
+  // Другая колонка всегда начинает с возрастания.
   function toggleSort(key) {
-    if (sortKey.value === key) {
-      sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-    } else {
+    if (sortKey.value !== key) {
       sortKey.value = key
+      sortDirection.value = 'asc'
+    } else if (sortDirection.value === 'asc') {
+      sortDirection.value = 'desc'
+    } else {
+      sortKey.value = DEFAULT_SORT
       sortDirection.value = 'asc'
     }
   }

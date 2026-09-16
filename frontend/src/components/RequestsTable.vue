@@ -2,12 +2,12 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { NEW_REQUEST } from '../composables/useRequestsTable.js'
-import { NO_TRANSPORT } from '../composables/useRequestsView.js'
+import { REQUEST_COLUMNS as COLUMNS } from '../composables/useRequestsView.js'
 import { isUrgent, referenceName } from '../utils/referenceNames.js'
 import IconButton from './IconButton.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
 import RequestEditCells from './RequestEditCells.vue'
-import TimeInput from './TimeInput.vue'
+import RequestsFilterControl from './RequestsFilterControl.vue'
 
 const props = defineProps({
   requests: { type: Array, required: true }, // заявки текущей страницы, уже отсортированные
@@ -34,21 +34,6 @@ defineEmits([
   'reset-filters',
   'show-on-map',
 ])
-
-// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
-// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
-const COLUMNS = [
-  { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'is_active', label: 'Активна', sortKey: 'is_active', width: '110px' },
-  { key: 'address', label: 'Адрес', sortKey: 'address', width: '' },
-  { key: 'coordinates', label: 'Координаты', sortKey: null, width: '150px' },
-  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', width: '320px' },
-  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '110px' },
-  { key: 'window', label: 'Окно (МСК)', sortKey: 'window_start', width: '130px' },
-  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '130px' },
-  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '150px' },
-  { key: 'actions', label: '', sortKey: null, width: '130px' },
-]
 
 // точки остальных заявок страницы — ориентир на карте выбора координаты
 const contextPoints = computed(() =>
@@ -105,84 +90,15 @@ onMounted(scrollToSelected)
         </tr>
 
         <!-- отдельная строка фильтров под названиями колонок -->
-        <tr class="filter-row">
+        <tr class="filter-row filter-controls">
           <th v-for="column in COLUMNS" :key="column.key" :class="{ 'actions-cell': column.key === 'actions' }">
-            <input
-              v-if="column.key === 'id'"
-              v-model="filters.idText"
-              inputmode="numeric"
-              placeholder="номер"
-              aria-label="фильтр по номеру заявки"
+            <RequestsFilterControl
+              :column="column.key"
+              :filters="filters"
+              :references="references"
+              :active-filter-count="activeFilterCount"
+              @reset="$emit('reset-filters')"
             />
-
-            <select v-else-if="column.key === 'is_active'" v-model="filters.activity" aria-label="фильтр по планированию">
-              <option value="">все</option>
-              <option value="active">активные</option>
-              <option value="inactive">выключенные</option>
-            </select>
-
-            <input
-              v-else-if="column.key === 'address'"
-              v-model="filters.text"
-              placeholder="адрес"
-              aria-label="фильтр по адресу"
-            />
-
-            <input
-              v-else-if="column.key === 'coordinates'"
-              v-model="filters.coordinates"
-              placeholder="55.74"
-              aria-label="фильтр по координатам"
-            />
-
-            <select v-else-if="column.key === 'work_type'" v-model="filters.workTypeId" aria-label="фильтр по типу работ">
-              <option value="">любой</option>
-              <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-
-            <div v-else-if="column.key === 'duration'" class="range-pair">
-              <input
-                v-model="filters.durationFrom"
-                type="number"
-                min="0"
-                placeholder="от"
-                aria-label="работа на месте не меньше"
-              />
-              <span>–</span>
-              <input
-                v-model="filters.durationTo"
-                type="number"
-                min="0"
-                placeholder="до"
-                aria-label="работа на месте не больше"
-              />
-            </div>
-
-            <div v-else-if="column.key === 'window'" class="time-range">
-              <TimeInput v-model="filters.timeFrom" aria-label="окно начинается не раньше" />
-              <span>–</span>
-              <TimeInput v-model="filters.timeTo" aria-label="окно начинается не позже" />
-            </div>
-
-            <select v-else-if="column.key === 'priority'" v-model="filters.priorityId" aria-label="фильтр по приоритету">
-              <option value="">любой</option>
-              <option v-for="item in references.priorities" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-
-            <select v-else-if="column.key === 'transport'" v-model="filters.transportId" aria-label="фильтр по транспорту">
-              <option value="">любой</option>
-              <option :value="NO_TRANSPORT">не важен</option>
-              <option v-for="item in references.transports" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-
-            <button
-              v-else-if="column.key === 'actions'"
-              class="link"
-              :disabled="activeFilterCount === 0"
-              @click="$emit('reset-filters')"
-            >
-              Сбросить{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
-            </button>
           </th>
         </tr>
       </thead>
