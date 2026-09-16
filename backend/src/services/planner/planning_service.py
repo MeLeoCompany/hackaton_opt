@@ -1,9 +1,10 @@
-"""Планы: построение плана на день через cuOpt, список планов, план с маршрутами исполнителей."""
+"""Построение и сравнение baseline/cuOpt, сохранение и просмотр планов."""
 
 import asyncio
 from collections import defaultdict
 from datetime import date, datetime
 from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,8 @@ from src.repositories.plans import plans_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
     EngineerRoute,
+    PlanComparison,
+    PlanComparisonSummary,
     PlanDetail,
     PlanningDayOption,
     PlanSummary,
@@ -20,11 +23,9 @@ from src.schemas.plans import (
     UnassignedRequest,
 )
 from src.schemas.travel import Point, TransportKind
-from src.services.planner import cuopt_solver, planner_loader
+from src.services.planner import baseline_solver, cuopt_solver, planner_loader
 from src.services.planner.planner_loader import LoadedDay
 from src.services.travel import build_route
-
-SOLVER_NAME = "cuopt"
 
 SCHEDULE_REASON = (
     "Не включена в найденный план: при расчёте учитывались время дороги, "
@@ -52,8 +53,8 @@ async def list_planning_days(session: AsyncSession) -> list[PlanningDayOption]:
     ]
 
 
-async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSummary:
-    """Строит план на день через cuOpt и сохраняет его вместе с назначениями."""
+async def load_planning_day(session: AsyncSession, plan_date: date) -> LoadedDay:
+    """Загружает данные дня и проверяет наличие заявок и исполнителей."""
     day = planner_loader.planning_day(plan_date)
     loaded = await planner_loader.load_day(session, day)
     if loaded.instance.n_requests == 0:
@@ -61,9 +62,58 @@ async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSumm
     if loaded.instance.n_engineers == 0:
         raise PlanDataError([f"На {plan_date:%d.%m.%Y} нет исполнителей со сменой"])
 
-    solution = await cuopt_solver.solve_day(loaded.instance)
+    return loaded
 
-    plan = plans_repository.add_plan(session, PlanRunType.OPTIMIZED, plan_date, SOLVER_NAME)
+
+async def build_plan_for_day(
+    session: AsyncSession, plan_date: date, solver: str = "cuopt"
+) -> PlanSummary:
+    loaded = await load_planning_day(session, plan_date)
+    if solver == "baseline":
+        solution = baseline_solver.solve_day(loaded.instance)
+        run_type = PlanRunType.BASELINE
+    else:
+        solution = await cuopt_solver.solve_day(loaded.instance)
+        run_type = PlanRunType.OPTIMIZED
+    plan = await save_solution(session, loaded, solution, run_type, solver)
+    await session.commit()
+    return (await summarize_plans(session, [plan]))[0]
+
+
+async def build_comparison(session: AsyncSession, plan_date: date) -> PlanComparisonSummary:
+    """Оба алгоритма используют один набор заявок, порядок и дорожные матрицы."""
+    loaded = await load_planning_day(session, plan_date)
+    baseline = baseline_solver.solve_day(loaded.instance)
+    optimized = await cuopt_solver.solve_day(loaded.instance)
+    comparison_id = uuid4()
+    first = await save_solution(session, loaded, baseline, PlanRunType.BASELINE, "baseline", comparison_id)
+    second = await save_solution(session, loaded, optimized, PlanRunType.OPTIMIZED, "cuopt", comparison_id)
+    await session.commit()
+    summaries = await summarize_plans(session, [first, second])
+    return PlanComparisonSummary(baseline=summaries[0], optimized=summaries[1])
+
+
+async def get_comparison(session: AsyncSession, plan_id: int) -> PlanComparison:
+    plan = await plans_repository.get_plan(session, plan_id)
+    if plan is None or plan.comparison_id is None:
+        raise PlanNotFoundError("Для этого плана нет парного сравнения")
+    pair = await plans_repository.comparison_plans(session, plan.comparison_id)
+    by_solver = {p.solver: p for p in pair}
+    if len(pair) != 2 or set(by_solver) != {"baseline", "cuopt"}:
+        raise PlanNotFoundError("Пара планов для сравнения неполна")
+    # AsyncSession нельзя использовать одновременно в нескольких задачах.
+    baseline = await get_plan_detail(session, by_solver["baseline"].id)
+    optimized = await get_plan_detail(session, by_solver["cuopt"].id)
+    return PlanComparison(baseline=baseline, optimized=optimized)
+
+
+async def save_solution(
+    session: AsyncSession, loaded: LoadedDay, solution: cuopt_solver.DaySolution,
+    run_type: PlanRunType, solver: str, comparison_id: UUID | None = None,
+) -> Plan:
+    day = loaded.day
+    plan = plans_repository.add_plan(session, run_type, day.plan_date, solver)
+    plan.comparison_id = comparison_id
     plan.input_snapshot = snapshot_inputs(loaded)
     await session.flush()
 
@@ -97,22 +147,24 @@ async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSumm
                 "engineer_id": None,
                 "visit_order": None,
                 "planned_arrival_time": None,
-                "unassigned_reason": unassigned_reason(loaded, request_index),
+                "unassigned_reason": unassigned_reason(loaded, request_index, solver),
             },
         )
 
-    await session.commit()
-    await session.refresh(plan)
-    return (await summarize_plans(session, [plan]))[0]
+    await session.flush()
+    return plan
 
 
-def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
+def unassigned_reason(loaded: LoadedDay, request_index: int, solver: str = "cuopt") -> str:
     """Почему заявка не назначена — понятным диспетчеру языком.
 
-    Если заявку в принципе можно было отдать кому-то, значит не хватило времени. Иначе
-    уточняем, чего не хватает: навыка или транспорта у исполнителей с этим навыком.
+    Для совместимых заявок описываем результат выбранного алгоритма. Иначе
+    уточняем отсутствие навыка или транспорта.
     """
     if loaded.instance.compatible[request_index].any():
+        if solver == "baseline":
+            return ("При последовательном назначении ни один подходящий исполнитель не успевал "
+                    "выполнить заявку после ранее назначенных работ в пределах окна и смены")
         return SCHEDULE_REASON
 
     request = loaded.requests[request_index]
@@ -140,6 +192,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
         summaries.append(
             PlanSummary(
                 id=plan.id,
+                comparison_id=plan.comparison_id,
                 run_type=plan.run_type.value,
                 plan_date=plan.plan_date,
                 solver=plan.solver,
@@ -253,7 +306,9 @@ def snapshot_inputs(loaded: LoadedDay) -> dict:
         "shift_start": e.shift_start.isoformat(), "shift_end": e.shift_end.isoformat(),
         "skill_ids": [skill.id for skill in e.skills],
     } for e in loaded.engineers}
-    return {"requests": requests, "engineers": engineers}
+    return {"requests": requests, "engineers": engineers,
+            "request_order": [r.id for r in loaded.requests],
+            "engineer_order": [e.id for e in loaded.engineers]}
 
 
 def snapshot_assignment(assignment: Assignment, snapshot: dict) -> SimpleNamespace:

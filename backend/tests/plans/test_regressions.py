@@ -57,6 +57,7 @@ async def test_import_reserves_explicit_ids_before_automatic_ids():
     rows = [dict(id=None, is_active=None), dict(id=1, is_active=None)]
     inserted = set()
     next_id = 1
+    insertion_order = []
 
     def add_request(session, fields):
         nonlocal next_id
@@ -66,10 +67,11 @@ async def test_import_reserves_explicit_ids_before_automatic_ids():
             next_id += 1
         assert identifier not in inserted, 'automatic ID collided with explicit ID'
         inserted.add(identifier)
+        insertion_order.append(identifier)
 
-    async def sync(session):
+    async def sync(session, minimum=1):
         nonlocal next_id
-        next_id = max(inserted) + 1
+        next_id = max(next_id - 1, max(inserted, default=0), minimum) + 1
 
     session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock())
     with patch.object(repository, 'lock_request_ids', AsyncMock()), \
@@ -80,5 +82,6 @@ async def test_import_reserves_explicit_ids_before_automatic_ids():
          patch.object(repository, 'sync_request_id_sequence', side_effect=sync):
         report = await service.import_requests_csv(session, b'csv')
     assert inserted == {1, 2}
+    assert insertion_order == [2, 1]  # CSV order survives ID reservation
     assert report.created == 2
     session.commit.assert_awaited_once()

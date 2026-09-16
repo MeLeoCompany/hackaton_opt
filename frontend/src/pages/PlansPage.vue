@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted } from 'vue'
 
+import PlanComparison from '../components/PlanComparison.vue'
 import PlanMap from '../components/PlanMap.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
 import { usePlans } from '../composables/usePlans.js'
@@ -17,6 +18,9 @@ const {
   loadingDays,
   loadingPlan,
   building,
+  solver,
+  comparison,
+  compareDayPlans,
   errorMessage,
   errorDetails,
   noticeMessage,
@@ -62,10 +66,18 @@ onMounted(loadDays)
         </select>
       </label>
 
+      <label class="field">
+        <span>Алгоритм</span>
+        <select v-model="solver" :disabled="building">
+          <option value="cuopt">Оптимизированный</option>
+          <option value="baseline">Базовый: первый подходящий исполнитель</option>
+        </select>
+      </label>
       <button class="primary" :disabled="!selectedDay || building" @click="buildDayPlan">
-        {{ building ? 'Считаю в cuOpt…' : 'Построить план' }}
+        {{ building ? 'Строю планы…' : 'Построить план' }}
       </button>
 
+      <button :disabled="!selectedDay || building" @click="compareDayPlans">Сравнить алгоритмы</button>
       <label v-if="plans.length" class="field plan-field">
         <span>План</span>
         <select :value="selectedPlanId" :disabled="building" @change="selectPlan(Number($event.target.value))">
@@ -85,6 +97,9 @@ onMounted(loadDays)
     <p v-else-if="!days.length" class="muted">Нет активных заявок ни на один день — планировать нечего.</p>
     <p v-else-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
     <p v-else-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
+
+    <p v-if="loadingPlan && plan?.comparison_id" class="muted">Загружаю сравнение…</p>
+    <PlanComparison v-if="comparison" :comparison="comparison" :disabled="building" @select-plan="selectPlan" />
 
     <div v-if="plan" class="plan-view">
       <div class="map-area">

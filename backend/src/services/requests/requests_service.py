@@ -130,14 +130,10 @@ async def import_requests_csv(session: AsyncSession, content: bytes) -> RequestI
 
     created = 0
     updated = 0
-    # Reserve all explicit IDs before allocating automatic IDs.
-    explicit_rows = [row for row in parsed.rows if row["id"] is not None]
-    automatic_rows = [row for row in parsed.rows if row["id"] is None]
-    for fields in explicit_rows + automatic_rows:
-        if fields["id"] is None and ids_in_file:
-            await session.flush()
-            await requests_repository.sync_request_id_sequence(session)
-            ids_in_file = []
+    # Reserve IDs first, then insert in CSV order so baseline follows arrival order.
+    if ids_in_file:
+        await requests_repository.sync_request_id_sequence(session, minimum=max(ids_in_file))
+    for fields in parsed.rows:
         existing_request = existing_by_id.get(fields["id"])
         fields_without_id = {name: value for name, value in fields.items() if name != "id"}
 

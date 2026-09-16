@@ -1,8 +1,9 @@
 import enum
 from datetime import date, datetime
+from uuid import UUID
 
 from sqlalchemy import BigInteger, Date, DateTime, Enum, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
@@ -33,3 +34,5 @@ class Plan(Base):
     solver: Mapped[str | None] = mapped_column(Text)
 
     input_snapshot: Mapped[dict | None] = mapped_column(JSONB)
+
+    comparison_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))

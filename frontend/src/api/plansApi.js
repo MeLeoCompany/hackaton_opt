@@ -10,10 +10,19 @@ export function listPlans(planDate) {
 }
 
 // строит план на день через cuOpt; отвечает сводкой построенного плана
-export function buildPlan(planDate) {
-  return apiRequest('POST', '/plans', { json: { plan_date: planDate } })
+export function buildPlan(planDate, solver = 'cuopt') {
+  return apiRequest('POST', '/plans', { json: { plan_date: planDate, solver } })
 }
 
 export function getPlan(planId) {
   return apiRequest('GET', `/plans/${planId}`)
+}
+
+
+export function buildComparison(planDate) {
+  return apiRequest('POST', '/plans/compare', { json: { plan_date: planDate } })
+}
+
+export function getComparison(planId) {
+  return apiRequest('GET', `/plans/${planId}/comparison`)
 }

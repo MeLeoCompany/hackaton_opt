@@ -16,7 +16,7 @@ ENGINEER_ID_LOCK_KEY = 7419822
 
 
 async def list_engineers(session: AsyncSession) -> list[Engineer]:
-    result = await session.execute(select(Engineer).options(selectinload(Engineer.skills)).order_by(Engineer.id))
+    result = await session.execute(select(Engineer).options(selectinload(Engineer.skills)).order_by(Engineer.input_order))
     return list(result.scalars().all())
 
 
@@ -28,7 +28,7 @@ async def list_engineers_in_period(
         select(Engineer)
         .options(selectinload(Engineer.skills))
         .where(Engineer.shift_start < period_end, Engineer.shift_end > period_start)
-        .order_by(Engineer.id)
+        .order_by(Engineer.input_order)
     )
     return list(result.scalars().all())
 

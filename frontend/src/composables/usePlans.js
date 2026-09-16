@@ -1,8 +1,8 @@
-// Планы на день: какие дни есть, построение плана через cuOpt, выбранный план с маршрутами.
+// Планы на день: какие дни есть, построение и сравнение алгоритмов, выбранный план с маршрутами.
 
 import { ref } from 'vue'
 
-import { buildPlan, getPlan, listPlanningDays, listPlans } from '../api/plansApi.js'
+import { buildComparison, getComparison, buildPlan, getPlan, listPlanningDays, listPlans } from '../api/plansApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
 import { useMessages } from './useMessages.js'
 
@@ -19,6 +19,8 @@ export function usePlans() {
   const loadingDays = ref(false)
   const loadingPlan = ref(false)
   const building = ref(false)
+  const solver = ref('cuopt')
+  const comparison = ref(null)
   const { errorMessage, errorDetails, noticeMessage, showError, showNotice, clearMessages } = useMessages()
 
   async function loadDays() {
@@ -47,6 +49,7 @@ export function usePlans() {
     const day = selectedDay.value
     plans.value = []
     plan.value = null
+    comparison.value = null
     selectedPlanId.value = null
     try {
       const summaries = await listPlans(day)
@@ -61,12 +64,18 @@ export function usePlans() {
   async function selectPlan(planId) {
     const request = ++detailRequest
     plan.value = null
+    comparison.value = null
     selectedPlanId.value = planId
     selectedEngineerId.value = null
     loadingPlan.value = true
     try {
       const loaded = await getPlan(planId)
-      if (request === detailRequest) plan.value = loaded
+      if (request !== detailRequest) return
+      plan.value = loaded
+      if (loaded.comparison_id) {
+        const pair = await getComparison(planId)
+        if (request === detailRequest) comparison.value = pair
+      }
     } catch (error) {
       if (request === detailRequest) showError(error)
     } finally {
@@ -75,16 +84,33 @@ export function usePlans() {
   }
 
   async function buildDayPlan() {
+    if (building.value) return
     building.value = true
     clearMessages()
     try {
-      const summary = await buildPlan(selectedDay.value)
+      const summary = await buildPlan(selectedDay.value, solver.value)
       showNotice(
         `План №${summary.id} построен: назначено ${summary.assigned_count}, ` +
           `не назначено ${summary.unassigned_count}, исполнителей ${summary.engineers_used}`,
       )
       plans.value = await listPlans(selectedDay.value)
       await selectPlan(summary.id)
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
+  async function compareDayPlans() {
+    if (building.value) return
+    building.value = true
+    clearMessages()
+    try {
+      const pair = await buildComparison(selectedDay.value)
+      plans.value = await listPlans(selectedDay.value)
+      await selectPlan(pair.optimized.id)
+      showNotice('Базовый и оптимизированный планы построены на одинаковых данных')
     } catch (error) {
       showError(error)
     } finally {
@@ -108,6 +134,9 @@ export function usePlans() {
     loadingDays,
     loadingPlan,
     building,
+    solver,
+    comparison,
+    compareDayPlans,
     errorMessage,
     errorDetails,
     noticeMessage,

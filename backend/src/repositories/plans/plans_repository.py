@@ -65,3 +65,8 @@ async def count_assignments_by_plan(
         plan_id: (engineers_used, assigned, total - assigned)
         for plan_id, engineers_used, assigned, total in rows
     }
+
+
+async def comparison_plans(session: AsyncSession, comparison_id) -> list[Plan]:
+    result = await session.execute(select(Plan).where(Plan.comparison_id == comparison_id))
+    return list(result.scalars().all())

@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Integer,
     Numeric,
@@ -24,6 +25,7 @@ class Request(Base):
     __table_args__ = (CheckConstraint("window_end > window_start"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    input_order: Mapped[int] = mapped_column(BigInteger, server_default=FetchedValue())
     latitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
     address: Mapped[str] = mapped_column(Text)

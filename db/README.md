@@ -65,7 +65,7 @@ docker exec -i routing_db psql -U routing -d routing < db/init/004_request_is_ac
 ## День и решатель плана (`plan.plan_date`, `plan.solver`)
 
 Добавлено миграцией `init/005_plan_day.sql`: `plan_date DATE` — день, на который построен план
-(по московскому времени), `solver TEXT` — чем посчитан (`cuopt`, в будущем `baseline` и т.п.).
+(по московскому времени), `solver TEXT` — чем посчитан (`cuopt`, `baseline` и т.п.).
 У уже существующих планов дата проставляется из их заявок.
 
 ```
@@ -83,3 +83,22 @@ docker exec -i routing_db psql -U routing -d routing < db/init/005_plan_day.sql
 ```bash
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/006_plan_snapshot.sql
 ```
+
+## Порядок поступления и сравнение алгоритмов
+
+`init/007_baseline_comparison.sql` добавляет `request.input_order` и `engineer.input_order`
+с отдельными последовательностями: внешний ID и время окна не определяют порядок поступления.
+Для существующих записей миграция фиксирует порядок по ID — исходный порядок неизвестен.
+Редактирование не меняет порядок; импорт новых заявок сохраняет последовательность строк CSV.
+Снимок нового плана содержит также `request_order` и `engineer_order`.
+
+`plan.comparison_id` связывает два плана, рассчитанных на одинаковых входных данных и матрицах.
+У одиночных и старых планов поле пустое.
+На существующую БД примените миграцию до запуска обновлённого backend:
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/007_baseline_comparison.sql
+```
+
+Повторный запуск безопасен. Новый Docker volume получает все миграции автоматически;
+удалять существующий volume не нужно.

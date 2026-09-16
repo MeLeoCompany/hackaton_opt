@@ -35,7 +35,7 @@ async def list_active_requests_in_period(
             Request.window_start < period_end,
             Request.window_end > period_start,
         )
-        .order_by(Request.window_start, Request.id)
+        .order_by(Request.input_order)
     )
     return list(result.scalars().all())
 
@@ -78,17 +78,18 @@ async def count_request_usages(session: AsyncSession, request_id: int) -> tuple[
     return int(assignments or 0), int(events or 0)
 
 
-async def sync_request_id_sequence(session: AsyncSession) -> None:
-    """Сдвигает автонумерацию заявок за самый большой номер в таблице.
+async def sync_request_id_sequence(session: AsyncSession, minimum: int = 1) -> None:
+    """Сдвигает автонумерацию за существующие ID и переданный minimum.
 
-    Нужно после вставки заявок с явными номерами: иначе следующая заявка без номера
-    получит из автонумерации номер, который уже занят.
+    minimum резервирует явные номера CSV до вставки строк с автоматическими ID.
+    Текущее значение последовательности не уменьшается.
     """
     await session.execute(
         text(
             "SELECT setval(pg_get_serial_sequence('request', 'id'), "
-            "GREATEST((SELECT MAX(id) FROM request), 1))"
-        )
+            "GREATEST((SELECT MAX(id) FROM request), "
+            "pg_sequence_last_value(pg_get_serial_sequence('request', 'id')::regclass), :minimum))"
+        ), {"minimum": minimum}
     )
 
 

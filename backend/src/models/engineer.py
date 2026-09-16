@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Numeric,
     SmallInteger,
@@ -30,6 +31,7 @@ class Engineer(Base):
     __table_args__ = (CheckConstraint("shift_end > shift_start"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    input_order: Mapped[int] = mapped_column(BigInteger, server_default=FetchedValue())
     name: Mapped[str] = mapped_column(Text)
     start_latitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
     start_longitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
