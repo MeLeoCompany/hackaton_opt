@@ -196,7 +196,8 @@ def test_without_work_type_duration_and_skill_are_required():
 
 def test_day_copy_moves_dates_and_drops_numbers():
     """Слепок дня, загруженный в другой день: время суток то же, номера новые."""
-    from datetime import date, datetime, timedelta, timezone as tz
+    from datetime import date, datetime, timedelta
+    from datetime import timezone as tz
 
     from src.services.requests.requests_service import copy_rows_to_day
 

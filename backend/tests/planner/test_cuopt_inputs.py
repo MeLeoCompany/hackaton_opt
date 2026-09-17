@@ -12,6 +12,7 @@ from src.services.planner.cuopt_solver import (
     parse_route_records,
     schedulable_request_indices,
 )
+from src.services.planner.objective_policy import ObjectiveCriterion
 
 
 def sample_instance():
@@ -58,7 +59,10 @@ def test_engineers_become_vehicles():
 def test_requests_become_orders():
     inputs = build_solver_inputs(sample_instance(), [0, 1])
 
-    assert inputs.order_locations.tolist() == [2, 3]  # точки заявок идут после стартов двух исполнителей
+    assert inputs.order_locations.tolist() == [
+        2,
+        3,
+    ]  # точки заявок идут после стартов двух исполнителей
     assert inputs.order_window_start.tolist() == [hhmm("10:00"), hhmm("15:00")]
     assert inputs.order_window_end.tolist() == [hhmm("12:00"), hhmm("17:00")]
     assert inputs.order_service_minutes.tolist() == [60, 60]
@@ -130,6 +134,39 @@ def test_dynamic_objective_has_strict_priority_levels():
     assert objective.urgent_reward > objective.regular_reward + lower_than_request
 
 
+def test_dispatcher_can_prioritize_total_throughput_over_urgency():
+    instance = sample_instance()
+    order = (
+        ObjectiveCriterion.ASSIGNED_REQUESTS,
+        ObjectiveCriterion.URGENT_REQUESTS,
+        ObjectiveCriterion.ENGINEERS_USED,
+        ObjectiveCriterion.TRAVEL_DISTANCE,
+    )
+
+    objective = build_objective_policy(instance, [0, 1], 1.0, order)
+    urgent_bonus = objective.urgent_reward - objective.regular_reward
+    lower_levels = (
+        urgent_bonus + instance.n_engineers * objective.vehicle_cost + objective.distance_weight
+    )
+
+    assert objective.criteria == order
+    assert objective.regular_reward > lower_levels
+
+
+def test_dispatcher_can_prioritize_distance_over_engineer_count():
+    instance = sample_instance()
+    order = (
+        ObjectiveCriterion.URGENT_REQUESTS,
+        ObjectiveCriterion.ASSIGNED_REQUESTS,
+        ObjectiveCriterion.TRAVEL_DISTANCE,
+        ObjectiveCriterion.ENGINEERS_USED,
+    )
+
+    objective = build_objective_policy(instance, [0, 1], 1.0, order)
+
+    assert objective.distance_weight > instance.n_engineers * objective.vehicle_cost
+
+
 def test_distance_matrices_are_normalized_without_unreachable_sentinel():
     instance = sample_instance()
     instance.distance_km[CAR][0, 1] = 100_000.0
@@ -146,7 +183,7 @@ def test_unsafe_float32_objective_is_rejected():
     fake_instance = SimpleNamespace(
         n_engineers=1,
         engineers=[SimpleNamespace(shift_start_min=0, shift_end_min=1_440)],
-        requests=[SimpleNamespace(is_urgent=False) for _ in range(request_count)],
+        requests=[SimpleNamespace(is_urgent=True) for _ in range(request_count)],
         distance_km={1: np.zeros((1, 1))},
         travel_min={1: np.zeros((1, 1))},
     )

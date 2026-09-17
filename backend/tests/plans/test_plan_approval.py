@@ -1,6 +1,6 @@
 """Утверждение плана: заявки закрепляются за днём и другим дням не достаются."""
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -21,7 +21,7 @@ def summary(plan_id):
         run_type="optimized",
         plan_date=date(2026, 8, 17),
         solver="cuopt",
-        created_at=datetime(2026, 8, 17, 7, tzinfo=timezone.utc),
+        created_at=datetime(2026, 8, 17, 7, tzinfo=UTC),
         engineers_used=2,
         assigned_count=3,
         unassigned_count=0,
@@ -53,7 +53,7 @@ async def test_second_plan_of_the_day_is_not_approved():
 
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=plan(9))),
-        patch.object(repository, "get_approved_plan", AsyncMock(return_value=plan(8, datetime.now(timezone.utc)))),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=plan(8, datetime.now(UTC)))),
         patch.object(repository, "hold_plan_requests", AsyncMock()) as hold,
         pytest.raises(PlanInUseError, match="№8"),
     ):
@@ -65,7 +65,7 @@ async def test_second_plan_of_the_day_is_not_approved():
 
 @pytest.mark.asyncio
 async def test_cancelling_approval_releases_requests():
-    target = plan(9, datetime.now(timezone.utc))
+    target = plan(9, datetime.now(UTC))
     session = SimpleNamespace(commit=AsyncMock())
     repository = planning_service.plans_repository
 
@@ -86,8 +86,8 @@ async def test_day_check_reports_requests_held_by_another_day():
     held_request = SimpleNamespace(
         id=42,
         address="Ленина, 1",
-        window_start=datetime(2026, 8, 17, 20, tzinfo=timezone.utc),
-        window_end=datetime(2026, 8, 17, 23, tzinfo=timezone.utc),
+        window_start=datetime(2026, 8, 17, 20, tzinfo=UTC),
+        window_end=datetime(2026, 8, 17, 23, tzinfo=UTC),
     )
     requests_repository = planning_service.requests_repository
 

@@ -25,6 +25,11 @@ import numpy as np
 
 from src.core.config import settings
 from src.core.errors import ExternalServiceError
+from src.services.planner.objective_policy import (
+    DEFAULT_OBJECTIVE_ORDER,
+    ObjectiveCriterion,
+    validate_objective_order,
+)
 from src.services.planner.planner_problem import ProblemInstance
 
 # Objective cuOpt хранится в float32. Ограничиваем суммарный масштаб половиной точного
@@ -51,12 +56,9 @@ class DaySolution:
 
 @dataclass(frozen=True)
 class ObjectivePolicy:
-    """Динамические коэффициенты строгой иерархии целевой функции.
+    """Коэффициенты строгой иерархии выбранных диспетчером критериев."""
 
-    Любая срочная заявка важнее всех обычных и нижних уровней вместе; одна обычная
-    важнее всех исполнителей и пробега; один исполнитель важнее любой разницы пробега.
-    """
-
+    criteria: tuple[ObjectiveCriterion, ...]
     urgent_reward: float
     regular_reward: float
     vehicle_cost: float
@@ -100,7 +102,11 @@ class SolverInputs:
         )
 
 
-async def solve_day(instance: ProblemInstance) -> DaySolution:
+async def solve_day(
+    instance: ProblemInstance,
+    *,
+    objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+) -> DaySolution:
     task_request_indices = schedulable_request_indices(instance)
     if not task_request_indices or instance.n_engineers == 0:
         return DaySolution()
@@ -108,7 +114,10 @@ async def solve_day(instance: ProblemInstance) -> DaySolution:
     # решение занимает секунды — считаем в отдельном потоке, чтобы не блокировать остальные запросы
     try:
         inputs = build_solver_inputs(
-            instance, task_request_indices, distance_weight=settings.cuopt_distance_weight
+            instance,
+            task_request_indices,
+            distance_weight=settings.cuopt_distance_weight,
+            objective_order=objective_order,
         )
         route_records = await asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
         solution = parse_route_records(route_records, task_request_indices)
@@ -116,7 +125,9 @@ async def solve_day(instance: ProblemInstance) -> DaySolution:
         raise
     except (RuntimeError, ValueError, KeyError, IndexError, OSError) as error:
         logging.getLogger(__name__).exception("Ошибка выполнения cuOpt")
-        raise ExternalServiceError("Не удалось выполнить расчёт cuOpt; подробности в журнале backend") from error
+        raise ExternalServiceError(
+            "Не удалось выполнить расчёт cuOpt; подробности в журнале backend"
+        ) from error
     validate_solution(instance, solution)
     return solution
 
@@ -127,7 +138,8 @@ def schedulable_request_indices(instance: ProblemInstance) -> list[int]:
         request_index
         for request_index in range(instance.n_requests)
         if instance.compatible[request_index].any()
-        and instance.requests[request_index].window_start_min <= instance.requests[request_index].window_end_min
+        and instance.requests[request_index].window_start_min
+        <= instance.requests[request_index].window_end_min
     ]
 
 
@@ -136,6 +148,7 @@ def build_solver_inputs(
     task_request_indices: list[int],
     *,
     distance_weight: float | None = None,
+    objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
 ) -> SolverInputs:
     """ProblemInstance -> массивы для DataModel. task_request_indices — какие заявки отправляем."""
     transport_ids = sorted({engineer.transport_id for engineer in instance.engineers})
@@ -150,6 +163,7 @@ def build_solver_inputs(
         instance,
         task_request_indices,
         settings.cuopt_distance_weight if distance_weight is None else distance_weight,
+        objective_order,
     )
 
     return SolverInputs(
@@ -168,21 +182,28 @@ def build_solver_inputs(
             for transport_id in transport_ids
         },
         vehicle_locations=np.array(
-            [instance.start_node(engineer_index) for engineer_index in range(instance.n_engineers)], dtype=np.int32
+            [instance.start_node(engineer_index) for engineer_index in range(instance.n_engineers)],
+            dtype=np.int32,
         ),
         vehicle_types=np.array([engineer.transport_id for engineer in engineers], dtype=np.uint8),
-        vehicle_shift_start=np.array([engineer.shift_start_min for engineer in engineers], dtype=np.int32),
-        vehicle_shift_end=np.array([engineer.shift_end_min for engineer in engineers], dtype=np.int32),
-        vehicle_fixed_costs=np.full(
-            instance.n_engineers, objective.vehicle_cost, dtype=np.float32
+        vehicle_shift_start=np.array(
+            [engineer.shift_start_min for engineer in engineers], dtype=np.int32
         ),
+        vehicle_shift_end=np.array(
+            [engineer.shift_end_min for engineer in engineers], dtype=np.int32
+        ),
+        vehicle_fixed_costs=np.full(instance.n_engineers, objective.vehicle_cost, dtype=np.float32),
         order_locations=np.array(
             [instance.n_engineers + index for index in range(len(task_request_indices))],
             dtype=np.int32,
         ),
-        order_window_start=np.array([request.window_start_min for request in requests], dtype=np.int32),
+        order_window_start=np.array(
+            [request.window_start_min for request in requests], dtype=np.int32
+        ),
         order_window_end=np.array([request.window_end_min for request in requests], dtype=np.int32),
-        order_service_minutes=np.array([request.duration_min for request in requests], dtype=np.int32),
+        order_service_minutes=np.array(
+            [request.duration_min for request in requests], dtype=np.int32
+        ),
         order_prizes=np.array(
             [
                 objective.urgent_reward if request.is_urgent else objective.regular_reward
@@ -191,7 +212,8 @@ def build_solver_inputs(
             dtype=np.float32,
         ),
         order_allowed_vehicles=[
-            np.array(instance.candidates(request_index), dtype=np.int32) for request_index in task_request_indices
+            np.array(instance.candidates(request_index), dtype=np.int32)
+            for request_index in task_request_indices
         ],
         objective=objective,
     )
@@ -201,31 +223,44 @@ def build_objective_policy(
     instance: ProblemInstance,
     task_request_indices: list[int],
     distance_weight: float,
+    objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
 ) -> ObjectivePolicy:
-    """Строит безопасные Big-M коэффициенты для приоритетов ТЗ.
+    """Строит безопасные Big-M коэффициенты для выбранной строгой иерархии.
 
-    Cost-матрицы делятся на верхнюю границу суммарного пробега. Поэтому вклад COST
-    любого решения не больше distance_weight и остальные уровни можно отделить
-    небольшими динамическими коэффициентами, не зависящими от единиц расстояния.
+    Каждый коэффициент больше максимально возможного вклада всех нижних уровней.
+    Cost-матрицы нормализованы, поэтому диапазон общего пробега не превышает единицу.
     """
-    if not math.isfinite(distance_weight) or distance_weight < 0:
-        raise ValueError("вес пробега cuOpt должен быть конечным неотрицательным числом")
+    if not math.isfinite(distance_weight) or distance_weight <= 0:
+        raise ValueError("вес пробега cuOpt должен быть конечным положительным числом")
+
+    criteria = validate_objective_order(objective_order)
 
     request_count = len(task_request_indices)
-    regular_count = sum(
-        not instance.requests[index].is_urgent for index in task_request_indices
-    )
-    lower_distance_cost = distance_weight
-    vehicle_cost = lower_distance_cost + 1.0
-    lower_regular_cost = instance.n_engineers * vehicle_cost + lower_distance_cost
-    regular_reward = lower_regular_cost + 1.0
-    lower_urgent_cost = regular_count * regular_reward + lower_regular_cost
-    urgent_reward = lower_urgent_cost + 1.0
-    maximum_objective_magnitude = request_count * urgent_reward + lower_regular_cost
+    urgent_count = sum(instance.requests[index].is_urgent for index in task_request_indices)
+    maximum_changes = {
+        ObjectiveCriterion.URGENT_REQUESTS: urgent_count,
+        ObjectiveCriterion.ASSIGNED_REQUESTS: request_count,
+        ObjectiveCriterion.ENGINEERS_USED: instance.n_engineers,
+        ObjectiveCriterion.TRAVEL_DISTANCE: 1.0,
+    }
+    coefficients: dict[ObjectiveCriterion, float] = {}
+    lower_levels = 0.0
+    for criterion in reversed(criteria):
+        increment = distance_weight if criterion is ObjectiveCriterion.TRAVEL_DISTANCE else 1.0
+        coefficient = lower_levels + increment
+        coefficients[criterion] = coefficient
+        lower_levels += maximum_changes[criterion] * coefficient
+
+    assigned_reward = coefficients[ObjectiveCriterion.ASSIGNED_REQUESTS]
+    urgent_reward = assigned_reward + coefficients[ObjectiveCriterion.URGENT_REQUESTS]
+    vehicle_cost = coefficients[ObjectiveCriterion.ENGINEERS_USED]
+    effective_distance_weight = coefficients[ObjectiveCriterion.TRAVEL_DISTANCE]
+    maximum_objective_magnitude = lower_levels
     coefficient_values = (
         vehicle_cost,
-        regular_reward,
+        assigned_reward,
         urgent_reward,
+        effective_distance_weight,
         maximum_objective_magnitude,
     )
     if not all(math.isfinite(value) for value in coefficient_values):
@@ -259,9 +294,7 @@ def build_objective_policy(
         distance_matrix = distance_matrix[np.ix_(selected_nodes, selected_nodes)]
         travel_matrix = instance.travel_min[transport_id][np.ix_(selected_nodes, selected_nodes)]
         feasible = (
-            np.isfinite(travel_matrix)
-            & (travel_matrix >= 0)
-            & (travel_matrix <= max_shift_span)
+            np.isfinite(travel_matrix) & (travel_matrix >= 0) & (travel_matrix <= max_shift_span)
         )
         if feasible.any():
             feasible_arc_distances.append(float(np.max(distance_matrix[feasible])))
@@ -273,10 +306,11 @@ def build_objective_policy(
         raise ValueError("масштаб расстояний cuOpt вышел за допустимый диапазон")
 
     return ObjectivePolicy(
+        criteria=criteria,
         urgent_reward=urgent_reward,
-        regular_reward=regular_reward,
+        regular_reward=assigned_reward,
         vehicle_cost=vehicle_cost,
-        distance_weight=distance_weight,
+        distance_weight=effective_distance_weight,
         distance_scale=distance_scale,
     )
 
@@ -391,11 +425,21 @@ def validate_solution(instance: ProblemInstance, solution: DaySolution) -> None:
             seen.add(index)
             request = instance.requests[index]
             start = visit.work_start_minute
-            arrival = available + instance.travel_min[engineer.transport_id][previous_node, instance.request_node(index)]
-            if (not math.isfinite(start) or not instance.compatible[index, engineer_index]
-                    or start < max(arrival, request.window_start_min) - 1e-4
-                    or start > request.window_end_min + 1e-4
-                    or start + request.duration_min > engineer.shift_end_min + 1e-4):
-                raise ExternalServiceError("Результат решателя нарушает ограничения заявки или смены")
+            arrival = (
+                available
+                + instance.travel_min[engineer.transport_id][
+                    previous_node, instance.request_node(index)
+                ]
+            )
+            if (
+                not math.isfinite(start)
+                or not instance.compatible[index, engineer_index]
+                or start < max(arrival, request.window_start_min) - 1e-4
+                or start > request.window_end_min + 1e-4
+                or start + request.duration_min > engineer.shift_end_min + 1e-4
+            ):
+                raise ExternalServiceError(
+                    "Результат решателя нарушает ограничения заявки или смены"
+                )
             available = start + request.duration_min
             previous_node = instance.request_node(index)

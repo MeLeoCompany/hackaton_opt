@@ -1,6 +1,6 @@
 """Разбор и сборка CSV с исполнителями — без БД, справочники заданы в тесте."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from src.services.engineers.engineers_csv import (
     EngineerReferenceLookup,
@@ -37,7 +37,7 @@ def test_row_with_names_and_numbers():
     assert row["start_latitude"] == 55.74  # запятая в дробной части тоже понимается
     assert row["transport_id"] == 1
     assert row["skill_ids"] == [1, 3]
-    assert row["shift_start"].astimezone(timezone.utc).hour == 6  # 09:00 МСК
+    assert row["shift_start"].astimezone(UTC).hour == 6  # 09:00 МСК
 
 
 def test_engineer_without_skills_is_rejected():
@@ -65,7 +65,7 @@ def test_shift_end_must_be_later():
 
 
 def test_exported_file_can_be_parsed_back():
-    moment = datetime(2026, 8, 17, 6, 0, tzinfo=timezone.utc)
+    moment = datetime(2026, 8, 17, 6, 0, tzinfo=UTC)
     content = build_engineers_csv(
         [
             {

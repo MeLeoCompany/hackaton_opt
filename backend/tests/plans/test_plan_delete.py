@@ -1,5 +1,6 @@
 """Удаление плана: день можно пересчитать заново; утверждённый план так просто не удалить."""
 
+from datetime import UTC
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -42,11 +43,11 @@ async def test_deleting_missing_plan_is_not_found():
 @pytest.mark.asyncio
 async def test_approved_plan_is_not_deleted():
     """Иначе заявки остались бы закреплёнными за несуществующим планом."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from src.services.planner.planning_service import PlanInUseError
 
-    plan = SimpleNamespace(id=9, approved_at=datetime(2026, 8, 17, tzinfo=timezone.utc))
+    plan = SimpleNamespace(id=9, approved_at=datetime(2026, 8, 17, tzinfo=UTC))
     session = SimpleNamespace(commit=AsyncMock())
     repository = planning_service.plans_repository
 

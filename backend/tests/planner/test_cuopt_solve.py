@@ -26,6 +26,7 @@ from planner_test_helpers import (
 )
 
 from src.core.config import settings
+from src.services.planner.objective_policy import ObjectiveCriterion
 
 
 @pytest.fixture(autouse=True)
@@ -210,6 +211,31 @@ def test_one_urgent_request_wins_over_two_regular_requests():
 
     assert constraint_violations(instance, skills, solution) == []
     assert assigned_request_ids(instance, solution) == [12]
+
+
+def test_throughput_first_can_choose_two_regular_requests_over_one_urgent():
+    skills = {1: {1}}
+    instance = make_instance(
+        engineers=[engineer(1, shift=("10:00", "11:30"))],
+        requests=[
+            request(10, skill=1, window=("10:00", "11:00"), duration=30),
+            request(11, skill=1, window=("10:00", "11:00"), duration=30),
+            request(12, skill=1, window=("10:00", "11:00"), duration=90, priority=URGENT),
+        ],
+        skills=skills,
+        travel_min=0,
+    )
+    throughput_first = (
+        ObjectiveCriterion.ASSIGNED_REQUESTS,
+        ObjectiveCriterion.URGENT_REQUESTS,
+        ObjectiveCriterion.ENGINEERS_USED,
+        ObjectiveCriterion.TRAVEL_DISTANCE,
+    )
+
+    solution = solve(instance, throughput_first)
+
+    assert constraint_violations(instance, skills, solution) == []
+    assert assigned_request_ids(instance, solution) == [10, 11]
 
 
 def test_one_engineer_is_enough_when_he_can_do_everything():

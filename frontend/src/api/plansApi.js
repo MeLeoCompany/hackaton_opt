@@ -9,8 +9,7 @@ export function listPlans(planDate) {
   return apiRequest('GET', `/plans?plan_date=${encodeURIComponent(planDate)}`)
 }
 
-// строит сравнимую пару baseline/cuOpt; отвечает сводкой оптимизированного плана
-// params — параметры расчёта, пока только { solver: 'cuopt' | 'baseline' }
+// строит один план; params содержит solver и строгий objective_order для cuOpt
 export function buildPlan(planDate, params = {}) {
   return apiRequest('POST', '/plans', { json: { plan_date: planDate, ...params } })
 }

@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -16,18 +16,23 @@ from src.models import Assignment, Plan, PlanRunType
 from src.repositories.plans import plans_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
+    EngineerRoute,
     HeldRequest,
     PlanDayCheck,
-    SolverName,
-    EngineerRoute,
     PlanDetail,
     PlanningDayOption,
     PlanSummary,
     PlanVisit,
+    SolverName,
     UnassignedRequest,
 )
 from src.schemas.travel import Point, TransportKind, TravelProvider
 from src.services.planner import baseline_solver, cuopt_solver, planner_loader
+from src.services.planner.objective_policy import (
+    DEFAULT_OBJECTIVE_ORDER,
+    ObjectiveCriterion,
+    validate_objective_order,
+)
 from src.services.planner.planner_loader import LoadedDay
 from src.services.travel import build_route
 
@@ -86,7 +91,11 @@ async def load_planning_day(session: AsyncSession, plan_date: date) -> LoadedDay
 
 
 async def build_plan_for_day(
-    session: AsyncSession, plan_date: date, solver: SolverName = SolverName.CUOPT
+    session: AsyncSession,
+    plan_date: date,
+    solver: SolverName = SolverName.CUOPT,
+    objective_order: list[ObjectiveCriterion]
+    | tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
 ) -> PlanSummary:
     """Считает план дня выбранным решателем и сохраняет его отдельной записью.
 
@@ -95,9 +104,10 @@ async def build_plan_for_day(
     два уже посчитанных плана.
     """
     loaded = await load_planning_day(session, plan_date)
+    policy = validate_objective_order(objective_order)
 
     started = time.perf_counter()
-    solution = await solve_with(solver, loaded)
+    solution = await solve_with(solver, loaded, policy)
     duration_ms = (time.perf_counter() - started) * 1000
 
     plan = await save_solution(
@@ -107,17 +117,22 @@ async def build_plan_for_day(
         run_type=RUN_TYPE_BY_SOLVER[solver],
         solver=solver.value,
         solve_duration_ms=duration_ms,
+        objective_order=policy if solver is SolverName.CUOPT else None,
     )
     set_plan_distance(plan, await total_route_distance(loaded, solution))
     await session.commit()
     return (await summarize_plans(session, [plan]))[0]
 
 
-async def solve_with(solver: SolverName, loaded: LoadedDay) -> cuopt_solver.DaySolution:
+async def solve_with(
+    solver: SolverName,
+    loaded: LoadedDay,
+    objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+) -> cuopt_solver.DaySolution:
     """cuOpt считает на видеокарте в отдельном потоке, базовый алгоритм — прямо здесь."""
     if solver is SolverName.BASELINE:
         return baseline_solver.solve_day(loaded.instance)
-    return await cuopt_solver.solve_day(loaded.instance)
+    return await cuopt_solver.solve_day(loaded.instance, objective_order=objective_order)
 
 
 @dataclass(frozen=True)
@@ -214,7 +229,7 @@ async def approve_plan(session: AsyncSession, plan_id: int) -> PlanSummary:
             "снимите утверждение с него, чтобы утвердить другой"
         )
 
-    await plans_repository.hold_plan_requests(session, plan, datetime.now(timezone.utc))
+    await plans_repository.hold_plan_requests(session, plan, datetime.now(UTC))
     await session.commit()
     return (await summarize_plans(session, [plan]))[0]
 
@@ -265,6 +280,7 @@ async def save_solution(
     run_type: PlanRunType = PlanRunType.OPTIMIZED,
     solver: str = SOLVER_NAME,
     solve_duration_ms: float | None = None,
+    objective_order: tuple[ObjectiveCriterion, ...] | None = None,
 ) -> Plan:
     day = loaded.day
     plan = plans_repository.add_plan(
@@ -274,6 +290,11 @@ async def save_solution(
         solver,
         solve_duration_ms=(
             Decimal(str(round(solve_duration_ms, 3))) if solve_duration_ms is not None else None
+        ),
+        objective_policy=(
+            {"criteria": [criterion.value for criterion in objective_order]}
+            if objective_order is not None
+            else None
         ),
     )
     plan.input_snapshot = snapshot_inputs(loaded)
@@ -396,9 +417,22 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                     float(plan.solve_duration_ms) if plan.solve_duration_ms is not None else None
                 ),
                 approved_at=plan.approved_at,
+                objective_order=objective_order_from_plan(plan),
             )
         )
     return summaries
+
+
+def objective_order_from_plan(plan: Plan) -> list[ObjectiveCriterion] | None:
+    policy = getattr(plan, "objective_policy", None)
+    if not policy:
+        return None
+    try:
+        return list(
+            validate_objective_order([ObjectiveCriterion(value) for value in policy["criteria"]])
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def count_urgent_assignments(snapshot: dict | None, assigned_request_ids: set[int]) -> int | None:
@@ -460,7 +494,10 @@ def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
             1
             for engineer in engineers
             if request["skill_id"] in engineer["skill_ids"]
-            and (request["transport_id"] is None or request["transport_id"] == engineer["transport_id"])
+            and (
+                request["transport_id"] is None
+                or request["transport_id"] == engineer["transport_id"]
+            )
         )
     return counts
 

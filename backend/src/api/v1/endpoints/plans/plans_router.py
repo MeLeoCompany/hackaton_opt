@@ -22,7 +22,9 @@ from src.services.planner import planning_service
 router = APIRouter()
 
 
-@router.get("/days", response_model=list[PlanningDayOption], summary="Дни, на которые есть активные заявки")
+@router.get(
+    "/days", response_model=list[PlanningDayOption], summary="Дни, на которые есть активные заявки"
+)
 async def list_planning_days(session: AsyncSession = Depends(get_db)):
     return await planning_service.list_planning_days(session)
 
@@ -39,7 +41,12 @@ async def list_plans(plan_date: date | None = None, session: AsyncSession = Depe
     summary="Построить план на день выбранным решателем",
 )
 async def build_plan(payload: PlanBuildRequest, session: AsyncSession = Depends(get_db)):
-    return await planning_service.build_plan_for_day(session, payload.plan_date, payload.solver)
+    return await planning_service.build_plan_for_day(
+        session,
+        payload.plan_date,
+        payload.solver,
+        payload.objective_order,
+    )
 
 
 @router.get(

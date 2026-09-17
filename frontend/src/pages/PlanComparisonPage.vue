@@ -7,6 +7,7 @@ import DayPanel from '../components/DayPanel.vue'
 import { usePlanComparison } from '../composables/usePlanComparison.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { moscowTimeOf } from '../utils/moscowTime.js'
+import { objectivePolicyLabel } from '../utils/planningPriorities.js'
 
 const {
   plans,
@@ -73,6 +74,7 @@ onMounted(load)
               <th class="pick">Сравнить</th>
               <th>План</th>
               <th>Решатель</th>
+              <th>Приоритеты</th>
               <th>Рассчитан</th>
               <th>Назначено</th>
               <th>Пробег, км</th>
@@ -103,6 +105,7 @@ onMounted(load)
               </td>
               <td class="number-cell">№{{ summary.id }}</td>
               <td>{{ summary.solver ?? '—' }}</td>
+              <td>{{ objectivePolicyLabel(summary.objective_order) }}</td>
               <td class="nowrap">{{ moscowTimeOf(summary.created_at) }}</td>
               <td class="number-cell">{{ summary.assigned_count }}</td>
               <td class="number-cell">
@@ -114,6 +117,14 @@ onMounted(load)
       </div>
 
       <p v-if="!first || !second" class="muted">Отметьте два плана, чтобы увидеть разницу.</p>
+
+      <p
+        v-else-if="objectivePolicyLabel(first.objective_order) !== objectivePolicyLabel(second.objective_order)"
+        class="message warning"
+      >
+        Планы построены с разными приоритетами. Метрики сравнимы, но решатели оптимизировали
+        разные цели.
+      </p>
 
       <div v-if="first && second" class="table-scroll">
         <table class="data-table">

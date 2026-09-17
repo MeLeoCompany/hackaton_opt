@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
+import { objectivePolicyLabel } from '../utils/planningPriorities.js'
 
 const props = defineProps({
   plans: { type: Array, required: true },
@@ -51,6 +52,7 @@ function solveDuration(summary) {
           <th>№</th>
           <th>Рассчитан</th>
           <th>Решатель</th>
+          <th>Приоритеты</th>
           <th>Назначено</th>
           <th>Срочных</th>
           <th>Не назначено</th>
@@ -74,6 +76,7 @@ function solveDuration(summary) {
           </td>
           <td class="nowrap">{{ moscowTimeOf(summary.created_at) }}</td>
           <td>{{ summary.solver ?? '—' }}</td>
+          <td class="nowrap">{{ objectivePolicyLabel(summary.objective_order) }}</td>
           <td class="number-cell">{{ summary.assigned_count }}</td>
           <td class="number-cell">{{ summary.urgent_assigned_count ?? '—' }}</td>
           <td class="number-cell">{{ summary.unassigned_count }}</td>

@@ -13,6 +13,7 @@ import numpy as np
 
 from src.services.planner import EngineerSpec, ProblemInstance, RequestSpec, build_compatibility
 from src.services.planner.cuopt_solver import DaySolution, solve_day
+from src.services.planner.objective_policy import DEFAULT_OBJECTIVE_ORDER, ObjectiveCriterion
 
 CAR = 1
 WALK = 2
@@ -38,14 +39,20 @@ def as_clock(minutes: float) -> str:
 
 
 def engineer(engineer_id, transport=CAR, shift=("08:00", "18:00")):
-    return EngineerSpec(engineer_id, f"исполнитель {engineer_id}", transport, hhmm(shift[0]), hhmm(shift[1]))
+    return EngineerSpec(
+        engineer_id, f"исполнитель {engineer_id}", transport, hhmm(shift[0]), hhmm(shift[1])
+    )
 
 
 def request(request_id, skill, window, duration=60, transport=None, priority=REGULAR):
-    return RequestSpec(request_id, duration, hhmm(window[0]), hhmm(window[1]), skill, transport, priority)
+    return RequestSpec(
+        request_id, duration, hhmm(window[0]), hhmm(window[1]), skill, transport, priority
+    )
 
 
-def make_instance(engineers, requests, skills, travel_min=10, distance_km=5.0, travel_min_by_transport=None):
+def make_instance(
+    engineers, requests, skills, travel_min=10, distance_km=5.0, travel_min_by_transport=None
+):
     """Задача, где между любыми двумя разными точками travel_min минут и distance_km км.
 
     skills — навыки по engineer_id, например {1: {1, 2}, 2: {3}}.
@@ -63,7 +70,9 @@ def make_instance(engineers, requests, skills, travel_min=10, distance_km=5.0, t
     instance = ProblemInstance(
         engineers=engineers,
         requests=requests,
-        distance_km={transport: same_everywhere(distance_km, np.float64) for transport in transports},
+        distance_km={
+            transport: same_everywhere(distance_km, np.float64) for transport in transports
+        },
         travel_min={
             transport: same_everywhere(travel_overrides.get(transport, travel_min), np.int32)
             for transport in transports
@@ -73,8 +82,11 @@ def make_instance(engineers, requests, skills, travel_min=10, distance_km=5.0, t
     return instance
 
 
-def solve(instance: ProblemInstance) -> DaySolution:
-    return asyncio.run(solve_day(instance))
+def solve(
+    instance: ProblemInstance,
+    objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+) -> DaySolution:
+    return asyncio.run(solve_day(instance, objective_order=objective_order))
 
 
 def assigned_request_ids(instance: ProblemInstance, solution: DaySolution) -> list[int]:
@@ -85,7 +97,9 @@ def assigned_request_ids(instance: ProblemInstance, solution: DaySolution) -> li
     )
 
 
-def route_request_ids(instance: ProblemInstance, solution: DaySolution, engineer_id: int) -> list[int]:
+def route_request_ids(
+    instance: ProblemInstance, solution: DaySolution, engineer_id: int
+) -> list[int]:
     """Номера заявок исполнителя в порядке объезда."""
     for engineer_index, visits in solution.routes.items():
         if instance.engineers[engineer_index].engineer_id == engineer_id:
@@ -93,7 +107,9 @@ def route_request_ids(instance: ProblemInstance, solution: DaySolution, engineer
     return []
 
 
-def constraint_violations(instance: ProblemInstance, skills: dict[int, set[int]], solution: DaySolution) -> list[str]:
+def constraint_violations(
+    instance: ProblemInstance, skills: dict[int, set[int]], solution: DaySolution
+) -> list[str]:
     """Все нарушения ограничений ТЗ в решении; пустой список — решение допустимо.
 
     Проверяется по исходным данным, а не по подготовленной планировщиком совместимости:
@@ -117,7 +133,9 @@ def constraint_violations(instance: ProblemInstance, skills: dict[int, set[int]]
             label = f"заявка {request_spec.request_id} у исполнителя {engineer_spec.engineer_id}"
 
             if visit.request_index in assigned_to:
-                violations.append(f"{label}: уже назначена исполнителю {assigned_to[visit.request_index]}")
+                violations.append(
+                    f"{label}: уже назначена исполнителю {assigned_to[visit.request_index]}"
+                )
             assigned_to[visit.request_index] = engineer_spec.engineer_id
 
             if request_spec.skill_id not in skills[engineer_spec.engineer_id]:
@@ -128,7 +146,9 @@ def constraint_violations(instance: ProblemInstance, skills: dict[int, set[int]]
             ):
                 violations.append(f"{label}: нужен транспорт {request_spec.required_transport_id}")
 
-            earliest_start = free_from + travel[position][instance.request_node(visit.request_index)]
+            earliest_start = (
+                free_from + travel[position][instance.request_node(visit.request_index)]
+            )
             work_start = visit.work_start_minute
             if work_start + MINUTE_TOLERANCE < earliest_start:
                 violations.append(

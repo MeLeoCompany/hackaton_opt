@@ -1,8 +1,7 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from planner_test_helpers import engineer, make_instance, request
-
-from datetime import datetime, timedelta, timezone
 
 from src.services.planner.planning_service import (
     SCHEDULE_REASON,
@@ -40,7 +39,7 @@ def test_unassigned_reason_reports_conflict_when_request_fits_separately():
 
 def test_visit_keeps_facts_of_its_own_place_in_route():
     """Из этих чисел интерфейс объясняет визит: когда освободился, сколько осталось запаса."""
-    day = datetime(2026, 8, 17, tzinfo=timezone.utc)
+    day = datetime(2026, 8, 17, tzinfo=UTC)
     assignment = SimpleNamespace(
         visit_order=2,
         planned_arrival_time=day + timedelta(hours=10),  # начало работ 10:00

@@ -35,6 +35,8 @@ class Plan(Base):
 
     # время работы решателя без загрузки матриц и расчёта геометрии
     solve_duration_ms: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
+    # строгий порядок критериев, с которым был рассчитан план
+    objective_policy: Mapped[dict | None] = mapped_column(JSONB)
 
     input_snapshot: Mapped[dict | None] = mapped_column(JSONB)
     # общий пробег по дорогам, считается при построении плана

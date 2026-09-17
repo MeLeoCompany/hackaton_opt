@@ -1,7 +1,13 @@
 from datetime import date, datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+from src.services.planner.objective_policy import (
+    DEFAULT_OBJECTIVE_ORDER,
+    ObjectiveCriterion,
+    validate_objective_order,
+)
 
 
 class SolverName(str, Enum):
@@ -20,6 +26,14 @@ class PlanBuildRequest(BaseModel):
 
     plan_date: date
     solver: SolverName = SolverName.CUOPT
+    objective_order: list[ObjectiveCriterion] = Field(
+        default_factory=lambda: list(DEFAULT_OBJECTIVE_ORDER)
+    )
+
+    @field_validator("objective_order")
+    @classmethod
+    def validate_order(cls, value: list[ObjectiveCriterion]) -> list[ObjectiveCriterion]:
+        return list(validate_objective_order(value))
 
 
 class PlanningDayOption(BaseModel):
@@ -43,6 +57,7 @@ class PlanSummary(BaseModel):
     distance_provider: str | None = None  # valhalla / haversine / mixed; NULL у старых планов
     solve_duration_ms: float | None = None
     approved_at: datetime | None = None  # план утверждён: его заявки закреплены за этим днём
+    objective_order: list[ObjectiveCriterion] | None = None
 
 
 class HeldRequest(BaseModel):

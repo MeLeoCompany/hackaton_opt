@@ -1,9 +1,7 @@
 """Чтение и запись планов и назначений. Коммит делает сервис — здесь только запросы."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-
-from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,12 +17,14 @@ def add_plan(
     solver: str,
     *,
     solve_duration_ms: Decimal | None = None,
+    objective_policy: dict | None = None,
 ) -> Plan:
     plan = Plan(
         run_type=run_type,
         plan_date=plan_date,
         solver=solver,
         solve_duration_ms=solve_duration_ms,
+        objective_policy=objective_policy,
     )
     session.add(plan)
     return plan

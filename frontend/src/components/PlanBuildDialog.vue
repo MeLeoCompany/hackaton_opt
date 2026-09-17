@@ -1,10 +1,10 @@
 <script setup>
 // Параметры расчёта плана: окно открывается по кнопке «Построить план», поля заполнены
 // значениями по умолчанию — можно сразу нажать «Рассчитать».
-// Пока параметр один — алгоритм; сюда же добавятся лимит времени и веса целевой функции.
 import { computed, reactive } from 'vue'
 
 import { formatDay } from '../utils/moscowTime.js'
+import { objectiveOrder } from '../utils/planningPriorities.js'
 
 const props = defineProps({
   planDate: { type: String, required: true },
@@ -28,7 +28,11 @@ const SOLVERS = [
 ]
 
 // значения по умолчанию: ими же расчёт и запускается, если ничего не менять
-const params = reactive({ solver: 'cuopt' })
+const params = reactive({
+  solver: 'cuopt',
+  servicePriority: 'urgent_requests',
+  resourcePriority: 'engineers_used',
+})
 
 // заявки с окном через полночь мог забрать утверждённый план соседнего дня — предупреждаем до расчёта
 const heldRequests = computed(() => props.dayCheck?.held_requests ?? [])
@@ -39,6 +43,14 @@ const heldNumbers = computed(() => heldRequests.value.map((held) => `№${held.r
 
 function solverHint() {
   return SOLVERS.find((solver) => solver.value === params.solver)?.hint ?? ''
+}
+
+function submit() {
+  const payload = { solver: params.solver }
+  if (params.solver === 'cuopt') {
+    payload.objective_order = objectiveOrder(params.servicePriority, params.resourcePriority)
+  }
+  emit('build', payload)
 }
 </script>
 
@@ -60,6 +72,28 @@ function solverHint() {
       </label>
       <p class="hint">{{ solverHint() }}</p>
 
+      <fieldset v-if="params.solver === 'cuopt'" class="priority-settings" :disabled="building">
+        <legend>Порядок целей</legend>
+        <label class="field">
+          <span>Сначала выполнить</span>
+          <select v-model="params.servicePriority">
+            <option value="urgent_requests">Максимум срочных заявок</option>
+            <option value="assigned_requests">Максимум всех заявок</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>После этого сократить</span>
+          <select v-model="params.resourcePriority">
+            <option value="engineers_used">Количество задействованных бригад</option>
+            <option value="travel_distance">Общий пробег</option>
+          </select>
+        </label>
+        <p class="hint">
+          Все четыре цели остаются в расчёте. Выбор определяет строгий порядок: более важная
+          цель всегда сильнее любых улучшений нижних уровней.
+        </p>
+      </fieldset>
+
       <p v-if="heldRequests.length" class="warning">
         <span class="mark">!</span>
         <span>
@@ -73,7 +107,7 @@ function solverHint() {
       <footer>
         <span class="hint">Заявки и смены берутся на {{ formatDay(planDate) }}</span>
         <div class="dialog-actions">
-          <button class="primary" :disabled="building" @click="emit('build', { ...params })">
+          <button class="primary" :disabled="building" @click="submit">
             {{ building ? 'Считаю…' : 'Рассчитать' }}
           </button>
           <button :disabled="building" @click="emit('close')">Отмена</button>
@@ -154,5 +188,23 @@ function solverHint() {
 .dialog-actions {
   display: flex;
   gap: 8px;
+}
+
+.priority-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.priority-settings legend {
+  padding: 0 5px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
 }
 </style>

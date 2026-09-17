@@ -176,3 +176,13 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 ```bash
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/014_plan_approval.sql
 ```
+
+## Приоритеты оптимизации (`015_plan_objective_policy.sql`)
+
+Каждый план cuOpt хранит применённый порядок целей в `plan.objective_policy` как JSONB. Это
+позволяет воспроизвести расчёт и не сравнивать планы с разными приоритетами как полностью
+равнозначные. У старых планов и baseline значение остаётся NULL.
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/015_plan_objective_policy.sql
+```
