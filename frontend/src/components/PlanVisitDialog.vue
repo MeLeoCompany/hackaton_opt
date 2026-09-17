@@ -3,6 +3,7 @@
 // Открывается по клику на визит в маршруте.
 import { computed } from 'vue'
 
+import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { formatDuration } from '../utils/duration.js'
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
@@ -24,6 +25,10 @@ const workEnd = computed(() =>
 )
 
 const isFirst = computed(() => props.visit.visit_order === 1)
+
+// заявку в плане видно глазами планировщика; чтобы посмотреть, как её завели,
+// уходим на вкладку «Заявки» прямо на эту строку
+const { openRequest } = usePlanFocus()
 </script>
 
 <template>
@@ -83,6 +88,16 @@ const isFirst = computed(() => props.visit.visit_order === 1)
           </dd>
         </div>
       </dl>
+
+      <footer>
+        <button
+          class="link"
+          title="Открыть эту заявку на вкладке «Заявки»: адрес, окно, тип работ — как их завели"
+          @click="openRequest(visit.request_id)"
+        >
+          Открыть в заявках →
+        </button>
+      </footer>
     </div>
   </div>
 </template>
@@ -121,6 +136,13 @@ const isFirst = computed(() => props.visit.visit_order === 1)
   padding: 0 8px;
   font-size: 18px;
   line-height: 26px;
+}
+
+footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
 }
 
 dl {

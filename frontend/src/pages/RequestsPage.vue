@@ -7,6 +7,7 @@ import RequestsFilters from '../components/RequestsFilters.vue'
 import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
 import RequestsTable from '../components/RequestsTable.vue'
+import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
 import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
 
@@ -31,6 +32,7 @@ const {
   saveForm,
   remove,
   setActive,
+  showNotice,
 } = useRequestsTable()
 
 // что из данных видно: фильтры, сортировка, страница, выбранная заявка
@@ -50,6 +52,9 @@ const {
   selectedId,
   selectRequest,
 } = useRequestsView(requests, references)
+
+// пришли из маршрута плана — показываем ту самую заявку
+const { takeRequestId } = usePlanFocus()
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
@@ -99,7 +104,23 @@ function setActiveForShown(isActive) {
   setActive(targetIds, isActive)
 }
 
-onMounted(load)
+// заявка из плана может быть скрыта фильтрами прошлой работы — тогда фильтры снимаем,
+// иначе выделение тут же слетит и диспетчер решит, что заявки нет
+function focusRequest(requestId) {
+  if (!requests.value.some((request) => request.id === requestId)) {
+    showNotice(`Заявка №${requestId} в этом дне не найдена`)
+    return
+  }
+  if (!filteredRequests.value.some((request) => request.id === requestId)) resetFilters()
+  viewMode.value = 'table'
+  selectRequest(requestId)
+}
+
+onMounted(async () => {
+  await load()
+  const requestId = takeRequestId()
+  if (requestId !== null) focusRequest(requestId)
+})
 </script>
 
 <template>

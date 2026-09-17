@@ -1,5 +1,5 @@
-// Переход из сравнения в план: кликнули по плану — открываем вкладку «Планы» на нём.
-// Подробности по заявкам живут в самом плане, здесь их не дублируем.
+// Переходы между вкладками: из сравнения в план (кликнули по плану — открываем «Планы» на нём)
+// и из плана в заявку (из карточки визита — открываем «Заявки» на этой заявке).
 // Состояние общее на приложение (ref объявлен в модуле), как и выбранный день.
 
 import { ref } from 'vue'
@@ -9,6 +9,8 @@ const STORAGE_KEY = 'routing.activeTab'
 const activeTab = ref('')
 // номер плана, который нужно открыть на вкладке планов; читается один раз и сбрасывается
 const pendingPlanId = ref(null)
+// то же для заявки: из маршрута исполнителя — к исходной заявке на вкладке «Заявки»
+const pendingRequestId = ref(null)
 
 export function usePlanFocus() {
   function openTab(tab) {
@@ -32,5 +34,17 @@ export function usePlanFocus() {
     return planId
   }
 
-  return { activeTab, openTab, openPlan, takePlanId }
+  // из маршрута плана: показать заявку такой, какой её завели
+  function openRequest(requestId) {
+    pendingRequestId.value = requestId
+    openTab('requests')
+  }
+
+  function takeRequestId() {
+    const requestId = pendingRequestId.value
+    pendingRequestId.value = null
+    return requestId
+  }
+
+  return { activeTab, openTab, openPlan, takePlanId, openRequest, takeRequestId }
 }

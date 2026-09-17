@@ -250,5 +250,6 @@ export function useRequestsTable() {
     saveForm,
     remove,
     setActive,
+    showNotice,
   }
 }
