@@ -93,10 +93,12 @@ export function previousDay(date) {
 // { start: "22:00", end: "02:00", endsNextDay: true } — таблица ставит начало и конец
 // каждое под своей половиной фильтра «чч:мм – чч:мм»
 export function moscowTimeRangeParts(startIso, endIso) {
+  const end = moscowTimeOf(endIso)
   return {
     start: moscowTimeOf(startIso),
-    end: moscowTimeOf(endIso),
-    endsNextDay: moscowDateOf(endIso) > moscowDateOf(startIso),
+    end,
+    // ровно 00:00 — полночь того же дня по часам диспетчера, помечать нечего
+    endsNextDay: moscowDateOf(endIso) > moscowDateOf(startIso) && end !== '00:00',
   }
 }
 

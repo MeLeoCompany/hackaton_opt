@@ -1,19 +1,25 @@
 <script setup>
-// День и два времени вместо двух «прокручиваемых» полей даты-времени:
-// дата задаётся один раз, время набирается руками.
-// Если время окончания не позже времени начала, конец считается следующим днём:
-// ночная смена и ночное окно. Об этом говорит значок «!» с пояснением при наведении.
+// Два поля времени: день отдельно не выбирается — он и так выбран на форме.
+// У новой записи берётся выбранный день, у существующей — её собственная дата.
+// Если время окончания не позже начала, конец уходит на следующие сутки (ночная смена,
+// ночное окно). Про это говорит значок «!»; на ровно 00:00 он не нужен — это конец
+// того же дня по часам диспетчера.
 import { computed, ref, watch } from 'vue'
 
+import { useSelectedDay } from '../composables/useSelectedDay.js'
 import { formatDay, joinMoscowInputValue, nextDay, splitMoscowInputValue } from '../utils/moscowTime.js'
 
 import TimeInput from './TimeInput.vue'
+
+const MIDNIGHT = '00:00'
 
 const props = defineProps({
   start: { type: String, default: '' },
   end: { type: String, default: '' },
 })
 const emit = defineEmits(['update:start', 'update:end'])
+
+const { selectedDay } = useSelectedDay()
 
 const date = ref('')
 const startTime = ref('')
@@ -24,7 +30,7 @@ watch(
   ([start, end]) => {
     const startParts = splitMoscowInputValue(start)
     const endParts = splitMoscowInputValue(end)
-    date.value = startParts.date || endParts.date
+    date.value = startParts.date || endParts.date || selectedDay.value
     startTime.value = startParts.time
     endTime.value = endParts.time
   },
@@ -36,6 +42,9 @@ const endDate = computed(() => {
   return endTime.value <= startTime.value ? nextDay(date.value) : date.value
 })
 
+// 00:00 — это полночь того же дня для диспетчера, предупреждать не о чем
+const endsNextDay = computed(() => endDate.value !== date.value && endTime.value !== MIDNIGHT)
+
 function apply() {
   emit('update:start', joinMoscowInputValue(date.value, startTime.value))
   emit('update:end', joinMoscowInputValue(endDate.value, endTime.value))
@@ -44,14 +53,13 @@ function apply() {
 
 <template>
   <div class="day-time-range">
-    <input v-model="date" type="date" aria-label="день" @change="apply" />
     <div class="times">
       <TimeInput v-model="startTime" aria-label="время начала" @update:model-value="apply" />
       <span>–</span>
       <TimeInput v-model="endTime" aria-label="время окончания" @update:model-value="apply" />
       <!-- окончание на следующих сутках: компактный значок, пояснение — при наведении -->
       <span
-        v-if="endDate && endDate !== date"
+        v-if="endsNextDay"
         class="next-day"
         role="img"
         :title="`Окончание на следующие сутки — ${formatDay(endDate)}`"
