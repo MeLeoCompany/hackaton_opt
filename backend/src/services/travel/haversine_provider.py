@@ -12,6 +12,7 @@ from src.schemas.travel import (
     Point,
     TransportKind,
     TravelEstimate,
+    TravelLeg,
     TravelMatrix,
     TravelProvider,
     TravelRoute,
@@ -88,9 +89,17 @@ def build_matrix(points: list[Point], transport: TransportKind) -> TravelMatrix:
     )
 
 
+def route_legs(points: list[Point], transport: TransportKind) -> list[TravelLeg]:
+    """Маршрут по порядку точек, разобранный на переезды. Геометрии нет."""
+    return [
+        TravelLeg(**estimate(points[leg], points[leg + 1], transport).model_dump())
+        for leg in range(len(points) - 1)
+    ]
+
+
 def build_route(points: list[Point], transport: TransportKind) -> TravelRoute:
     """Маршрут через точки по порядку: суммарные километры и минуты. Геометрии нет."""
-    legs = [estimate(points[leg], points[leg + 1], transport) for leg in range(len(points) - 1)]
+    legs = route_legs(points, transport)
     return TravelRoute(
         transport=transport,
         provider=TravelProvider.HAVERSINE,

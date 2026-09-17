@@ -20,6 +20,14 @@ class TravelProvider(str, enum.Enum):
     VALHALLA = "valhalla"
 
 
+class TravelMode(str, enum.Enum):
+    """Чем человек преодолевает участок: важно для общественного транспорта."""
+
+    ROAD = "road"
+    METRO = "metro"
+    WALK = "walk"
+
+
 class Point(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -48,6 +56,16 @@ class TravelMatrix(BaseModel):
     durations_min: list[list[float | None]]
 
 
+class TravelLeg(BaseModel):
+    """Один переезд между соседними точками маршрута: из них собирается TravelRoute."""
+
+    distance_km: float
+    duration_min: float
+    # encoded polyline участка; пусто, если геометрии нет (haversine)
+    geometry: str = ""
+    mode: TravelMode = TravelMode.ROAD
+
+
 class TravelRoute(BaseModel):
     transport: TransportKind
     provider: TravelProvider
@@ -56,3 +74,5 @@ class TravelRoute(BaseModel):
     # по одной encoded polyline на участок между соседними точками маршрута;
     # пусто у haversine — прямую линию фронт нарисует сам по координатам
     geometry: list[str]
+    # те же участки подробно: сколько заняли и чем человек ехал
+    legs: list[TravelLeg] = []

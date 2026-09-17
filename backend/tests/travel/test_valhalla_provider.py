@@ -24,7 +24,7 @@ async def test_pedestrian_route_strictly_excludes_ferries():
             {
                 "trip": {
                     "summary": {"length": 1.0, "time": 600},
-                    "legs": [{"shape": "encoded"}],
+                    "legs": [{"shape": "encoded", "summary": {"length": 1.0, "time": 600}}],
                 }
             }
         )
@@ -83,7 +83,7 @@ async def test_car_route_does_not_receive_pedestrian_options():
             {
                 "trip": {
                     "summary": {"length": 1.0, "time": 600},
-                    "legs": [{"shape": "encoded"}],
+                    "legs": [{"shape": "encoded", "summary": {"length": 1.0, "time": 600}}],
                 }
             }
         )

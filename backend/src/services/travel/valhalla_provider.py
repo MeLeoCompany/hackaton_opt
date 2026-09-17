@@ -5,7 +5,14 @@ import asyncio
 import httpx
 
 from src.core.config import settings
-from src.schemas.travel import Point, TransportKind, TravelMatrix, TravelProvider, TravelRoute
+from src.schemas.travel import (
+    Point,
+    TransportKind,
+    TravelLeg,
+    TravelMatrix,
+    TravelProvider,
+    TravelRoute,
+)
 
 # профиль движения Valhalla для каждого нашего транспорта.
 # Расписаний ОТ (GTFS) у Valhalla нет: "bus" едет по дорогам как автобус,
@@ -28,6 +35,10 @@ COSTING_OPTIONS: dict[TransportKind, dict[str, dict[str, float | bool]]] = {
     }
 }
 
+# Valhalla считает автобус машиной по свободной дороге: без остановок, посадки и пересадок.
+# Коммерческая скорость городского автобуса примерно вдвое ниже легковой, поэтому дорожное
+# время умножается на коэффициент, а ожидание на остановке добавляется отдельно.
+PUBLIC_TRANSPORT_SLOWDOWN = 1.8
 PUBLIC_TRANSPORT_WAIT_MIN = 10.0
 
 # лимиты Valhalla по умолчанию (service_limits в valhalla.json). Большие запросы режем
@@ -40,9 +51,12 @@ def _to_valhalla_locations(points: list[Point]) -> list[dict[str, float]]:
     return [{"lat": point.latitude, "lon": point.longitude} for point in points]
 
 
-def _waiting_minutes(transport: TransportKind) -> float:
-    """Сколько минут добавляется к каждому переезду на ожидание транспорта."""
-    return PUBLIC_TRANSPORT_WAIT_MIN if transport is TransportKind.PUBLIC_TRANSPORT else 0.0
+def _transport_minutes(seconds: float, transport: TransportKind) -> float:
+    """Время по дороге от Valhalla -> минуты поездки этим транспортом."""
+    minutes = seconds / 60
+    if transport is TransportKind.PUBLIC_TRANSPORT:
+        return minutes * PUBLIC_TRANSPORT_SLOWDOWN + PUBLIC_TRANSPORT_WAIT_MIN
+    return minutes
 
 
 def _split_indices(total: int, block_size: int) -> list[list[int]]:
@@ -98,7 +112,6 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
     block_size = max(int(MAX_MATRIX_PAIRS**0.5), 1)
     costing = COSTING[transport]
     costing_options = COSTING_OPTIONS.get(transport)
-    waiting_minutes = _waiting_minutes(transport)
 
     distances_km: list[list[float | None]] = [[0.0] * size for _ in range(size)]
     durations_min: list[list[float | None]] = [[0.0] * size for _ in range(size)]
@@ -132,7 +145,9 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
                     durations_min[from_index][to_index] = None
                     continue
                 distances_km[from_index][to_index] = round(float(pair["distance"]), 3)
-                durations_min[from_index][to_index] = float(pair["time"]) / 60 + waiting_minutes
+                durations_min[from_index][to_index] = _transport_minutes(
+                    float(pair["time"]), transport
+                )
 
     return TravelMatrix(
         transport=transport,
@@ -143,16 +158,14 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
     )
 
 
-async def build_route(points: list[Point], transport: TransportKind) -> TravelRoute:
-    """Маршрут через точки по порядку: километры, минуты и линия для карты.
+async def route_legs(points: list[Point], transport: TransportKind) -> list[TravelLeg]:
+    """Маршрут через точки по порядку, разобранный на переезды между соседними точками.
 
-    Линия приходит как encoded polyline с точностью 6 знаков — по одной на каждый участок.
+    Линия каждого переезда приходит как encoded polyline с точностью 6 знаков.
     """
     costing = COSTING[transport]
     costing_options = COSTING_OPTIONS.get(transport)
-    distance_km = 0.0
-    duration_min = 0.0
-    geometry: list[str] = []
+    legs: list[TravelLeg] = []
 
     async with httpx.AsyncClient(base_url=settings.valhalla_url, timeout=120.0) as client:
         for piece in _split_route(points, MAX_ROUTE_LOCATIONS):
@@ -166,15 +179,27 @@ async def build_route(points: list[Point], transport: TransportKind) -> TravelRo
             response = await client.post("/route", json=payload)
             response.raise_for_status()
             trip = response.json()["trip"]
-            distance_km += float(trip["summary"]["length"])
-            duration_min += float(trip["summary"]["time"]) / 60
-            geometry.extend(leg["shape"] for leg in trip["legs"])
+            for leg in trip["legs"]:
+                legs.append(
+                    TravelLeg(
+                        distance_km=round(float(leg["summary"]["length"]), 3),
+                        duration_min=round(
+                            _transport_minutes(float(leg["summary"]["time"]), transport), 1
+                        ),
+                        geometry=leg["shape"],
+                    )
+                )
 
-    duration_min += _waiting_minutes(transport) * max(len(points) - 1, 0)
+    return legs
+
+
+async def build_route(points: list[Point], transport: TransportKind) -> TravelRoute:
+    """Маршрут через точки по порядку: километры, минуты и линия для карты."""
+    legs = await route_legs(points, transport)
     return TravelRoute(
         transport=transport,
         provider=TravelProvider.VALHALLA,
-        distance_km=round(distance_km, 3),
-        duration_min=round(duration_min, 1),
-        geometry=geometry,
+        distance_km=round(sum(leg.distance_km for leg in legs), 3),
+        duration_min=round(sum(leg.duration_min for leg in legs), 1),
+        geometry=[leg.geometry for leg in legs],
     )

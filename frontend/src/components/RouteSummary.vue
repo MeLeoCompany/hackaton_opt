@@ -1,4 +1,6 @@
 <script setup>
+import { TRAVEL_MODES } from '../api/travelApi.js'
+
 const props = defineProps({
   route: { type: Object, default: null },
   matrix: { type: Object, default: null },
@@ -8,6 +10,10 @@ function formatDuration(minutes) {
   const hours = Math.floor(minutes / 60)
   const rest = Math.round(minutes % 60)
   return hours > 0 ? `${hours} ч ${rest} мин` : `${rest} мин`
+}
+
+function modeOf(leg) {
+  return TRAVEL_MODES[leg.mode] ?? TRAVEL_MODES.road
 }
 
 // сумма плеч по матрице пригодится, чтобы своими глазами увидеть расхождение с /route
@@ -30,6 +36,14 @@ function matrixLegSum(matrix) {
         <dd :class="{ fallback: route.provider !== 'valhalla' }">{{ route.provider }}</dd>
       </div>
     </dl>
+    <ol v-if="route.legs?.length" class="legs">
+      <li v-for="(leg, index) in route.legs" :key="index">
+        <span class="leg-points">{{ index + 1 }} → {{ index + 2 }}</span>
+        <span class="mode" :style="{ background: modeOf(leg).color }">{{ modeOf(leg).label }}</span>
+        <span class="leg-numbers">{{ formatDuration(leg.duration_min) }} · {{ leg.distance_km.toFixed(2) }} км</span>
+      </li>
+    </ol>
+
     <p v-if="route.provider !== 'valhalla'" class="warn">
       Valhalla недоступна, посчитано по прямой линии — цифры оценочные, геометрии нет.
     </p>
@@ -87,6 +101,39 @@ dd {
 
 dd.fallback {
   color: #d97706;
+}
+
+.legs {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.leg-points {
+  color: #64748b;
+}
+
+.mode {
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.leg-numbers {
+  margin-left: auto;
+  color: #334155;
 }
 
 .warn {

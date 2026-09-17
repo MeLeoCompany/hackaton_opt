@@ -7,6 +7,14 @@ export const TRANSPORTS = [
   { id: 4, label: 'Общественный транспорт' },
 ]
 
+// чем человек едет на участке: приходит в route.legs[].mode с бэкенда.
+// у общественного транспорта участок может оказаться метро или пешим
+export const TRAVEL_MODES = {
+  road: { label: 'Наземным', color: '#2563eb' },
+  metro: { label: 'Метро', color: '#7c3aed' },
+  walk: { label: 'Пешком', color: '#059669' },
+}
+
 export function fetchRoute(points, transport) {
   return apiRequest('POST', '/travel/route', { json: { points, transport } })
 }

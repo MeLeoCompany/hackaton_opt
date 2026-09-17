@@ -3,6 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { TRAVEL_MODES } from '../api/travelApi.js'
 import { decodePolyline } from '../utils/polyline.js'
 
 const props = defineProps({
@@ -16,7 +17,8 @@ let map = null
 let markerLayer = null
 let routeLayer = null
 
-// цвета чередуются по участкам, чтобы было видно, где кончается одно плечо и начинается другое
+// цвета чередуются по участкам, чтобы было видно, где кончается одно плечо и начинается другое.
+// у общественного транспорта цвет вместо этого говорит, чем человек едет: метро, пешком, наземным
 const LEG_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed']
 
 function numberedIcon(index, total) {
@@ -48,11 +50,17 @@ function drawRoute() {
 
   if (props.route.geometry.length > 0) {
     props.route.geometry.forEach((leg, index) => {
+      const mode = props.route.legs?.[index]?.mode
+      const style = mode && mode !== 'road' ? TRAVEL_MODES[mode] : null
       L.polyline(decodePolyline(leg), {
-        color: LEG_COLORS[index % LEG_COLORS.length],
+        color: style ? style.color : LEG_COLORS[index % LEG_COLORS.length],
         weight: 5,
         opacity: 0.8,
-      }).addTo(routeLayer)
+        // пеший кусок пунктиром: это не поездка
+        dashArray: mode === 'walk' ? '6 6' : undefined,
+      })
+        .bindTooltip(style ? `Участок ${index + 1}: ${style.label}` : `Участок ${index + 1}`)
+        .addTo(routeLayer)
     })
   } else {
     // haversine-провайдер геометрии не даёт — рисуем прямые, чтобы это было видно глазом
