@@ -94,17 +94,18 @@ const { selectedDay, selectDay } = useSelectedDay()
   display: flex;
   align-items: center;
   gap: 6px;
-  /* 118 под кнопки + отступ 10 и рамка-разделитель слева */
-  width: 129px;
-  padding-left: 10px;
+  /* 118 под кнопки + отступ 6 и рамка-разделитель слева: ровно как в ячейке таблицы,
+     где от линии колонки до кнопки правки те же 6 пикселей */
+  width: 125px;
+  padding-left: 6px;
   margin-left: auto;
   border-left: 1px solid #e2e8f0;
 }
 
+/* тот же размер, что у кнопок правки и удаления в строках таблицы */
 .day-transfer :deep(.icon-button) {
   flex: 1;
   width: auto;
-  height: 28px;
 }
 
 /* выгрузка — синим, загрузка — зелёным: видно, что кнопка делает, до наведения подсказки */

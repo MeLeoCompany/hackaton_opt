@@ -30,10 +30,10 @@ async def list_plans(plan_date: date | None = None, session: AsyncSession = Depe
     "",
     response_model=PlanSummary,
     status_code=status.HTTP_201_CREATED,
-    summary="Построить и сравнить планы baseline и cuOpt",
+    summary="Построить план на день выбранным решателем",
 )
 async def build_plan(payload: PlanBuildRequest, session: AsyncSession = Depends(get_db)):
-    return await planning_service.build_plan_for_day(session, payload.plan_date)
+    return await planning_service.build_plan_for_day(session, payload.plan_date, payload.solver)
 
 
 @router.get("/{plan_id}", response_model=PlanDetail, summary="План с маршрутами исполнителей")

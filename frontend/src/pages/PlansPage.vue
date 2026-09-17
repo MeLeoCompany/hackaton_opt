@@ -2,10 +2,11 @@
 import { onMounted, ref, watch } from 'vue'
 
 import DayPanel from '../components/DayPanel.vue'
+import PlanBuildDialog from '../components/PlanBuildDialog.vue'
 import PlanMap from '../components/PlanMap.vue'
-import PlanComparisonPanel from '../components/PlanComparisonPanel.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
 import PlansList from '../components/PlansList.vue'
+import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay } from '../utils/moscowTime.js'
 
@@ -30,6 +31,17 @@ const {
   selectEngineer,
 } = usePlans()
 
+// пришли из сравнения планов: открываем нужный план
+const { takePlanId } = usePlanFocus()
+
+// окно параметров расчёта: открывается по «Построить план», поля заполнены по умолчанию
+const buildDialogOpen = ref(false)
+
+async function startBuild(params) {
+  buildDialogOpen.value = false
+  await buildDayPlan(params)
+}
+
 // «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
 const viewMode = ref('details')
 
@@ -43,7 +55,11 @@ watch(selectedDay, () => {
   viewMode.value = 'details'
 })
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  const planId = takePlanId()
+  if (planId) await selectPlan(planId)
+})
 </script>
 
 <template>
@@ -56,10 +72,18 @@ onMounted(load)
     <DayPanel :disabled="building" :summary="`планов на этот день ${plans.length}`" />
 
     <section class="plan-toolbar">
-      <button class="primary" :disabled="!selectedDay || building" @click="buildDayPlan">
-        {{ building ? 'Строю план…' : 'Построить план на ' + formatDay(selectedDay) }}
+      <button class="primary" :disabled="!selectedDay || building" @click="buildDialogOpen = true">
+        {{ building ? 'Считаю…' : 'Построить план' }}
       </button>
     </section>
+
+    <PlanBuildDialog
+      v-if="buildDialogOpen"
+      :plan-date="selectedDay"
+      :building="building"
+      @build="startBuild"
+      @close="buildDialogOpen = false"
+    />
 
     <div v-if="errorMessage" class="message error">
       <strong>{{ errorMessage }}</strong>
@@ -87,7 +111,6 @@ onMounted(load)
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 
       <template v-if="plan">
-        <PlanComparisonPanel v-if="plan.comparison" :plan="plan" :comparison="plan.comparison" />
 
         <div class="list-bar">
           <div class="view-switch" role="tablist">
@@ -134,12 +157,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.plan-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px 12px;
-}
 
 .plans-block {
   display: flex;

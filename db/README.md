@@ -150,3 +150,13 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 ```bash
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/011_plan_distance_provider.sql
 ```
+
+## Пары планов убраны (`013_drop_plan_pairs.sql`)
+
+Расчёт больше не строит пару baseline + cuOpt: каждый запуск даёт отдельный план, а сравнение
+любых двух планов дня считается на лету по их номерам. Поэтому `plan.comparison_id` и его
+индекс сняты.
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/013_drop_plan_pairs.sql
+```

@@ -1,11 +1,25 @@
 from datetime import date, datetime
-from uuid import UUID
+from enum import Enum
 
 from pydantic import BaseModel
 
 
+class SolverName(str, Enum):
+    """Чем считать план. Список расширяется по мере появления решателей."""
+
+    CUOPT = "cuopt"
+    BASELINE = "baseline"
+
+
 class PlanBuildRequest(BaseModel):
+    """Параметры расчёта: день и чем считать.
+
+    Сюда же добавляются будущие параметры (лимит времени, веса целевой функции): каждый
+    расчёт — отдельный план со своими параметрами, и потом любые два плана можно сравнить.
+    """
+
     plan_date: date
+    solver: SolverName = SolverName.CUOPT
 
 
 class PlanningDayOption(BaseModel):
@@ -27,7 +41,6 @@ class PlanSummary(BaseModel):
     unassigned_count: int
     total_distance_km: float | None = None  # общий пробег по дорогам; у старых планов может не быть
     distance_provider: str | None = None  # valhalla / haversine / mixed; NULL у старых планов
-    comparison_id: UUID | None = None
     solve_duration_ms: float | None = None
 
 
@@ -72,4 +85,3 @@ class PlanDetail(PlanSummary):
     total_distance_km: float
     routes: list[EngineerRoute]
     unassigned: list[UnassignedRequest]
-    comparison: PlanSummary | None = None

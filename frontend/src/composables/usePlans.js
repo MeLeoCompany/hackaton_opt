@@ -72,18 +72,17 @@ export function usePlans() {
     }
   }
 
-  async function buildDayPlan() {
+  async function buildDayPlan(params = {}) {
     if (building.value) return
     const day = selectedDay.value
     building.value = true
     clearMessages()
     try {
-      const summary = await buildPlan(day)
+      const summary = await buildPlan(day, params)
       if (day !== selectedDay.value) return
       showNotice(
-        `План №${summary.id} построен: назначено ${summary.assigned_count}, ` +
-          `не назначено ${summary.unassigned_count}, исполнителей ${summary.engineers_used}. ` +
-          `Сравнение с baseline готово.`,
+        `План №${summary.id} (${summary.solver}) построен: назначено ${summary.assigned_count}, ` +
+          `не назначено ${summary.unassigned_count}, исполнителей ${summary.engineers_used}`,
       )
       const summaries = await listPlans(day)
       if (day !== selectedDay.value) return

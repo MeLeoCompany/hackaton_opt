@@ -5,6 +5,7 @@ from src.schemas.plans.plans_schema import (
     PlanningDayOption,
     PlanSummary,
     PlanVisit,
+    SolverName,
     UnassignedRequest,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "PlanSummary",
     "PlanVisit",
     "PlanningDayOption",
+    "SolverName",
     "UnassignedRequest",
 ]

@@ -1,11 +1,9 @@
 import enum
 from datetime import date, datetime
 from decimal import Decimal
-from uuid import UUID
 
 from sqlalchemy import BigInteger, Date, DateTime, Enum, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
@@ -35,8 +33,7 @@ class Plan(Base):
     # чем посчитан план
     solver: Mapped[str | None] = mapped_column(Text)
 
-    # Одинаковый UUID связывает baseline и оптимизированный план одного запуска.
-    comparison_id: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    # время работы решателя без загрузки матриц и расчёта геометрии
     solve_duration_ms: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
 
     input_snapshot: Mapped[dict | None] = mapped_column(JSONB)

@@ -532,6 +532,7 @@ button.link:disabled {
 }
 
 .range-value > span:not(.range-dash) {
+  position: relative;
   flex: 1;
   padding: 0 4px;
   text-align: center;
@@ -543,8 +544,12 @@ button.link:disabled {
   font-size: 12px;
 }
 
+/* пометка «на следующие сутки» висит сбоку и не занимает места: иначе время съезжает
+   и перестаёт стоять под своей половиной фильтра «чч:мм – чч:мм» */
 .range-value sup {
-  margin-left: 1px;
+  position: absolute;
+  top: -2px;
+  right: -6px;
   font-size: 10px;
   color: #b45309;
 }

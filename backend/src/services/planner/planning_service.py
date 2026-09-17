@@ -1,4 +1,4 @@
-"""Построение сравнимой пары baseline/cuOpt, сохранение и просмотр планов."""
+"""Построение плана дня выбранным решателем, сохранение и просмотр планов."""
 
 import asyncio
 import time
@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
-from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +16,7 @@ from src.models import Assignment, Plan, PlanRunType
 from src.repositories.plans import plans_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
+    SolverName,
     EngineerRoute,
     PlanDetail,
     PlanningDayOption,
@@ -30,7 +30,10 @@ from src.services.planner.planner_loader import LoadedDay
 from src.services.travel import build_route
 
 SOLVER_NAME = "cuopt"
-BASELINE_SOLVER_NAME = "baseline"
+RUN_TYPE_BY_SOLVER = {
+    SolverName.CUOPT: PlanRunType.OPTIMIZED,
+    SolverName.BASELINE: PlanRunType.BASELINE,
+}
 AssignmentView = Assignment | SimpleNamespace
 
 SCHEDULE_REASON = (
@@ -76,44 +79,39 @@ async def load_planning_day(session: AsyncSession, plan_date: date) -> LoadedDay
     return loaded
 
 
-async def build_plan_for_day(session: AsyncSession, plan_date: date) -> PlanSummary:
+async def build_plan_for_day(
+    session: AsyncSession, plan_date: date, solver: SolverName = SolverName.CUOPT
+) -> PlanSummary:
+    """Считает план дня выбранным решателем и сохраняет его отдельной записью.
+
+    Каждый расчёт — самостоятельный план со своими параметрами и метриками (время решателя,
+    пробег, сколько заявок назначено). Пары для сравнения не создаются: сравнить можно любые
+    два уже посчитанных плана.
+    """
     loaded = await load_planning_day(session, plan_date)
 
-    baseline_started = time.perf_counter()
-    baseline_solution = baseline_solver.solve_day(loaded.instance)
-    baseline_duration_ms = (time.perf_counter() - baseline_started) * 1000
+    started = time.perf_counter()
+    solution = await solve_with(solver, loaded)
+    duration_ms = (time.perf_counter() - started) * 1000
 
-    optimized_started = time.perf_counter()
-    solution = await cuopt_solver.solve_day(loaded.instance)
-    optimized_duration_ms = (time.perf_counter() - optimized_started) * 1000
-
-    comparison_id = uuid4()
-    baseline_plan = await save_solution(
-        session,
-        loaded,
-        baseline_solution,
-        run_type=PlanRunType.BASELINE,
-        solver=BASELINE_SOLVER_NAME,
-        comparison_id=comparison_id,
-        solve_duration_ms=baseline_duration_ms,
-    )
     plan = await save_solution(
         session,
         loaded,
         solution,
-        run_type=PlanRunType.OPTIMIZED,
-        solver=SOLVER_NAME,
-        comparison_id=comparison_id,
-        solve_duration_ms=optimized_duration_ms,
+        run_type=RUN_TYPE_BY_SOLVER[solver],
+        solver=solver.value,
+        solve_duration_ms=duration_ms,
     )
-    baseline_distance, optimized_distance = await asyncio.gather(
-        total_route_distance(loaded, baseline_solution),
-        total_route_distance(loaded, solution),
-    )
-    set_plan_distance(baseline_plan, baseline_distance)
-    set_plan_distance(plan, optimized_distance)
+    set_plan_distance(plan, await total_route_distance(loaded, solution))
     await session.commit()
     return (await summarize_plans(session, [plan]))[0]
+
+
+async def solve_with(solver: SolverName, loaded: LoadedDay) -> cuopt_solver.DaySolution:
+    """cuOpt считает на видеокарте в отдельном потоке, базовый алгоритм — прямо здесь."""
+    if solver is SolverName.BASELINE:
+        return baseline_solver.solve_day(loaded.instance)
+    return await cuopt_solver.solve_day(loaded.instance)
 
 
 @dataclass(frozen=True)
@@ -175,12 +173,11 @@ async def total_route_distance(
 
 
 async def delete_plan(session: AsyncSession, plan_id: int) -> None:
-    """Удаляет план или всю связанную пару baseline/cuOpt вместе с назначениями."""
+    """Удаляет план вместе с его назначениями — чтобы день можно было пересчитать заново."""
     plan = await plans_repository.get_plan(session, plan_id)
     if plan is None:
         raise PlanNotFoundError(f"План №{plan_id} не найден")
-    for compared_plan in await plans_repository.list_comparison_plans(session, plan):
-        await plans_repository.delete_plan(session, compared_plan)
+    await plans_repository.delete_plan(session, plan)
     await session.commit()
 
 
@@ -191,7 +188,6 @@ async def save_solution(
     *,
     run_type: PlanRunType = PlanRunType.OPTIMIZED,
     solver: str = SOLVER_NAME,
-    comparison_id: UUID | None = None,
     solve_duration_ms: float | None = None,
 ) -> Plan:
     day = loaded.day
@@ -200,7 +196,6 @@ async def save_solution(
         run_type,
         day.plan_date,
         solver,
-        comparison_id=comparison_id,
         solve_duration_ms=(
             Decimal(str(round(solve_duration_ms, 3))) if solve_duration_ms is not None else None
         ),
@@ -321,7 +316,6 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 if plan.total_distance_km is not None
                 else None,
                 distance_provider=plan.distance_provider,
-                comparison_id=plan.comparison_id,
                 solve_duration_ms=(
                     float(plan.solve_duration_ms) if plan.solve_duration_ms is not None else None
                 ),
@@ -363,20 +357,11 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
     routes = await asyncio.gather(*(build_engineer_route(group) for group in engineer_assignments))
 
     summary = (await summarize_plans(session, [plan]))[0]
-    compared_plans = [
-        compared
-        for compared in await plans_repository.list_comparison_plans(session, plan)
-        if compared.id != plan.id
-    ]
-    comparison = (
-        (await summarize_plans(session, [compared_plans[0]]))[0] if compared_plans else None
-    )
     return PlanDetail(
         **summary.model_dump(exclude={"total_distance_km"}),
         total_distance_km=round(sum(route.distance_km for route in routes), 3),
         routes=list(routes),
         unassigned=unassigned,
-        comparison=comparison,
     )
 
 

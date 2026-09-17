@@ -2,9 +2,8 @@
 
 from datetime import date
 from decimal import Decimal
-from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,14 +16,12 @@ def add_plan(
     plan_date: date,
     solver: str,
     *,
-    comparison_id: UUID | None = None,
     solve_duration_ms: Decimal | None = None,
 ) -> Plan:
     plan = Plan(
         run_type=run_type,
         plan_date=plan_date,
         solver=solver,
-        comparison_id=comparison_id,
         solve_duration_ms=solve_duration_ms,
     )
     session.add(plan)
@@ -47,24 +44,11 @@ async def delete_plan(session: AsyncSession, plan: Plan) -> None:
 
 
 async def list_plans(session: AsyncSession, plan_date: date | None) -> list[Plan]:
-    """Планы, новые первыми; парный baseline скрыт за сравнением optimized-плана."""
-    query = (
-        select(Plan)
-        .where(or_(Plan.run_type != PlanRunType.BASELINE, Plan.comparison_id.is_(None)))
-        .order_by(Plan.created_at.desc(), Plan.id.desc())
-    )
+    """Планы, новые первыми; если указан день — только на этот день."""
+    query = select(Plan).order_by(Plan.created_at.desc(), Plan.id.desc())
     if plan_date is not None:
         query = query.where(Plan.plan_date == plan_date)
     result = await session.execute(query)
-    return list(result.scalars().all())
-
-
-async def list_comparison_plans(session: AsyncSession, plan: Plan) -> list[Plan]:
-    if plan.comparison_id is None:
-        return [plan]
-    result = await session.execute(
-        select(Plan).where(Plan.comparison_id == plan.comparison_id).order_by(Plan.id)
-    )
     return list(result.scalars().all())
 
 

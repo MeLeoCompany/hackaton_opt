@@ -1,9 +1,11 @@
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { onMounted } from 'vue'
 
+import { usePlanFocus } from './composables/usePlanFocus.js'
 import { useSelectedDay } from './composables/useSelectedDay.js'
 import EngineersPage from './pages/EngineersPage.vue'
 import ImportPage from './pages/ImportPage.vue'
+import PlanComparisonPage from './pages/PlanComparisonPage.vue'
 import PlansPage from './pages/PlansPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
@@ -12,6 +14,7 @@ const TABS = [
   { key: 'requests', label: 'Заявки' },
   { key: 'engineers', label: 'Исполнители' },
   { key: 'plans', label: 'Планы' },
+  { key: 'comparison', label: 'Сравнение планов' },
   { key: 'import', label: 'Загрузка CSV' },
   { key: 'routes', label: 'Маршруты (стенд)' },
 ]
@@ -28,15 +31,8 @@ function storedTab() {
   }
 }
 
-const activeTab = ref(storedTab() || 'requests')
-
-watch(activeTab, (tab) => {
-  try {
-    window.localStorage.setItem(TAB_STORAGE_KEY, tab)
-  } catch {
-    // не смогли запомнить — вкладка просто не переживёт перезагрузку
-  }
-})
+const { activeTab, openTab } = usePlanFocus()
+activeTab.value = storedTab() || 'requests'
 
 const { loadDaysWithRequests } = useSelectedDay()
 onMounted(loadDaysWithRequests)
@@ -49,7 +45,7 @@ onMounted(loadDaysWithRequests)
         v-for="tab in TABS"
         :key="tab.key"
         :class="{ active: activeTab === tab.key }"
-        @click="activeTab = tab.key"
+        @click="openTab(tab.key)"
       >
         {{ tab.label }}
       </button>
@@ -59,6 +55,7 @@ onMounted(loadDaysWithRequests)
       <RequestsPage v-if="activeTab === 'requests'" />
       <EngineersPage v-else-if="activeTab === 'engineers'" />
       <PlansPage v-else-if="activeTab === 'plans'" />
+      <PlanComparisonPage v-else-if="activeTab === 'comparison'" />
       <ImportPage v-else-if="activeTab === 'import'" />
       <RouteStandPage v-else />
     </div>
