@@ -55,7 +55,11 @@ class PlanVisit(BaseModel):
     window_end: datetime
     duration_minutes: int
     priority_id: int
-    explanation: str
+    # факты этого визита — из них интерфейс объясняет, почему он стоит здесь
+    available_from: datetime  # когда исполнитель освободился: конец прошлой работы или начало смены
+    window_slack_minutes: int  # запас до закрытия окна заявки
+    shift_slack_minutes: int  # запас до конца смены после этой работы
+    candidate_engineers: int | None = None  # сколько бригад дня могли взять заявку
 
 
 class EngineerRoute(BaseModel):
@@ -68,6 +72,8 @@ class EngineerRoute(BaseModel):
     duration_min: float  # время в пути, без работы на заявках
     provider: str  # valhalla или haversine — чем посчитаны пробег и линия
     geometry: list[str]  # encoded polyline по участкам; пусто, если посчитано по прямой
+    shift_start: datetime
+    shift_end: datetime
     visits: list[PlanVisit]
 
 

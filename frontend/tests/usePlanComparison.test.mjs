@@ -51,15 +51,23 @@ test('по умолчанию сравниваются два последних
   const view = await loadedView()
 
   assert.equal(view.loading.value, false)
-  assert.deepEqual([view.firstId.value, view.secondId.value], [28, 29])
+  assert.deepEqual(view.selectedIds.value, [28, 29])
 })
 
-test('выбранные планы разные, метрики считаются по ним', async () => {
+test('сравниваются ровно два плана: третий отметить нельзя', async () => {
   const view = await loadedView()
 
-  assert.notEqual(view.firstId.value, view.secondId.value)
   assert.equal(view.first.value.solver, 'cuopt')
   assert.equal(view.second.value.solver, 'baseline')
+  assert.equal(view.selectionIsFull.value, true)
+
+  view.togglePlan(99) // лишний план не добавляется
+  assert.deepEqual(view.selectedIds.value, [28, 29])
+
+  view.togglePlan(28) // сняли отметку — место освободилось
+  assert.deepEqual(view.selectedIds.value, [29])
+  assert.equal(view.selectionIsFull.value, false)
+  assert.equal(view.second.value, null)
 })
 
 test('разница считается со стороны второго плана', async () => {

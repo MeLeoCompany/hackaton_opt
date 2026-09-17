@@ -2,11 +2,14 @@ from types import SimpleNamespace
 
 from planner_test_helpers import engineer, make_instance, request
 
+from datetime import datetime, timedelta, timezone
+
 from src.services.planner.planning_service import (
     SCHEDULE_REASON,
     TIME_REASON,
-    assignment_explanation,
+    candidate_engineers_by_request,
     count_urgent_assignments,
+    to_plan_visit,
     unassigned_reason,
 )
 
@@ -35,19 +38,54 @@ def test_unassigned_reason_reports_conflict_when_request_fits_separately():
     assert unassigned_reason(loaded_day(instance), 0) == SCHEDULE_REASON
 
 
-def test_assignment_explanation_describes_constraints_and_objective():
+def test_visit_keeps_facts_of_its_own_place_in_route():
+    """Из этих чисел интерфейс объясняет визит: когда освободился, сколько осталось запаса."""
+    day = datetime(2026, 8, 17, tzinfo=timezone.utc)
     assignment = SimpleNamespace(
         visit_order=2,
-        request=SimpleNamespace(transport_id=1),
+        planned_arrival_time=day + timedelta(hours=10),  # начало работ 10:00
+        request=SimpleNamespace(
+            id=10,
+            address="Ленина, 1",
+            latitude=55.7,
+            longitude=37.6,
+            window_start=day + timedelta(hours=9),
+            window_end=day + timedelta(hours=12),  # запас до закрытия окна 2 часа
+            duration_minutes=60,
+            priority_id=1,
+            transport_id=None,
+        ),
     )
 
-    explanation = assignment_explanation(assignment, "Бригада 1")
+    visit = to_plan_visit(
+        assignment,
+        available_from=day + timedelta(hours=9, minutes=30),
+        shift_end=day + timedelta(hours=18),  # после работы до конца смены 7 часов
+        candidate_engineers=3,
+    )
 
-    assert "Бригада 1" in explanation
-    assert "квалификация подходит" in explanation
-    assert "транспорт соответствует" in explanation
-    assert "Позиция №2" in explanation
-    assert "срочности" in explanation
+    assert visit.available_from == day + timedelta(hours=9, minutes=30)
+    assert visit.window_slack_minutes == 120
+    assert visit.shift_slack_minutes == 420
+    assert visit.candidate_engineers == 3
+
+
+def test_candidate_engineers_counted_by_skill_and_transport():
+    snapshot = {
+        "requests": {
+            "10": {"id": 10, "skill_id": 1, "transport_id": None},
+            "11": {"id": 11, "skill_id": 1, "transport_id": 2},
+            "12": {"id": 12, "skill_id": 3, "transport_id": None},
+        },
+        "engineers": {
+            "1": {"skill_ids": [1, 2], "transport_id": 1},
+            "2": {"skill_ids": [1], "transport_id": 2},
+        },
+    }
+
+    counts = candidate_engineers_by_request(snapshot)
+
+    assert counts == {10: 2, 11: 1, 12: 0}
 
 
 def test_urgent_assignments_are_counted_from_frozen_snapshot():

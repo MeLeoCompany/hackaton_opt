@@ -10,6 +10,7 @@ import { formatDuration } from '../utils/duration.js'
 import { routeColor } from '../utils/routeColors.js'
 
 import DurationInput from './DurationInput.vue'
+import PlanVisitDialog from './PlanVisitDialog.vue'
 
 const props = defineProps({
   plan: { type: Object, required: true },
@@ -72,8 +73,18 @@ function resetRouteFilters() {
   routeQuery.value = ''
 }
 
+// визит, открытый в окне «почему так»: { visit, route }
+const openedVisit = ref(null)
+
+function showVisit(route, visit) {
+  openedVisit.value = { route, visit }
+}
+
 // открыли другой план — поиск от прошлого плана не переносим
-watch(() => props.plan.id, resetRouteFilters)
+watch(() => props.plan.id, () => {
+  resetRouteFilters()
+  openedVisit.value = null
+})
 </script>
 
 <template>
@@ -110,12 +121,15 @@ watch(() => props.plan.id, resetRouteFilters)
               <template v-if="route.provider !== 'valhalla'"> · оценка по прямой</template>
             </p>
             <ol class="visits">
-              <li v-for="visit in route.visits" :key="visit.request_id">
-                <div class="visit-main">
-                  <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
-                  <span>№{{ visit.request_id }} · {{ visit.address }}</span>
-                </div>
-                <p class="visit-explanation">{{ visit.explanation }}</p>
+              <li
+                v-for="visit in route.visits"
+                :key="visit.request_id"
+                class="visit-main"
+                title="Почему визит стоит здесь"
+                @click.stop="showVisit(route, visit)"
+              >
+                <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
+                <span>№{{ visit.request_id }} · {{ visit.address }}</span>
               </li>
             </ol>
           </article>
@@ -211,13 +225,16 @@ watch(() => props.plan.id, resetRouteFilters)
                 <!-- маршрут сверху вниз: старт бригады, затем заявки по порядку, между ними стрелки -->
                 <ol class="route-steps">
                   <li class="route-start">Старт</li>
-                  <li v-for="visit in route.visits" :key="visit.request_id">
-                    <div class="visit-main">
-                      <span class="route-arrow" aria-hidden="true">↓</span>
-                      <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
-                      <span>№{{ visit.request_id }} · {{ visit.address }}</span>
-                    </div>
-                    <p class="visit-explanation">{{ visit.explanation }}</p>
+                  <li
+                    v-for="visit in route.visits"
+                    :key="visit.request_id"
+                    class="visit-step"
+                    title="Почему визит стоит здесь"
+                    @click.stop="showVisit(route, visit)"
+                  >
+                    <span class="route-arrow" aria-hidden="true">↓</span>
+                    <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
+                    <span>№{{ visit.request_id }} · {{ visit.address }}</span>
                   </li>
                 </ol>
               </td>
@@ -254,6 +271,13 @@ watch(() => props.plan.id, resetRouteFilters)
         </table>
       </div>
     </section>
+    <PlanVisitDialog
+      v-if="openedVisit"
+      :visit="openedVisit.visit"
+      :route="openedVisit.route"
+      :references="references"
+      @close="openedVisit = null"
+    />
   </section>
 </template>
 
@@ -357,11 +381,17 @@ watch(() => props.plan.id, resetRouteFilters)
   gap: 6px;
 }
 
-.visit-explanation {
-  margin: 2px 0 5px;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.35;
+/* визит кликается: по нему открывается окно «почему так» */
+.visit-step,
+.visits li {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.visit-step:hover,
+.visits li:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .filter-with-reset {

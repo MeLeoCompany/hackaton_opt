@@ -10,8 +10,9 @@ import { moscowTimeOf } from '../utils/moscowTime.js'
 
 const {
   plans,
-  firstId,
-  secondId,
+  selectedIds,
+  selectionIsFull,
+  togglePlan,
   first,
   second,
   metrics,
@@ -64,13 +65,12 @@ onMounted(load)
     </p>
 
     <template v-else>
-      <!-- выбор планов списком: сразу видно, чем они отличаются, и не нужно читать длинные подписи -->
+      <!-- выбор планов: одна колонка с галочками, сравниваются ровно два отмеченных -->
       <div class="table-scroll">
         <table class="data-table">
           <thead>
             <tr>
-              <th class="pick">А</th>
-              <th class="pick">Б</th>
+              <th class="pick">Сравнить</th>
               <th>План</th>
               <th>Решатель</th>
               <th>Рассчитан</th>
@@ -82,26 +82,23 @@ onMounted(load)
             <tr
               v-for="summary in plans"
               :key="summary.id"
-              :class="{ selected: summary.id === firstId || summary.id === secondId }"
+              :class="{
+                selected: selectedIds.includes(summary.id),
+                muted: selectionIsFull && !selectedIds.includes(summary.id),
+              }"
             >
               <td class="pick">
                 <input
-                  v-model="firstId"
-                  type="radio"
-                  name="first-plan"
-                  :value="summary.id"
-                  :disabled="summary.id === secondId"
-                  :aria-label="`План №${summary.id} как А`"
-                />
-              </td>
-              <td class="pick">
-                <input
-                  v-model="secondId"
-                  type="radio"
-                  name="second-plan"
-                  :value="summary.id"
-                  :disabled="summary.id === firstId"
-                  :aria-label="`План №${summary.id} как Б`"
+                  type="checkbox"
+                  :checked="selectedIds.includes(summary.id)"
+                  :disabled="selectionIsFull && !selectedIds.includes(summary.id)"
+                  :title="
+                    selectionIsFull && !selectedIds.includes(summary.id)
+                      ? 'Сначала снимите отметку с одного из выбранных планов'
+                      : 'Сравнить этот план'
+                  "
+                  :aria-label="`Сравнить план №${summary.id}`"
+                  @change="togglePlan(summary.id)"
                 />
               </td>
               <td class="number-cell">№{{ summary.id }}</td>
@@ -115,6 +112,8 @@ onMounted(load)
           </tbody>
         </table>
       </div>
+
+      <p v-if="!first || !second" class="muted">Отметьте два плана, чтобы увидеть разницу.</p>
 
       <div v-if="first && second" class="table-scroll">
         <table class="data-table">
@@ -149,10 +148,15 @@ onMounted(load)
 </template>
 
 <style scoped>
-/* колонки выбора узкие: в них только переключатель */
+/* колонка выбора узкая: в ней только галочка */
 .pick {
-  width: 34px;
+  width: 86px;
   text-align: center;
+}
+
+/* пока выбраны два плана, остальные приглушены: отметить их нельзя */
+.data-table tbody tr.muted td {
+  color: #94a3b8;
 }
 
 .better {

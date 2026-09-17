@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -354,7 +354,10 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
             assignments_by_engineer[assignment.engineer_id].append(assignment)
 
     engineer_assignments = sorted(assignments_by_engineer.values(), key=assigned_engineer_name)
-    routes = await asyncio.gather(*(build_engineer_route(group) for group in engineer_assignments))
+    candidates_by_request = candidate_engineers_by_request(plan.input_snapshot)
+    routes = await asyncio.gather(
+        *(build_engineer_route(group, candidates_by_request) for group in engineer_assignments)
+    )
 
     summary = (await summarize_plans(session, [plan]))[0]
     return PlanDetail(
@@ -365,7 +368,29 @@ async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
     )
 
 
-async def build_engineer_route(assignments: list[AssignmentView]) -> EngineerRoute:
+def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
+    """Сколько исполнителей дня подходили под каждую заявку: навык и требуемый транспорт.
+
+    Считается по снимку плана — тем данным, на которых план и строился.
+    """
+    if not snapshot or "requests" not in snapshot or "engineers" not in snapshot:
+        return {}
+
+    engineers = list(snapshot["engineers"].values())
+    counts = {}
+    for request in snapshot["requests"].values():
+        counts[request["id"]] = sum(
+            1
+            for engineer in engineers
+            if request["skill_id"] in engineer["skill_ids"]
+            and (request["transport_id"] is None or request["transport_id"] == engineer["transport_id"])
+        )
+    return counts
+
+
+async def build_engineer_route(
+    assignments: list[AssignmentView], candidates_by_request: dict[int, int]
+) -> EngineerRoute:
     """Маршрут одного исполнителя: визиты по порядку, пробег и линия для карты.
 
     Пробег берётся из маршрутизатора (/route) по порядку визитов, а не из матрицы:
@@ -408,8 +433,31 @@ async def build_engineer_route(assignments: list[AssignmentView]) -> EngineerRou
         duration_min=travel.duration_min,
         provider=travel.provider.value,
         geometry=travel.geometry,
-        visits=[to_plan_visit(assignment, engineer.name) for assignment in ordered],
+        shift_start=engineer.shift_start,
+        shift_end=engineer.shift_end,
+        visits=route_visits(ordered, engineer, candidates_by_request),
     )
+
+
+def route_visits(
+    ordered: list[AssignmentView], engineer: object, candidates_by_request: dict[int, int]
+) -> list[PlanVisit]:
+    """Визиты по порядку; каждый знает, когда исполнитель освободился до него."""
+    visits = []
+    available_from = engineer.shift_start
+    for assignment in ordered:
+        visits.append(
+            to_plan_visit(
+                assignment,
+                available_from=available_from,
+                shift_end=engineer.shift_end,
+                candidate_engineers=candidates_by_request.get(assignment.request.id),
+            )
+        )
+        available_from = assignment.planned_arrival_time + timedelta(
+            minutes=assignment.request.duration_minutes
+        )
+    return visits
 
 
 def assigned_engineer_name(assignments: list[AssignmentView]) -> str:
@@ -427,10 +475,19 @@ def assigned_visit_order(assignment: AssignmentView) -> int:
     return int(assignment.visit_order)
 
 
-def to_plan_visit(assignment: AssignmentView, engineer_name: str) -> PlanVisit:
+def to_plan_visit(
+    assignment: AssignmentView,
+    *,
+    available_from: datetime,
+    shift_end: datetime,
+    candidate_engineers: int | None,
+) -> PlanVisit:
+    """Визит с фактами: когда исполнитель освободился и сколько осталось запаса."""
     if assignment.visit_order is None or assignment.planned_arrival_time is None:
         raise ValueError("назначение содержит неполные данные")
     request = assignment.request
+    work_start = assignment.planned_arrival_time
+    work_end = work_start + timedelta(minutes=request.duration_minutes)
     return PlanVisit(
         visit_order=assignment.visit_order,
         request_id=request.id,
@@ -442,23 +499,10 @@ def to_plan_visit(assignment: AssignmentView, engineer_name: str) -> PlanVisit:
         window_end=request.window_end,
         duration_minutes=request.duration_minutes,
         priority_id=request.priority_id,
-        explanation=assignment_explanation(assignment, engineer_name),
-    )
-
-
-def assignment_explanation(assignment: AssignmentView, engineer_name: str) -> str:
-    """Краткое объяснение назначения на языке диспетчера."""
-    request = assignment.request
-    transport = (
-        "ограничений по транспорту у заявки нет"
-        if request.transport_id is None
-        else "транспорт соответствует требованию заявки"
-    )
-    return (
-        f"Назначена исполнителю «{engineer_name}»: квалификация подходит, {transport}; "
-        "работа начинается в окне заявки и заканчивается в пределах смены. "
-        f"Позиция №{assignment.visit_order} выбрана при совместной оптимизации срочности, "
-        "числа выполненных заявок, числа исполнителей и пробега."
+        available_from=available_from,
+        window_slack_minutes=round((request.window_end - work_start).total_seconds() / 60),
+        shift_slack_minutes=round((shift_end - work_end).total_seconds() / 60),
+        candidate_engineers=candidate_engineers,
     )
 
 
@@ -525,7 +569,14 @@ def snapshot_assignment(assignment: Assignment, snapshot: dict) -> Assignment | 
     request = dict(snapshot["requests"][str(assignment.request_id)])
     for key in ("window_start", "window_end"):
         request[key] = datetime.fromisoformat(request[key])
+
+    # в снимке время лежит строками; смена нужна временем — по ней считается запас визита
     engineer = snapshot["engineers"].get(str(assignment.engineer_id))
+    if engineer is not None:
+        engineer = dict(engineer)
+        for key in ("shift_start", "shift_end"):
+            engineer[key] = datetime.fromisoformat(engineer[key])
+
     return SimpleNamespace(
         request=SimpleNamespace(**request),
         engineer=SimpleNamespace(**engineer) if engineer else None,

@@ -20,8 +20,8 @@ export const COMPARED_METRICS = [
 export function usePlanComparison() {
   const { selectedDay } = useSelectedDay()
   const plans = ref([]) // планы выбранного дня, новые первыми
-  const firstId = ref(null)
-  const secondId = ref(null)
+  // выбранные планы в порядке отметки: первый отмеченный — слева, второй — справа
+  const selectedIds = ref([])
   const loading = ref(false)
   const { errorMessage, errorDetails, showError, clearMessages } = useMessages()
 
@@ -37,8 +37,7 @@ export function usePlanComparison() {
       if (current !== listRequest) return
       plans.value = summaries
       // по умолчанию сравниваем два последних плана дня — обычно это разные алгоритмы
-      firstId.value = summaries[1]?.id ?? null
-      secondId.value = summaries[0]?.id ?? null
+      selectedIds.value = summaries.slice(0, 2).map((summary) => summary.id).reverse()
     } catch (error) {
       if (current === listRequest) showError(error)
     } finally {
@@ -46,8 +45,21 @@ export function usePlanComparison() {
     }
   }
 
-  const first = computed(() => plans.value.find((plan) => plan.id === firstId.value) ?? null)
-  const second = computed(() => plans.value.find((plan) => plan.id === secondId.value) ?? null)
+  const planById = (planId) => plans.value.find((plan) => plan.id === planId) ?? null
+  const first = computed(() => planById(selectedIds.value[0]))
+  const second = computed(() => planById(selectedIds.value[1]))
+
+  // сравниваются ровно два плана: пока выбраны оба, остальные отмечать нельзя
+  const selectionIsFull = computed(() => selectedIds.value.length >= 2)
+
+  function togglePlan(planId) {
+    if (selectedIds.value.includes(planId)) {
+      selectedIds.value = selectedIds.value.filter((id) => id !== planId)
+      return
+    }
+    if (selectionIsFull.value) return
+    selectedIds.value = [...selectedIds.value, planId]
+  }
 
   const metrics = computed(() => {
     if (!first.value || !second.value) return []
@@ -65,8 +77,9 @@ export function usePlanComparison() {
 
   return {
     plans,
-    firstId,
-    secondId,
+    selectedIds,
+    selectionIsFull,
+    togglePlan,
     first,
     second,
     metrics,
