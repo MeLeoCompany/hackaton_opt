@@ -10,6 +10,26 @@ PostgreSQL 16, поднимается через `docker compose up` из кор
 
 Подключение по умолчанию: `postgresql://routing:routing@localhost:5432/routing`.
 
+## Накат миграций
+
+Файлы `init/*.sql` выполняются сами только при первом старте контейнера
+(`docker-entrypoint-initdb.d`). На живую БД новые файлы накатывает скрипт:
+
+```
+db/apply_migrations.sh            # накатить всё, чего в БД ещё нет
+db/apply_migrations.sh --status   # показать, что накачено, а что ждёт
+```
+
+Что уже применено, помнит таблица `schema_migration` в самой БД. `001_schema.sql`,
+`002_seed.sql` и `003_mock_data.sql` — только для первого старта контейнера: скрипт их
+не выполняет (демоданные вставились бы повторно), а при первом запуске отмечает применёнными.
+Миграции с `004` и дальше написаны идемпотентно (`IF NOT EXISTS`, `UPDATE ... WHERE ... IS NULL`),
+поэтому повторный прогон безопасен.
+
+Скрипт ходит в контейнер `routing_db` (`DB_CONTAINER`), а если тот не поднят — локальным `psql`
+на `PGHOST`. Новая миграция = новый файл `init/NNN_имя.sql` со следующим номером; ничего
+регистрировать вручную не нужно, скрипт берёт всё, чего нет в `schema_migration`.
+
 ## Решения по открытым вопросам
 
 1. **plan / assignment хранятся в БД**, а не только в памяти приложения — это
@@ -56,11 +76,7 @@ PostgreSQL 16, поднимается через `docker compose up` из кор
 Выключенная заявка хранится как есть, но не должна попадать в сборку задачи планирования —
 диспетчер включает и выключает заявки, не удаляя их.
 
-На уже поднятую БД миграция накатывается вручную (`IF NOT EXISTS`, повторный запуск безопасен):
-
-```
-docker exec -i routing_db psql -U routing -d routing < db/init/004_request_is_active.sql
-```
+На уже поднятую БД накатывается скриптом (см. «Накат миграций» ниже).
 
 ## День и решатель плана (`plan.plan_date`, `plan.solver`)
 
@@ -68,21 +84,13 @@ docker exec -i routing_db psql -U routing -d routing < db/init/004_request_is_ac
 (по московскому времени), `solver TEXT` — чем посчитан (`cuopt`, `baseline`, в будущем CPU fallback).
 У уже существующих планов дата проставляется из их заявок.
 
-```
-docker exec -i routing_db psql -U routing -d routing < db/init/005_plan_day.sql
-```
-
 ## Снимки исходных данных планов
 
 `init/006_plan_snapshot.sql` добавляет `plan.input_snapshot` (JSONB).
 Новые планы сохраняют координаты, окна и параметры заявок и исполнителей при расчёте.
 Открытие старого плана использует снимок, поэтому редактирование данных не меняет его маршруты.
 Миграция фиксирует существующие планы по текущим данным; ранее сделанные изменения восстановить нельзя.
-На существующую БД примените миграцию до запуска обновлённого backend:
-
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/006_plan_snapshot.sql
-```
+На существующую БД миграция накатывается `db/apply_migrations.sh` — до запуска обновлённого backend.
 
 ## Порядок поступления заявок и исполнителей
 
@@ -94,12 +102,7 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 
 Та же миграция добавляла `plan.comparison_id` для сравнения базового алгоритма с cuOpt;
 базовый алгоритм убран, поле снимает `init/008_drop_comparison.sql`.
-На существующую БД примените обе миграции до запуска обновлённого backend:
-
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/007_baseline_comparison.sql
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/008_drop_comparison.sql
-```
+На существующую БД обе миграции накатываются `db/apply_migrations.sh` — до запуска обновлённого backend.
 
 Повторный запуск безопасен. Новый Docker volume получает все миграции автоматически;
 удалять существующий volume не нужно.
@@ -110,10 +113,6 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 `solve_duration_ms`. Один запуск планировщика сохраняет два плана на одном снимке и одних
 матрицах: последовательный baseline и результат cuOpt. Общий UUID связывает пару, а время
 решателя хранится отдельно от загрузки данных и построения линий маршрутов.
-
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/012_plan_comparison.sql
-```
 
 ## Типы работ (`work_type`)
 
@@ -127,11 +126,7 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 дублируется вручную, а определяется типом работ. Существующим заявкам миграция проставила
 тип работ по их навыку, длительности не трогала.
 
-На существующую БД:
-
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/009_work_type.sql
-```
+На существующую БД миграция накатывается `db/apply_migrations.sh`.
 
 ## Пробег плана (`plan.total_distance_km`)
 
@@ -139,27 +134,15 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 построении плана, чтобы список планов показывал его без пересчёта маршрутов. У планов,
 построенных до миграции, поле пустое — такие планы достаточно пересчитать.
 
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/010_plan_distance.sql
-```
-
 `init/011_plan_distance_provider.sql` добавляет источник пробега: `valhalla`,
 `haversine` или `mixed`. Поэтому fallback остаётся рабочим, но приближённая цифра
 больше не выглядит как точный дорожный расчёт.
-
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/011_plan_distance_provider.sql
-```
 
 ## Пары планов убраны (`013_drop_plan_pairs.sql`)
 
 Расчёт больше не строит пару baseline + cuOpt: каждый запуск даёт отдельный план, а сравнение
 любых двух планов дня считается на лету по их номерам. Поэтому `plan.comparison_id` и его
 индекс сняты.
-
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/013_drop_plan_pairs.sql
-```
 
 ## Утверждение плана (`014_plan_approval.sql`)
 
@@ -173,16 +156,9 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
   дней такую заявку не берут. Удалили план — ссылка снимается сама (`ON DELETE SET NULL`),
   и заявка снова доступна любому дню.
 
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/014_plan_approval.sql
-```
-
 ## Приоритеты оптимизации (`015_plan_objective_policy.sql`)
 
 Каждый план cuOpt хранит применённый порядок целей в `plan.objective_policy` как JSONB. Это
 позволяет воспроизвести расчёт и не сравнивать планы с разными приоритетами как полностью
 равнозначные. У старых планов и baseline значение остаётся NULL.
 
-```bash
-docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/015_plan_objective_policy.sql
-```
