@@ -17,6 +17,17 @@ COSTING: dict[TransportKind, str] = {
     TransportKind.PUBLIC_TRANSPORT: "bus",
 }
 
+# В интерфейсе «Пешеход» означает только перемещение пешком. Valhalla иначе разрешает
+# pedestrian-маршрутам пользоваться паромами даже при use_ferry=0.
+COSTING_OPTIONS: dict[TransportKind, dict[str, dict[str, float | bool]]] = {
+    TransportKind.PEDESTRIAN: {
+        "pedestrian": {
+            "use_ferry": 0.0,
+            "exclude_ferries": True,
+        }
+    }
+}
+
 PUBLIC_TRANSPORT_WAIT_MIN = 10.0
 
 # лимиты Valhalla по умолчанию (service_limits в valhalla.json). Большие запросы режем
@@ -61,6 +72,7 @@ async def _request_matrix_block(
     from_indices: list[int],
     to_indices: list[int],
     costing: str,
+    costing_options: dict[str, dict[str, float | bool]] | None,
 ) -> tuple[list[int], list[int], list[list[dict]]]:
     """Запрашивает у Valhalla кусок матрицы: из точек from_indices во все точки to_indices."""
     payload = {
@@ -69,6 +81,8 @@ async def _request_matrix_block(
         "costing": costing,
         "units": "kilometers",
     }
+    if costing_options:
+        payload["costing_options"] = costing_options
     response = await client.post("/sources_to_targets", json=payload)
     response.raise_for_status()
     return from_indices, to_indices, response.json()["sources_to_targets"]
@@ -83,6 +97,7 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
     size = len(points)
     block_size = max(int(MAX_MATRIX_PAIRS**0.5), 1)
     costing = COSTING[transport]
+    costing_options = COSTING_OPTIONS.get(transport)
     waiting_minutes = _waiting_minutes(transport)
 
     distances_km: list[list[float | None]] = [[0.0] * size for _ in range(size)]
@@ -91,7 +106,14 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
     async with httpx.AsyncClient(base_url=settings.valhalla_url, timeout=180.0) as client:
         blocks = await asyncio.gather(
             *(
-                _request_matrix_block(client, points, from_indices, to_indices, costing)
+                _request_matrix_block(
+                    client,
+                    points,
+                    from_indices,
+                    to_indices,
+                    costing,
+                    costing_options,
+                )
                 for from_indices in _split_indices(size, block_size)
                 for to_indices in _split_indices(size, block_size)
             )
@@ -127,6 +149,7 @@ async def build_route(points: list[Point], transport: TransportKind) -> TravelRo
     Линия приходит как encoded polyline с точностью 6 знаков — по одной на каждый участок.
     """
     costing = COSTING[transport]
+    costing_options = COSTING_OPTIONS.get(transport)
     distance_km = 0.0
     duration_min = 0.0
     geometry: list[str] = []
@@ -138,6 +161,8 @@ async def build_route(points: list[Point], transport: TransportKind) -> TravelRo
                 "costing": costing,
                 "units": "kilometers",
             }
+            if costing_options:
+                payload["costing_options"] = costing_options
             response = await client.post("/route", json=payload)
             response.raise_for_status()
             trip = response.json()["trip"]
