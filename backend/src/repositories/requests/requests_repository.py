@@ -1,11 +1,11 @@
 """Чтение и запись заявок в БД. Коммит делает сервис — здесь только запросы."""
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Assignment, Event, Request
+from src.models import Assignment, Event, Plan, Request
 
 # Shared by request creation and CSV import; independent from engineer ID allocation.
 REQUEST_ID_LOCK_KEY = 7419821
@@ -37,10 +37,17 @@ async def list_active_requests(session: AsyncSession) -> list[Request]:
 
 
 async def list_active_requests_in_period(
-    session: AsyncSession, period_start: datetime, period_end: datetime
+    session: AsyncSession,
+    period_start: datetime,
+    period_end: datetime,
+    plan_date: date | None = None,
 ) -> list[Request]:
-    """Активные заявки, окно которых пересекается с периодом [period_start, period_end)."""
-    result = await session.execute(
+    """Активные заявки, окно которых пересекается с периодом [period_start, period_end).
+
+    Если указан plan_date, заявки, закреплённые за утверждённым планом другого дня,
+    не возвращаются: они уже распределены и второй раз выполняться не должны.
+    """
+    query = (
         select(Request)
         .where(
             Request.is_active.is_(True),
@@ -49,7 +56,33 @@ async def list_active_requests_in_period(
         )
         .order_by(Request.input_order)
     )
+    if plan_date is not None:
+        query = query.outerjoin(Plan, Plan.id == Request.approved_plan_id).where(
+            or_(Request.approved_plan_id.is_(None), Plan.plan_date == plan_date)
+        )
+    result = await session.execute(query)
     return list(result.scalars().all())
+
+
+async def list_requests_held_by_other_days(
+    session: AsyncSession, period_start: datetime, period_end: datetime, plan_date: date
+) -> list[tuple[Request, Plan]]:
+    """Заявки дня, закреплённые за утверждённым планом другого дня, вместе с этим планом.
+
+    Нужны, чтобы предупредить диспетчера перед расчётом: часть заявок в план не попадёт.
+    """
+    result = await session.execute(
+        select(Request, Plan)
+        .join(Plan, Plan.id == Request.approved_plan_id)
+        .where(
+            Request.is_active.is_(True),
+            Request.window_start < period_end,
+            Request.window_end > period_start,
+            Plan.plan_date != plan_date,
+        )
+        .order_by(Request.input_order)
+    )
+    return [(request, plan) for request, plan in result.all()]
 
 
 async def get_request(session: AsyncSession, request_id: int) -> Request | None:

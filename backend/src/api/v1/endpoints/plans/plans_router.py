@@ -10,7 +10,13 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.session import get_db
-from src.schemas.plans import PlanBuildRequest, PlanDetail, PlanningDayOption, PlanSummary
+from src.schemas.plans import (
+    PlanBuildRequest,
+    PlanDayCheck,
+    PlanDetail,
+    PlanningDayOption,
+    PlanSummary,
+)
 from src.services.planner import planning_service
 
 router = APIRouter()
@@ -34,6 +40,26 @@ async def list_plans(plan_date: date | None = None, session: AsyncSession = Depe
 )
 async def build_plan(payload: PlanBuildRequest, session: AsyncSession = Depends(get_db)):
     return await planning_service.build_plan_for_day(session, payload.plan_date, payload.solver)
+
+
+@router.get(
+    "/day-check",
+    response_model=PlanDayCheck,
+    summary="Что ждёт расчёт дня: сколько заявок и какие заняты утверждённым планом другого дня",
+)
+async def check_planning_day(plan_date: date, session: AsyncSession = Depends(get_db)):
+    return await planning_service.check_planning_day(session, plan_date)
+
+
+@router.post("/{plan_id}/approval", response_model=PlanSummary, summary="Утвердить план дня")
+async def approve_plan(plan_id: int, session: AsyncSession = Depends(get_db)):
+    """Заявки утверждённого плана закрепляются за ним: другие дни их не берут."""
+    return await planning_service.approve_plan(session, plan_id)
+
+
+@router.delete("/{plan_id}/approval", response_model=PlanSummary, summary="Снять утверждение плана")
+async def cancel_plan_approval(plan_id: int, session: AsyncSession = Depends(get_db)):
+    return await planning_service.cancel_plan_approval(session, plan_id)
 
 
 @router.get("/{plan_id}", response_model=PlanDetail, summary="План с маршрутами исполнителей")

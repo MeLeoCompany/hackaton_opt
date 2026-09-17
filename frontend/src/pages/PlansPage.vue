@@ -28,6 +28,9 @@ const {
   selectPlan,
   buildDayPlan,
   removePlan,
+  dayCheck,
+  approve,
+  cancelApproval,
   selectEngineer,
 } = usePlans()
 
@@ -80,6 +83,7 @@ onMounted(async () => {
     <PlanBuildDialog
       v-if="buildDialogOpen"
       :plan-date="selectedDay"
+      :day-check="dayCheck"
       :building="building"
       @build="startBuild"
       @close="buildDialogOpen = false"
@@ -103,8 +107,11 @@ onMounted(async () => {
           :plans="plans"
           :selected-plan-id="selectedPlanId"
           :busy="building"
+          :held-requests="dayCheck?.held_requests ?? []"
           @select="selectPlan"
           @remove="removePlan"
+          @approve="approve"
+          @cancel-approval="cancelApproval"
         />
       </section>
 

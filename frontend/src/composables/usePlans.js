@@ -2,7 +2,15 @@
 
 import { ref, watch } from 'vue'
 
-import { buildPlan, deletePlan, getPlan, listPlans } from '../api/plansApi.js'
+import {
+  approvePlan,
+  buildPlan,
+  cancelPlanApproval,
+  checkPlanningDay,
+  deletePlan,
+  getPlan,
+  listPlans,
+} from '../api/plansApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
@@ -10,6 +18,9 @@ import { useSelectedDay } from './useSelectedDay.js'
 export function usePlans() {
   const { selectedDay } = useSelectedDay()
   const plans = ref([]) // планы выбранного дня, новые первыми
+  // что ждёт расчёт этого дня: сколько заявок пойдёт и какие заняты утверждённым планом
+  // другого дня — из этого интерфейс делает предупреждения
+  const dayCheck = ref(null)
   const selectedPlanId = ref(null)
   const plan = ref(null) // выбранный план с маршрутами
   const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
@@ -46,6 +57,7 @@ export function usePlans() {
     plan.value = null
     selectedPlanId.value = null
     try {
+      loadDayCheck(day)
       const summaries = await listPlans(day)
       if (request !== listRequest) return
       plans.value = summaries
@@ -118,6 +130,57 @@ export function usePlans() {
     }
   }
 
+  // Предупреждение о занятых заявках грузим отдельно: список планов не должен ждать его,
+  // а если проверка не ответит, планы всё равно покажем.
+  async function loadDayCheck(day) {
+    dayCheck.value = null
+    try {
+      const check = await checkPlanningDay(day)
+      if (day === selectedDay.value) dayCheck.value = check
+    } catch {
+      // без предупреждения обойдёмся: планы и расчёт от этого не зависят
+    }
+  }
+
+  async function approve(summary) {
+    if (building.value) return
+    building.value = true
+    clearMessages()
+    try {
+      await approvePlan(summary.id)
+      await refreshDay()
+      showNotice(`План №${summary.id} утверждён: его заявки закреплены за этим днём`)
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
+  async function cancelApproval(summary) {
+    if (building.value) return
+    if (!window.confirm(`Снять утверждение с плана №${summary.id}? Его заявки станут доступны другим дням.`)) return
+    building.value = true
+    clearMessages()
+    try {
+      await cancelPlanApproval(summary.id)
+      await refreshDay()
+      showNotice(`Утверждение плана №${summary.id} снято`)
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
+  // после утверждения меняются и планы, и занятые заявки дня
+  async function refreshDay() {
+    const day = selectedDay.value
+    loadDayCheck(day)
+    const summaries = await listPlans(day)
+    if (day === selectedDay.value) plans.value = summaries
+  }
+
   // сменили день — показываем планы нового дня
   watch(selectedDay, loadPlans)
 
@@ -144,6 +207,9 @@ export function usePlans() {
     selectPlan,
     buildDayPlan,
     removePlan,
+    dayCheck,
+    approve,
+    cancelApproval,
     selectEngineer,
   }
 }

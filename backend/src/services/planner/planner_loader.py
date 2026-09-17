@@ -79,7 +79,11 @@ def local_date_of(moment: datetime) -> date:
 
 
 async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
-    requests = await requests_repository.list_active_requests_in_period(session, day.day_start, day.day_end)
+    # заявки, закреплённые за утверждённым планом другого дня, в задачу не попадают:
+    # окно через полночь иначе выполнялось бы дважды
+    requests = await requests_repository.list_active_requests_in_period(
+        session, day.day_start, day.day_end, plan_date=day.plan_date
+    )
     engineers = await engineers_repository.list_engineers_in_period(session, day.day_start, day.day_end)
     engineers = [e for e in engineers
                  if day.to_minutes(e.shift_start, round_up=True) <= day.to_minutes(e.shift_end)]

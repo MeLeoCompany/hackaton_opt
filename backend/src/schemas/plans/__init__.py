@@ -1,5 +1,7 @@
 from src.schemas.plans.plans_schema import (
     EngineerRoute,
+    HeldRequest,
+    PlanDayCheck,
     PlanBuildRequest,
     PlanDetail,
     PlanningDayOption,
@@ -11,6 +13,8 @@ from src.schemas.plans.plans_schema import (
 
 __all__ = [
     "EngineerRoute",
+    "HeldRequest",
+    "PlanDayCheck",
     "PlanBuildRequest",
     "PlanDetail",
     "PlanSummary",

@@ -37,6 +37,8 @@ class Request(Base):
     transport_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("transport.id"))
     # тип работ из справочника нормативов: из него берутся длительность и навык по умолчанию
     work_type_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("work_type.id"))
+    # заявка закреплена за утверждённым планом: другие дни её не берут (окна через полночь)
+    approved_plan_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("plan.id"))
     # выключенная заявка хранится, но в сборку задачи планирования не попадает
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
 

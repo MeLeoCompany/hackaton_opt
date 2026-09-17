@@ -22,3 +22,17 @@ export function getPlan(planId) {
 export function deletePlan(planId) {
   return apiRequest('DELETE', `/plans/${planId}`)
 }
+
+// утверждение плана: его заявки закрепляются за днём и другим дням не достаются
+export function approvePlan(planId) {
+  return apiRequest('POST', `/plans/${planId}/approval`)
+}
+
+export function cancelPlanApproval(planId) {
+  return apiRequest('DELETE', `/plans/${planId}/approval`)
+}
+
+// что ждёт расчёт дня: сколько заявок пойдёт и какие заняты утверждённым планом другого дня
+export function checkPlanningDay(planDate) {
+  return apiRequest('GET', `/plans/day-check?plan_date=${encodeURIComponent(planDate)}`)
+}

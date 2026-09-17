@@ -2,13 +2,15 @@
 // Параметры расчёта плана: окно открывается по кнопке «Построить план», поля заполнены
 // значениями по умолчанию — можно сразу нажать «Рассчитать».
 // Пока параметр один — алгоритм; сюда же добавятся лимит времени и веса целевой функции.
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 
 import { formatDay } from '../utils/moscowTime.js'
 
-defineProps({
+const props = defineProps({
   planDate: { type: String, required: true },
   building: { type: Boolean, required: true },
+  // ответ /plans/day-check: заявки дня, уже закреплённые за утверждёнными планами других дней
+  dayCheck: { type: Object, default: null },
 })
 const emit = defineEmits(['build', 'close'])
 
@@ -27,6 +29,13 @@ const SOLVERS = [
 
 // значения по умолчанию: ими же расчёт и запускается, если ничего не менять
 const params = reactive({ solver: 'cuopt' })
+
+// заявки с окном через полночь мог забрать утверждённый план соседнего дня — предупреждаем до расчёта
+const heldRequests = computed(() => props.dayCheck?.held_requests ?? [])
+const heldHolders = computed(() =>
+  [...new Set(heldRequests.value.map((held) => `№${held.plan_id} от ${formatDay(held.plan_date)}`))].join(', ')
+)
+const heldNumbers = computed(() => heldRequests.value.map((held) => `№${held.request_id}`).join(', '))
 
 function solverHint() {
   return SOLVERS.find((solver) => solver.value === params.solver)?.hint ?? ''
@@ -50,6 +59,16 @@ function solverHint() {
         </select>
       </label>
       <p class="hint">{{ solverHint() }}</p>
+
+      <p v-if="heldRequests.length" class="warning">
+        <span class="mark">!</span>
+        <span>
+          Заявок этого дня закреплено за утверждёнными планами других дней:
+          {{ heldRequests.length }} ({{ heldNumbers }}). Забрали: {{ heldHolders }}.
+          В расчёт они не пойдут — иначе одну заявку выполнят дважды.
+          Нужны здесь — снимите утверждение с того плана.
+        </span>
+      </p>
 
       <footer>
         <span class="hint">Заявки и смены берутся на {{ formatDay(planDate) }}</span>
@@ -104,6 +123,32 @@ function solverHint() {
   margin: 0;
   color: #64748b;
   font-size: 12px;
+}
+
+.warning {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.warning .mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  font-weight: 700;
 }
 
 .dialog-actions {

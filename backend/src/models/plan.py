@@ -41,3 +41,6 @@ class Plan(Base):
     total_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
     # valhalla, haversine или mixed; у старых планов и плана без маршрутов — NULL
     distance_provider: Mapped[str | None] = mapped_column(Text)
+    # когда план утверждён; NULL — черновик. Утверждённый план на день только один:
+    # его заявки закрепляются за ним и в планы других дней не попадают
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

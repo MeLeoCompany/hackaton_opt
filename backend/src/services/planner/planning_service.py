@@ -4,18 +4,20 @@ import asyncio
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.errors import DataError, NotFoundError
+from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates
 from src.models import Assignment, Plan, PlanRunType
 from src.repositories.plans import plans_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
+    HeldRequest,
+    PlanDayCheck,
     SolverName,
     EngineerRoute,
     PlanDetail,
@@ -48,6 +50,10 @@ TIME_REASON = (
 
 class PlanNotFoundError(NotFoundError):
     """Плана с таким номером нет."""
+
+
+class PlanInUseError(InUseError):
+    """Действие с планом сейчас запрещено: сначала нужно снять утверждение."""
 
 
 class PlanDataError(DataError):
@@ -174,11 +180,81 @@ async def total_route_distance(
 
 async def delete_plan(session: AsyncSession, plan_id: int) -> None:
     """Удаляет план вместе с его назначениями — чтобы день можно было пересчитать заново."""
+    plan = await find_plan(session, plan_id)
+    if plan.approved_at is not None:
+        raise PlanInUseError(
+            f"План №{plan_id} утверждён: сначала снимите утверждение, иначе заявки останутся "
+            "закреплёнными за несуществующим планом"
+        )
+    await plans_repository.delete_plan(session, plan)
+    await session.commit()
+
+
+async def find_plan(session: AsyncSession, plan_id: int) -> Plan:
     plan = await plans_repository.get_plan(session, plan_id)
     if plan is None:
         raise PlanNotFoundError(f"План №{plan_id} не найден")
-    await plans_repository.delete_plan(session, plan)
+    return plan
+
+
+async def approve_plan(session: AsyncSession, plan_id: int) -> PlanSummary:
+    """Утверждает план дня и закрепляет за ним назначенные заявки.
+
+    Заявка с окном через полночь попадает в оба дня, и планы обоих дней вправе её взять.
+    Утверждение фиксирует, чей это день: закреплённую заявку другие дни больше не берут.
+    """
+    plan = await find_plan(session, plan_id)
+    if plan.approved_at is not None:
+        return (await summarize_plans(session, [plan]))[0]
+
+    approved = await plans_repository.get_approved_plan(session, plan.plan_date)
+    if approved is not None:
+        raise PlanInUseError(
+            f"На {plan.plan_date:%d.%m.%Y} уже утверждён план №{approved.id}: "
+            "снимите утверждение с него, чтобы утвердить другой"
+        )
+
+    await plans_repository.hold_plan_requests(session, plan, datetime.now(timezone.utc))
     await session.commit()
+    return (await summarize_plans(session, [plan]))[0]
+
+
+async def cancel_plan_approval(session: AsyncSession, plan_id: int) -> PlanSummary:
+    """Снимает утверждение: заявки плана снова доступны любому дню."""
+    plan = await find_plan(session, plan_id)
+    if plan.approved_at is not None:
+        await plans_repository.release_plan_requests(session, plan)
+        await session.commit()
+    return (await summarize_plans(session, [plan]))[0]
+
+
+async def check_planning_day(session: AsyncSession, plan_date: date) -> PlanDayCheck:
+    """Что ждёт диспетчера перед расчётом: сколько заявок дня и какие уже заняты другим днём."""
+    day = planner_loader.planning_day(plan_date)
+    requests = await requests_repository.list_active_requests_in_period(
+        session, day.day_start, day.day_end, plan_date=plan_date
+    )
+    held = await requests_repository.list_requests_held_by_other_days(
+        session, day.day_start, day.day_end, plan_date
+    )
+    approved = await plans_repository.get_approved_plan(session, plan_date)
+
+    return PlanDayCheck(
+        plan_date=plan_date,
+        active_requests=len(requests),
+        approved_plan_id=approved.id if approved else None,
+        held_requests=[
+            HeldRequest(
+                request_id=request.id,
+                address=request.address,
+                window_start=request.window_start,
+                window_end=request.window_end,
+                plan_id=plan.id,
+                plan_date=plan.plan_date,
+            )
+            for request, plan in held
+        ],
+    )
 
 
 async def save_solution(
@@ -319,6 +395,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 solve_duration_ms=(
                     float(plan.solve_duration_ms) if plan.solve_duration_ms is not None else None
                 ),
+                approved_at=plan.approved_at,
             )
         )
     return summaries

@@ -3,11 +3,13 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from datetime import datetime
+
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models import Assignment, Plan, PlanRunType
+from src.models import Assignment, Plan, PlanRunType, Request
 
 
 def add_plan(
@@ -50,6 +52,41 @@ async def list_plans(session: AsyncSession, plan_date: date | None) -> list[Plan
         query = query.where(Plan.plan_date == plan_date)
     result = await session.execute(query)
     return list(result.scalars().all())
+
+
+async def get_approved_plan(session: AsyncSession, plan_date: date) -> Plan | None:
+    """Утверждённый план дня; на день он может быть только один."""
+    result = await session.execute(
+        select(Plan).where(Plan.plan_date == plan_date, Plan.approved_at.is_not(None))
+    )
+    return result.scalar_one_or_none()
+
+
+async def hold_plan_requests(session: AsyncSession, plan: Plan, approved_at: datetime) -> int:
+    """Утверждает план и закрепляет за ним назначенные заявки.
+
+    Закреплённую заявку не возьмут планы других дней: иначе заявка с окном через полночь
+    выполнялась бы дважды — в плане вчерашнего и в плане сегодняшнего дня.
+    """
+    plan.approved_at = approved_at
+    assigned = (
+        select(Assignment.request_id)
+        .where(Assignment.plan_id == plan.id, Assignment.engineer_id.is_not(None))
+        .scalar_subquery()
+    )
+    result = await session.execute(
+        update(Request).where(Request.id.in_(assigned)).values(approved_plan_id=plan.id)
+    )
+    return result.rowcount or 0
+
+
+async def release_plan_requests(session: AsyncSession, plan: Plan) -> int:
+    """Снимает утверждение плана и отпускает его заявки другим дням."""
+    plan.approved_at = None
+    result = await session.execute(
+        update(Request).where(Request.approved_plan_id == plan.id).values(approved_plan_id=None)
+    )
+    return result.rowcount or 0
 
 
 async def list_plan_assignments(session: AsyncSession, plan_id: int) -> list[Assignment]:

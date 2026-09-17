@@ -160,3 +160,19 @@ docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < 
 ```bash
 docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/013_drop_plan_pairs.sql
 ```
+
+## Утверждение плана (`014_plan_approval.sql`)
+
+Заявка с окном через полночь (23:00–02:00) попадает в дни по обе стороны полуночи, и планы
+обоих дней вправе её взять — тогда её выполнят дважды. Поэтому диспетчер утверждает один план
+на день, и его заявки закрепляются за этим планом.
+
+- `plan.approved_at` — когда план утверждён; NULL — черновик. Частичный уникальный индекс
+  `plan_approved_day_idx` не даст утвердить второй план на тот же день.
+- `request.approved_plan_id` — за каким утверждённым планом закреплена заявка. Планы других
+  дней такую заявку не берут. Удалили план — ссылка снимается сама (`ON DELETE SET NULL`),
+  и заявка снова доступна любому дню.
+
+```bash
+docker compose exec -T postgres psql -U routing -d routing -v ON_ERROR_STOP=1 < db/init/014_plan_approval.sql
+```

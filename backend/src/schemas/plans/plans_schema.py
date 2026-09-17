@@ -42,6 +42,27 @@ class PlanSummary(BaseModel):
     total_distance_km: float | None = None  # общий пробег по дорогам; у старых планов может не быть
     distance_provider: str | None = None  # valhalla / haversine / mixed; NULL у старых планов
     solve_duration_ms: float | None = None
+    approved_at: datetime | None = None  # план утверждён: его заявки закреплены за этим днём
+
+
+class HeldRequest(BaseModel):
+    """Заявка дня, закреплённая за утверждённым планом другого дня."""
+
+    request_id: int
+    address: str
+    window_start: datetime
+    window_end: datetime
+    plan_id: int
+    plan_date: date
+
+
+class PlanDayCheck(BaseModel):
+    """Что ждёт диспетчера перед расчётом дня: сколько заявок и какие из них уже заняты."""
+
+    plan_date: date
+    active_requests: int
+    approved_plan_id: int | None = None  # утверждённый план этого дня, если он есть
+    held_requests: list[HeldRequest] = []
 
 
 class PlanVisit(BaseModel):
