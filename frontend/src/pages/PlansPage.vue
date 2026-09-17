@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import DayPanel from '../components/DayPanel.vue'
 import PlanBuildDialog from '../components/PlanBuildDialog.vue'

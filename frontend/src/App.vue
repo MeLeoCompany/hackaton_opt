@@ -1,6 +1,9 @@
 <script setup>
+// Каркас: слева разделы, справа открытая страница. День — общий параметр сервиса, его полоса
+// стоит на каждой странице под заголовком и работает с одним и тем же выбранным днём.
 import { onMounted } from 'vue'
 
+import AppSidebar from './components/AppSidebar.vue'
 import { usePlanFocus } from './composables/usePlanFocus.js'
 import { useSelectedDay } from './composables/useSelectedDay.js'
 import EngineersPage from './pages/EngineersPage.vue'
@@ -10,22 +13,30 @@ import PlansPage from './pages/PlansPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
 
-const TABS = [
-  { key: 'requests', label: 'Заявки' },
-  { key: 'engineers', label: 'Исполнители' },
-  { key: 'plans', label: 'Планы' },
-  { key: 'comparison', label: 'Сравнение планов' },
-  { key: 'import', label: 'Загрузка CSV' },
-  { key: 'routes', label: 'Маршруты (стенд)' },
+const SECTIONS = [
+  { key: 'requests', label: 'Заявки', icon: '▤' },
+  { key: 'engineers', label: 'Исполнители', icon: '⚒' },
+  {
+    key: 'plans',
+    label: 'Планы',
+    icon: '⚑',
+    items: [
+      { key: 'plans', label: 'Планы дня' },
+      { key: 'comparison', label: 'Сравнение планов' },
+    ],
+  },
+  { key: 'import', label: 'Загрузка CSV (тестовая)', icon: '⇪' },
+  { key: 'routes', label: 'Маршруты (тестовые)', icon: '➤' },
 ]
 
 const TAB_STORAGE_KEY = 'routing.activeTab'
+const TABS = ['requests', 'engineers', 'plans', 'comparison', 'import', 'routes']
 
 // открытая вкладка переживает перезагрузку страницы: диспетчер обновляет её посреди работы
 function storedTab() {
   try {
     const stored = window.localStorage.getItem(TAB_STORAGE_KEY)
-    return TABS.some((tab) => tab.key === stored) ? stored : ''
+    return TABS.includes(stored) ? stored : ''
   } catch {
     return '' // приватное окно или запрещённые куки
   }
@@ -40,24 +51,17 @@ onMounted(loadDaysWithRequests)
 
 <template>
   <div class="app">
-    <nav class="tabs">
-      <button
-        v-for="tab in TABS"
-        :key="tab.key"
-        :class="{ active: activeTab === tab.key }"
-        @click="openTab(tab.key)"
-      >
-        {{ tab.label }}
-      </button>
-    </nav>
+    <AppSidebar :sections="SECTIONS" :active-tab="activeTab" @open="openTab" />
 
-    <div class="page">
-      <RequestsPage v-if="activeTab === 'requests'" />
-      <EngineersPage v-else-if="activeTab === 'engineers'" />
-      <PlansPage v-else-if="activeTab === 'plans'" />
-      <PlanComparisonPage v-else-if="activeTab === 'comparison'" />
-      <ImportPage v-else-if="activeTab === 'import'" />
-      <RouteStandPage v-else />
+    <div class="app-main">
+      <div class="page">
+        <RequestsPage v-if="activeTab === 'requests'" />
+        <EngineersPage v-else-if="activeTab === 'engineers'" />
+        <PlansPage v-else-if="activeTab === 'plans'" />
+        <PlanComparisonPage v-else-if="activeTab === 'comparison'" />
+        <ImportPage v-else-if="activeTab === 'import'" />
+        <RouteStandPage v-else />
+      </div>
     </div>
   </div>
 </template>
@@ -65,31 +69,14 @@ onMounted(loadDaysWithRequests)
 <style scoped>
 .app {
   display: flex;
-  flex-direction: column;
   height: 100vh;
 }
 
-.tabs {
+.app-main {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 16px;
-  height: 46px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
-
-.tabs button {
-  border: none;
-  border-radius: 0;
-  height: 46px;
-  background: none;
-  border-bottom: 2px solid transparent;
-}
-
-.tabs button.active {
-  border-bottom-color: #2563eb;
-  color: #2563eb;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .page {
