@@ -192,3 +192,26 @@ def test_without_work_type_duration_and_skill_are_required():
     assert result.rows == []
     assert any("длительность_мин" in message and "тип_работ" in message for message in result.errors)
     assert any("навык" in message and "тип_работ" in message for message in result.errors)
+
+
+def test_day_copy_moves_dates_and_drops_numbers():
+    """Слепок дня, загруженный в другой день: время суток то же, номера новые."""
+    from datetime import date, datetime, timedelta, timezone as tz
+
+    from src.services.requests.requests_service import copy_rows_to_day
+
+    moscow = tz(timedelta(hours=3))
+    rows = [
+        {
+            "id": 74198,
+            "window_start": datetime(2026, 8, 17, 20, 0, tzinfo=moscow),
+            "window_end": datetime(2026, 8, 18, 2, 0, tzinfo=moscow),  # окно через полночь
+        }
+    ]
+
+    copy_rows_to_day(rows, date(2026, 9, 20))
+
+    row = rows[0]
+    assert row["id"] is None
+    assert row["window_start"].astimezone(moscow).strftime("%d.%m.%Y %H:%M") == "20.09.2026 20:00"
+    assert row["window_end"].astimezone(moscow).strftime("%d.%m.%Y %H:%M") == "21.09.2026 02:00"

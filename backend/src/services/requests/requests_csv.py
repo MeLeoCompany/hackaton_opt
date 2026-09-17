@@ -99,6 +99,23 @@ def build_csv_template() -> str:
     return "\n".join(lines) + "\n"
 
 
+def format_datetime(moment: datetime, local_timezone: tzinfo) -> str:
+    """Момент времени -> «17.08.2026 18:00» по местному времени — как в шаблоне."""
+    return moment.astimezone(local_timezone).strftime("%d.%m.%Y %H:%M")
+
+
+def build_requests_csv(rows: list[dict]) -> str:
+    """Готовые строки заявок -> текст CSV с теми же колонками, что понимает загрузка.
+
+    Выгруженный файл можно загрузить обратно — тем же днём или в другой день.
+    """
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=COLUMNS, delimiter=";", lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue()
+
+
 def parse_requests_csv(
     content: bytes, references: ReferenceLookup, local_timezone: tzinfo
 ) -> CsvParseResult:

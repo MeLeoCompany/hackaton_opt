@@ -3,7 +3,7 @@
 // Значок короче текста и читается быстрее; подпись видна при наведении и доступна скринридеру.
 // Обработчик @click родителя вешается прямо на <button>, поэтому работают и модификаторы (.stop).
 defineProps({
-  icon: { type: String, required: true }, // edit | delete | save | cancel
+  icon: { type: String, required: true }, // edit | delete | save | cancel | export | import
   label: { type: String, required: true },
   variant: { type: String, default: '' }, // '' | primary | danger
 })
@@ -13,6 +13,8 @@ const ICON_PATHS = {
   delete: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   save: 'M5 12.5l4.5 4.5L19 7.5',
   cancel: 'M6 6l12 12M18 6L6 18',
+  export: 'M12 4v11M8 11l4 4 4-4M4 19h16',
+  import: 'M12 15V4M8 8l4-4 4 4M4 19h16',
 }
 </script>
 

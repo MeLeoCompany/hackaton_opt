@@ -15,6 +15,8 @@ const {
   requests,
   references,
   applyWorkTypeNorms,
+  exportDay,
+  importDay,
   loading,
   saving,
   errorMessage,
@@ -112,7 +114,13 @@ onMounted(load)
       </p>
     </header>
 
-    <DayPanel :summary="`заявок на этот день ${requests.length}, активных ${activeTotal}`" />
+    <DayPanel
+      :summary="`заявок на этот день ${requests.length}, активных ${activeTotal}`"
+      transfer="заявки"
+      :disabled="saving"
+      @export-day="exportDay"
+      @import-day="importDay"
+    />
 
 
     <div v-if="errorMessage" class="message error">

@@ -7,10 +7,13 @@ import { fetchReferences } from '../api/referencesApi.js'
 import {
   createRequest,
   deleteRequest,
+  exportRequestsCsv,
+  importRequestsCsv,
   listRequests,
   setRequestsActive,
   updateRequest,
 } from '../api/requestsApi.js'
+import { downloadBlob } from '../utils/downloadFile.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
@@ -183,6 +186,44 @@ export function useRequestsTable() {
     }
   }
 
+  // ---- слепок дня ----
+
+  async function exportDay() {
+    clearMessages()
+    try {
+      downloadBlob(await exportRequestsCsv(selectedDay.value), `requests_${selectedDay.value}.csv`)
+    } catch (error) {
+      showError(error)
+    }
+  }
+
+  // Файл кладётся в выбранный день копией: время суток то же, номера новые.
+  // Существующие заявки дня не трогаем: они могут быть в планах, и их удаление
+  // либо сломало бы план, либо упёрлось в запрет удаления. Поэтому только предупреждаем.
+  async function importDay(file) {
+    if (requests.value.length) {
+      const confirmed = window.confirm(
+        `На этот день уже есть заявок: ${requests.value.length}. ` +
+          `Из файла «${file.name}» они добавятся копиями, существующие останутся. Продолжить?`,
+      )
+      if (!confirmed) return
+    }
+    saving.value = true
+    clearMessages()
+    try {
+      const report = await importRequestsCsv(file, selectedDay.value)
+      await load()
+      showNotice(
+        `В день ${selectedDay.value} добавлено заявок: ${report.created}` +
+          (report.updated ? `, обновлено ${report.updated}` : ''),
+      )
+    } catch (error) {
+      showError(error)
+    } finally {
+      saving.value = false
+    }
+  }
+
   // сменили день — таблица перезагружается на новый день
   watch(selectedDay, () => {
     cancelEdit()
@@ -193,6 +234,8 @@ export function useRequestsTable() {
     requests,
     references,
     applyWorkTypeNorms,
+    exportDay,
+    importDay,
     loading,
     saving,
     errorMessage,

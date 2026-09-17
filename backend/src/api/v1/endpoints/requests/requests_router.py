@@ -40,12 +40,29 @@ async def download_csv_template() -> Response:
     )
 
 
+@router.get("/export", summary="Выгрузить заявки дня в CSV")
+async def export_requests(plan_date: date | None = None, session: AsyncSession = Depends(get_db)) -> Response:
+    content = await requests_service.export_requests_csv(session, plan_date)
+    name = f"requests_{plan_date:%Y-%m-%d}.csv" if plan_date else "requests_all.csv"
+    return Response(
+        # BOM в начале — чтобы Excel открыл кириллицу без кракозябр
+        content=content.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
 @router.post("/import", response_model=RequestImportReport, summary="Загрузить заявки из CSV")
-async def import_requests(file: UploadFile = File(...), session: AsyncSession = Depends(get_db)):
+async def import_requests(
+    file: UploadFile = File(...),
+    plan_date: date | None = None,
+    session: AsyncSession = Depends(get_db),
+):
+    """plan_date — перенести файл в этот день копией: время суток то же, номера новые."""
     content = await file.read()
     if len(content) > MAX_CSV_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Файл больше 5 МБ")
-    return await requests_service.import_requests_csv(session, content)
+    return await requests_service.import_requests_csv(session, content, plan_date)
 
 
 @router.patch(

@@ -6,12 +6,19 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.session import get_db
-from src.schemas.engineers import EngineerCreate, EngineerRead, EngineerWrite
-from src.services.engineers import engineers_service
+from src.schemas.engineers import (
+    EngineerCreate,
+    EngineerImportReport,
+    EngineerRead,
+    EngineerWrite,
+)
+from src.services.engineers import engineers_csv, engineers_service
+
+MAX_CSV_BYTES = 5 * 1024 * 1024
 
 router = APIRouter()
 
@@ -19,6 +26,40 @@ router = APIRouter()
 @router.get("", response_model=list[EngineerRead], summary="Все исполнители")
 async def list_engineers(plan_date: date | None = None, session: AsyncSession = Depends(get_db)):
     return await engineers_service.list_engineers(session, plan_date)
+
+
+@router.get("/csv-template", summary="Шаблон CSV для загрузки исполнителей")
+async def download_csv_template() -> Response:
+    return Response(
+        # BOM в начале — чтобы Excel открыл кириллицу без кракозябр
+        content=engineers_csv.build_csv_template().encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="engineers_template.csv"'},
+    )
+
+
+@router.get("/export", summary="Выгрузить исполнителей дня в CSV")
+async def export_engineers(plan_date: date | None = None, session: AsyncSession = Depends(get_db)) -> Response:
+    content = await engineers_service.export_engineers_csv(session, plan_date)
+    name = f"engineers_{plan_date:%Y-%m-%d}.csv" if plan_date else "engineers_all.csv"
+    return Response(
+        content=content.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post("/import", response_model=EngineerImportReport, summary="Загрузить исполнителей из CSV")
+async def import_engineers(
+    file: UploadFile = File(...),
+    plan_date: date | None = None,
+    session: AsyncSession = Depends(get_db),
+):
+    """plan_date — перенести смены в этот день копией: время суток то же, номера новые."""
+    content = await file.read()
+    if len(content) > MAX_CSV_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Файл больше 5 МБ")
+    return await engineers_service.import_engineers_csv(session, content, plan_date)
 
 
 @router.get("/{engineer_id}", response_model=EngineerRead, summary="Один исполнитель")

@@ -1,6 +1,6 @@
 """Заявки: просмотр, создание, изменение, удаление и загрузка из CSV."""
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,8 @@ from src.schemas.requests import (
 from src.services.requests.requests_csv import (
     ReferenceLookup,
     WorkTypeNorm,
+    build_requests_csv,
+    format_datetime,
     parse_requests_csv,
     reference_options,
 )
@@ -115,12 +117,82 @@ async def set_requests_active(
     return RequestActivityReport(updated=len(unique_ids))
 
 
-async def import_requests_csv(session: AsyncSession, content: bytes) -> RequestImportReport:
+async def export_requests_csv(session: AsyncSession, plan_date: date | None = None) -> str:
+    """Заявки дня в CSV — слепок дня, который можно загрузить обратно или в другой день."""
+    requests = await list_requests(session, plan_date)
+    references = await load_reference_names(session)
+    timezone = local_timezone()
+    return build_requests_csv(
+        [
+            {
+                "id": request.id,
+                "адрес": request.address,
+                "широта": f"{float(request.latitude):.6f}",
+                "долгота": f"{float(request.longitude):.6f}",
+                "тип_работ": references["work_types"].get(request.work_type_id, ""),
+                "длительность_мин": request.duration_minutes,
+                "окно_начало": format_datetime(request.window_start, timezone),
+                "окно_конец": format_datetime(request.window_end, timezone),
+                "приоритет": references["priorities"].get(request.priority_id, ""),
+                "навык": references["skills"].get(request.skill_id, ""),
+                "транспорт": references["transports"].get(request.transport_id, ""),
+                "активна": "да" if request.is_active else "нет",
+            }
+            for request in requests
+        ]
+    )
+
+
+async def load_reference_names(session: AsyncSession) -> dict[str, dict[int, str]]:
+    """Названия справочников по номеру — для выгрузки в CSV."""
+    return {
+        "skills": {skill.id: skill.name for skill in await references_repository.list_skills(session)},
+        "priorities": {
+            priority.id: priority.name for priority in await references_repository.list_priorities(session)
+        },
+        "transports": {
+            transport.id: transport.name for transport in await references_repository.list_transports(session)
+        },
+        "work_types": {
+            work_type.id: work_type.name for work_type in await references_repository.list_work_types(session)
+        },
+    }
+
+
+def moved_to_day(moment: datetime, plan_date: date, day_offset: int) -> datetime:
+    """Тот же час и минуты, но в выбранном дне (плюс day_offset суток для окон через полночь)."""
+    local = moment.astimezone(local_timezone())
+    return local.replace(year=plan_date.year, month=plan_date.month, day=plan_date.day) + timedelta(
+        days=day_offset
+    )
+
+
+def copy_rows_to_day(rows: list[dict], plan_date: date) -> None:
+    """Переносит разобранные строки в выбранный день: время суток то же, номера новые.
+
+    Так слепок одного дня превращается в самостоятельную копию на другой день,
+    а не перезаписывает исходные заявки.
+    """
+    timezone = local_timezone()
+    for fields in rows:
+        start, end = fields["window_start"], fields["window_end"]
+        day_offset = (end.astimezone(timezone).date() - start.astimezone(timezone).date()).days
+        fields["window_start"] = moved_to_day(start, plan_date, 0)
+        fields["window_end"] = moved_to_day(end, plan_date, day_offset)
+        fields["id"] = None
+
+
+async def import_requests_csv(
+    session: AsyncSession, content: bytes, plan_date: date | None = None
+) -> RequestImportReport:
     """Загружает заявки из CSV одной транзакцией.
 
     Если хоть одна строка с ошибкой — не сохраняется ничего, диспетчер получает список
     ошибок с номерами строк. Заявка с уже существующим номером обновляется, без номера
     или с новым номером — добавляется.
+
+    Если указан plan_date, файл переносится в этот день копией: время суток сохраняется,
+    даты заменяются, номера выдаются новые.
     """
     await requests_repository.lock_request_ids(session)
     references = await load_reference_lookup(session)
@@ -129,6 +201,9 @@ async def import_requests_csv(session: AsyncSession, content: bytes) -> RequestI
         raise RequestDataError(parsed.errors)
     if not parsed.rows:
         raise RequestDataError(["в файле нет ни одной заявки"])
+
+    if plan_date is not None:
+        copy_rows_to_day(parsed.rows, plan_date)
 
     ids_in_file = [row["id"] for row in parsed.rows if row["id"] is not None]
     existing_by_id = await requests_repository.get_requests_by_ids(session, ids_in_file)

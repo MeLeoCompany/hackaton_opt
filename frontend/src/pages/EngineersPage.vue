@@ -26,6 +26,8 @@ const {
   cancelEdit,
   saveForm,
   remove,
+  exportDay,
+  importDay,
 } = useEngineersTable()
 
 // что из данных видно: фильтры, сортировка, выбранный исполнитель
@@ -87,7 +89,13 @@ onMounted(load)
       </p>
     </header>
 
-    <DayPanel :summary="`исполнителей со сменой в этот день ${engineers.length}`" />
+    <DayPanel
+      :summary="`исполнителей со сменой в этот день ${engineers.length}`"
+      transfer="смены"
+      :disabled="saving"
+      @export-day="exportDay"
+      @import-day="importDay"
+    />
 
     <div v-if="errorMessage" class="message error">
       <strong>{{ errorMessage }}</strong>

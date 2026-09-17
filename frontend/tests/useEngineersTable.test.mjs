@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 function harness() {
-  const source = fs.readFileSync(
-    new URL('../src/composables/useEngineersTable.js', import.meta.url),
-    'utf8',
-  ).replace(/^import .*$/mg, '').replace('export const NEW_ENGINEER', 'const NEW_ENGINEER')
+  const file = fs.readFileSync(new URL('../src/composables/useEngineersTable.js', import.meta.url), 'utf8')
+  // всё до первого объявления — импорты, они заменяются аргументами new Function
+  const source = file
+    .slice(file.indexOf('export const NEW_ENGINEER'))
+    .replace('export const NEW_ENGINEER', 'const NEW_ENGINEER')
     .replace('export function', 'function')
   const lists = {}
   const selectedDay = { value: '2026-08-17' }

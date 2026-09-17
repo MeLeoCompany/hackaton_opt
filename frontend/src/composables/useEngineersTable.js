@@ -3,8 +3,16 @@
 
 import { ref, watch } from 'vue'
 
-import { createEngineer, deleteEngineer, listEngineers, updateEngineer } from '../api/engineersApi.js'
+import {
+  createEngineer,
+  deleteEngineer,
+  exportEngineersCsv,
+  importEngineersCsv,
+  listEngineers,
+  updateEngineer,
+} from '../api/engineersApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
+import { downloadBlob } from '../utils/downloadFile.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
@@ -134,6 +142,44 @@ export function useEngineersTable() {
     }
   }
 
+  // ---- слепок дня ----
+
+  async function exportDay() {
+    clearMessages()
+    try {
+      downloadBlob(await exportEngineersCsv(selectedDay.value), `engineers_${selectedDay.value}.csv`)
+    } catch (error) {
+      showError(error)
+    }
+  }
+
+  // Файл кладётся в выбранный день копией: время смен то же, номера новые.
+  // Существующих исполнителей дня не трогаем: они могут быть в планах, и их удаление
+  // либо сломало бы план, либо упёрлось в запрет удаления. Поэтому только предупреждаем.
+  async function importDay(file) {
+    if (engineers.value.length) {
+      const confirmed = window.confirm(
+        `На этот день уже есть исполнителей: ${engineers.value.length}. ` +
+          `Из файла «${file.name}» они добавятся копиями, существующие останутся. Продолжить?`,
+      )
+      if (!confirmed) return
+    }
+    saving.value = true
+    clearMessages()
+    try {
+      const report = await importEngineersCsv(file, selectedDay.value)
+      await load()
+      showNotice(
+        `В день ${selectedDay.value} добавлено исполнителей: ${report.created}` +
+          (report.updated ? `, обновлено ${report.updated}` : ''),
+      )
+    } catch (error) {
+      showError(error)
+    } finally {
+      saving.value = false
+    }
+  }
+
   // сменили день — список перезагружается на новый день
   watch(selectedDay, () => {
     cancelEdit()
@@ -156,5 +202,7 @@ export function useEngineersTable() {
     cancelEdit,
     saveForm,
     remove,
+    exportDay,
+    importDay,
   }
 }

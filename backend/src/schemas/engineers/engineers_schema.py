@@ -37,3 +37,10 @@ class EngineerCreate(EngineerWrite):
 
 class EngineerRead(EngineerWrite):
     id: int
+
+
+class EngineerImportReport(BaseModel):
+    """Итог загрузки CSV: сколько исполнителей добавлено и сколько обновлено."""
+
+    created: int
+    updated: int
