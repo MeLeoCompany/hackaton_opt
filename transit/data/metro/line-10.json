@@ -1,0 +1,397 @@
+{
+  "schema_version": 1,
+  "kind": "metro_frequency",
+  "source": {
+    "topology": "OpenStreetMap через Overpass API (ODbL)",
+    "topology_url": "https://www.openstreetmap.org/",
+    "relation_ids": [
+      309623,
+      1532874
+    ],
+    "operating_hours": "Единый транспортный портал Москвы",
+    "operating_hours_url": "https://transport.mos.ru/metro/rezhim",
+    "retrieved_at": "2026-09-18T15:56:58.566761+00:00"
+  },
+  "route": {
+    "source_route_id": "metro-10",
+    "short_name": "10",
+    "long_name": "Люблинско-Дмитровская линия",
+    "route_type": 1,
+    "color": "BED12C"
+  },
+  "service": {
+    "start_date": "2026-09-18",
+    "end_date": "2026-12-31",
+    "daily": true,
+    "official_operating_window": [
+      "05:30:00",
+      "25:00:00"
+    ],
+    "headways": [
+      {
+        "start": "05:30:00",
+        "end": "06:30:00",
+        "seconds": 300
+      },
+      {
+        "start": "06:30:00",
+        "end": "10:00:00",
+        "seconds": 120
+      },
+      {
+        "start": "10:00:00",
+        "end": "16:00:00",
+        "seconds": 180
+      },
+      {
+        "start": "16:00:00",
+        "end": "20:00:00",
+        "seconds": 120
+      },
+      {
+        "start": "20:00:00",
+        "end": "23:00:00",
+        "seconds": 180
+      },
+      {
+        "start": "23:00:00",
+        "end": "25:00:00",
+        "seconds": 300
+      }
+    ],
+    "headway_note": "Расчётное приближение, не официальное расписание поездов.",
+    "duration_note": "Длительность всей поездки взята из отношения OSM."
+  },
+  "patterns": [
+    {
+      "pattern_id": "309623",
+      "direction_id": 0,
+      "headsign": "Зябликово",
+      "duration_minutes": 65,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-11174639394",
+          "name": "Физтех",
+          "lat": 55.921672,
+          "lon": 37.5464741
+        },
+        {
+          "source_stop_id": "osm-node-11174673552",
+          "name": "Лианозово",
+          "lat": 55.8981258,
+          "lon": 37.5445614
+        },
+        {
+          "source_stop_id": "osm-node-11174673549",
+          "name": "Яхромская",
+          "lat": 55.87986,
+          "lon": 37.5453408
+        },
+        {
+          "source_stop_id": "osm-node-6937856014",
+          "name": "Селигерская",
+          "lat": 55.8662809,
+          "lon": 37.5471398
+        },
+        {
+          "source_stop_id": "osm-node-6937856016",
+          "name": "Верхние Лихоборы",
+          "lat": 55.8558754,
+          "lon": 37.5614598
+        },
+        {
+          "source_stop_id": "osm-node-6937856018",
+          "name": "Окружная",
+          "lat": 55.8460137,
+          "lon": 37.5736556
+        },
+        {
+          "source_stop_id": "osm-node-5202080144",
+          "name": "Петровско-Разумовская",
+          "lat": 55.8349599,
+          "lon": 37.5745662
+        },
+        {
+          "source_stop_id": "osm-node-6937856021",
+          "name": "Фонвизинская",
+          "lat": 55.8228609,
+          "lon": 37.5874996
+        },
+        {
+          "source_stop_id": "osm-node-6937856023",
+          "name": "Бутырская",
+          "lat": 55.8133272,
+          "lon": 37.6023373
+        },
+        {
+          "source_stop_id": "osm-node-6937856024",
+          "name": "Марьина Роща",
+          "lat": 55.795521,
+          "lon": 37.6161302
+        },
+        {
+          "source_stop_id": "osm-node-6937856026",
+          "name": "Достоевская",
+          "lat": 55.7814801,
+          "lon": 37.6149263
+        },
+        {
+          "source_stop_id": "osm-node-6937856028",
+          "name": "Трубная",
+          "lat": 55.7690586,
+          "lon": 37.6194364
+        },
+        {
+          "source_stop_id": "osm-node-6937856030",
+          "name": "Сретенский бульвар",
+          "lat": 55.7668902,
+          "lon": 37.6400704
+        },
+        {
+          "source_stop_id": "osm-node-296944266",
+          "name": "Чкаловская",
+          "lat": 55.7564813,
+          "lon": 37.6571741
+        },
+        {
+          "source_stop_id": "osm-node-6937856038",
+          "name": "Римская",
+          "lat": 55.7464136,
+          "lon": 37.6830675
+        },
+        {
+          "source_stop_id": "osm-node-6937856040",
+          "name": "Крестьянская Застава",
+          "lat": 55.733322,
+          "lon": 37.6675035
+        },
+        {
+          "source_stop_id": "osm-node-6937856044",
+          "name": "Дубровка",
+          "lat": 55.7191767,
+          "lon": 37.6754021
+        },
+        {
+          "source_stop_id": "osm-node-6937856046",
+          "name": "Кожуховская",
+          "lat": 55.7074644,
+          "lon": 37.6846131
+        },
+        {
+          "source_stop_id": "osm-node-6937856048",
+          "name": "Печатники",
+          "lat": 55.6934411,
+          "lon": 37.7269005
+        },
+        {
+          "source_stop_id": "osm-node-6937856050",
+          "name": "Волжская",
+          "lat": 55.6907728,
+          "lon": 37.7530544
+        },
+        {
+          "source_stop_id": "osm-node-6937856052",
+          "name": "Люблино",
+          "lat": 55.6757425,
+          "lon": 37.7618074
+        },
+        {
+          "source_stop_id": "osm-node-6937856054",
+          "name": "Братиславская",
+          "lat": 55.6597977,
+          "lon": 37.7506026
+        },
+        {
+          "source_stop_id": "osm-node-6937856056",
+          "name": "Марьино",
+          "lat": 55.6500044,
+          "lon": 37.7430454
+        },
+        {
+          "source_stop_id": "osm-node-6937856058",
+          "name": "Борисово",
+          "lat": 55.633326,
+          "lon": 37.7436571
+        },
+        {
+          "source_stop_id": "osm-node-6937856060",
+          "name": "Шипиловская",
+          "lat": 55.6210223,
+          "lon": 37.7435375
+        },
+        {
+          "source_stop_id": "osm-node-6937811178",
+          "name": "Зябликово",
+          "lat": 55.6122369,
+          "lon": 37.7450758
+        }
+      ]
+    },
+    {
+      "pattern_id": "1532874",
+      "direction_id": 1,
+      "headsign": "Физтех",
+      "duration_minutes": 65,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-6937811179",
+          "name": "Зябликово",
+          "lat": 55.6122417,
+          "lon": 37.7452807
+        },
+        {
+          "source_stop_id": "osm-node-6937856061",
+          "name": "Шипиловская",
+          "lat": 55.6210329,
+          "lon": 37.7437418
+        },
+        {
+          "source_stop_id": "osm-node-6937856059",
+          "name": "Борисово",
+          "lat": 55.6332825,
+          "lon": 37.7438454
+        },
+        {
+          "source_stop_id": "osm-node-6937856057",
+          "name": "Марьино",
+          "lat": 55.6500306,
+          "lon": 37.7432478
+        },
+        {
+          "source_stop_id": "osm-node-6937856055",
+          "name": "Братиславская",
+          "lat": 55.6596942,
+          "lon": 37.7507082
+        },
+        {
+          "source_stop_id": "osm-node-6937856053",
+          "name": "Люблино",
+          "lat": 55.6757195,
+          "lon": 37.7620096
+        },
+        {
+          "source_stop_id": "osm-node-6937856051",
+          "name": "Волжская",
+          "lat": 55.6908796,
+          "lon": 37.7531342
+        },
+        {
+          "source_stop_id": "osm-node-6937856049",
+          "name": "Печатники",
+          "lat": 55.6935422,
+          "lon": 37.7270014
+        },
+        {
+          "source_stop_id": "osm-node-6937856047",
+          "name": "Кожуховская",
+          "lat": 55.7075182,
+          "lon": 37.6847957
+        },
+        {
+          "source_stop_id": "osm-node-6937856045",
+          "name": "Дубровка",
+          "lat": 55.7192492,
+          "lon": 37.6756765
+        },
+        {
+          "source_stop_id": "osm-node-6937856041",
+          "name": "Крестьянская Застава",
+          "lat": 55.7332037,
+          "lon": 37.6677576
+        },
+        {
+          "source_stop_id": "osm-node-6937856039",
+          "name": "Римская",
+          "lat": 55.7464275,
+          "lon": 37.6834158
+        },
+        {
+          "source_stop_id": "osm-node-5202107571",
+          "name": "Чкаловская",
+          "lat": 55.756964,
+          "lon": 37.6567571
+        },
+        {
+          "source_stop_id": "osm-node-6937856031",
+          "name": "Сретенский бульвар",
+          "lat": 55.7670865,
+          "lon": 37.6401147
+        },
+        {
+          "source_stop_id": "osm-node-6937856029",
+          "name": "Трубная",
+          "lat": 55.7691777,
+          "lon": 37.6196582
+        },
+        {
+          "source_stop_id": "osm-node-6937856027",
+          "name": "Достоевская",
+          "lat": 55.7814421,
+          "lon": 37.615222
+        },
+        {
+          "source_stop_id": "osm-node-6937856025",
+          "name": "Марьина Роща",
+          "lat": 55.7955242,
+          "lon": 37.6164839
+        },
+        {
+          "source_stop_id": "osm-node-6937856022",
+          "name": "Бутырская",
+          "lat": 55.8134624,
+          "lon": 37.6026094
+        },
+        {
+          "source_stop_id": "osm-node-6937856020",
+          "name": "Фонвизинская",
+          "lat": 55.822978,
+          "lon": 37.5877832
+        },
+        {
+          "source_stop_id": "osm-node-4404055537",
+          "name": "Петровско-Разумовская",
+          "lat": 55.8346566,
+          "lon": 37.5749619
+        },
+        {
+          "source_stop_id": "osm-node-6937856019",
+          "name": "Окружная",
+          "lat": 55.846039,
+          "lon": 37.5740048
+        },
+        {
+          "source_stop_id": "osm-node-6937856017",
+          "name": "Верхние Лихоборы",
+          "lat": 55.8563826,
+          "lon": 37.5611955
+        },
+        {
+          "source_stop_id": "osm-node-6937856015",
+          "name": "Селигерская",
+          "lat": 55.8668682,
+          "lon": 37.5472415
+        },
+        {
+          "source_stop_id": "osm-node-11174673550",
+          "name": "Яхромская",
+          "lat": 55.8798984,
+          "lon": 37.5455508
+        },
+        {
+          "source_stop_id": "osm-node-11174673553",
+          "name": "Лианозово",
+          "lat": 55.8981042,
+          "lon": 37.5447646
+        },
+        {
+          "source_stop_id": "osm-node-11174639395",
+          "name": "Физтех",
+          "lat": 55.9216504,
+          "lon": 37.5466772
+        }
+      ]
+    }
+  ]
+}

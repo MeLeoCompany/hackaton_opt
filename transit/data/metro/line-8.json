@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "kind": "metro_frequency",
+  "source": {
+    "topology": "OpenStreetMap через Overpass API (ODbL)",
+    "topology_url": "https://www.openstreetmap.org/",
+    "relation_ids": [
+      326491,
+      1526350
+    ],
+    "operating_hours": "Единый транспортный портал Москвы",
+    "operating_hours_url": "https://transport.mos.ru/metro/rezhim",
+    "retrieved_at": "2026-09-18T15:56:58.565446+00:00"
+  },
+  "route": {
+    "source_route_id": "metro-8",
+    "short_name": "8",
+    "long_name": "Калининская линия",
+    "route_type": 1,
+    "color": "FFCD1C"
+  },
+  "service": {
+    "start_date": "2026-09-18",
+    "end_date": "2026-12-31",
+    "daily": true,
+    "official_operating_window": [
+      "05:30:00",
+      "25:00:00"
+    ],
+    "headways": [
+      {
+        "start": "05:30:00",
+        "end": "06:30:00",
+        "seconds": 300
+      },
+      {
+        "start": "06:30:00",
+        "end": "10:00:00",
+        "seconds": 120
+      },
+      {
+        "start": "10:00:00",
+        "end": "16:00:00",
+        "seconds": 180
+      },
+      {
+        "start": "16:00:00",
+        "end": "20:00:00",
+        "seconds": 120
+      },
+      {
+        "start": "20:00:00",
+        "end": "23:00:00",
+        "seconds": 180
+      },
+      {
+        "start": "23:00:00",
+        "end": "25:00:00",
+        "seconds": 300
+      }
+    ],
+    "headway_note": "Расчётное приближение, не официальное расписание поездов.",
+    "duration_note": "Длительность всей поездки взята из отношения OSM."
+  },
+  "patterns": [
+    {
+      "pattern_id": "326491",
+      "direction_id": 0,
+      "headsign": "Новокосино",
+      "duration_minutes": 21,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-6937811157",
+          "name": "Третьяковская",
+          "lat": 55.7410187,
+          "lon": 37.6274935
+        },
+        {
+          "source_stop_id": "osm-node-6937381497",
+          "name": "Марксистская",
+          "lat": 55.7412421,
+          "lon": 37.653495
+        },
+        {
+          "source_stop_id": "osm-node-6937856036",
+          "name": "Площадь Ильича",
+          "lat": 55.7470794,
+          "lon": 37.6833797
+        },
+        {
+          "source_stop_id": "osm-node-6939601861",
+          "name": "Авиамоторная",
+          "lat": 55.7524574,
+          "lon": 37.7201138
+        },
+        {
+          "source_stop_id": "osm-node-6939601863",
+          "name": "Шоссе Энтузиастов",
+          "lat": 55.7574706,
+          "lon": 37.7495021
+        },
+        {
+          "source_stop_id": "osm-node-6939601865",
+          "name": "Перово",
+          "lat": 55.7511407,
+          "lon": 37.7865341
+        },
+        {
+          "source_stop_id": "osm-node-6939601867",
+          "name": "Новогиреево",
+          "lat": 55.751714,
+          "lon": 37.8167147
+        },
+        {
+          "source_stop_id": "osm-node-6939601869",
+          "name": "Новокосино",
+          "lat": 55.7450231,
+          "lon": 37.8638087
+        }
+      ]
+    },
+    {
+      "pattern_id": "1526350",
+      "direction_id": 1,
+      "headsign": "Третьяковская",
+      "duration_minutes": 21,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-6939601870",
+          "name": "Новокосино",
+          "lat": 55.7451496,
+          "lon": 37.8637351
+        },
+        {
+          "source_stop_id": "osm-node-6939601868",
+          "name": "Новогиреево",
+          "lat": 55.751826,
+          "lon": 37.816768
+        },
+        {
+          "source_stop_id": "osm-node-6939601866",
+          "name": "Перово",
+          "lat": 55.7512475,
+          "lon": 37.7864468
+        },
+        {
+          "source_stop_id": "osm-node-6939601864",
+          "name": "Шоссе Энтузиастов",
+          "lat": 55.7576679,
+          "lon": 37.7494713
+        },
+        {
+          "source_stop_id": "osm-node-6939601862",
+          "name": "Авиамоторная",
+          "lat": 55.7526159,
+          "lon": 37.7200011
+        },
+        {
+          "source_stop_id": "osm-node-6937856037",
+          "name": "Площадь Ильича",
+          "lat": 55.7472897,
+          "lon": 37.6833378
+        },
+        {
+          "source_stop_id": "osm-node-6937381498",
+          "name": "Марксистская",
+          "lat": 55.7414075,
+          "lon": 37.6535707
+        },
+        {
+          "source_stop_id": "osm-node-6937811156",
+          "name": "Третьяковская",
+          "lat": 55.7413908,
+          "lon": 37.6274396
+        }
+      ]
+    }
+  ]
+}

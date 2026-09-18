@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from .gtfs import build_gtfs
-from .osm_metro import collect_metro_to_file
+from .osm_metro import collect_metro_network, collect_metro_to_file
 from .transport_mos import (
     collect_bus_batch,
     collect_bus_to_file,
@@ -44,6 +44,13 @@ def main() -> None:
     metro = commands.add_parser("collect-metro", help="получить топологию линии метро")
     metro.add_argument("--relations", required=True, type=int, nargs="+")
     metro.add_argument("--output", required=True, type=Path)
+    metro_network = commands.add_parser(
+        "collect-metro-network", help="получить топологию всех линий метро"
+    )
+    metro_network.add_argument("--output-dir", required=True, type=Path)
+    metro_network.add_argument(
+        "--cache-dir", type=Path, help="кеш ответов Overpass для продолжения после сбоя"
+    )
     build = commands.add_parser("build", help="сформировать архив GTFS")
     build.add_argument("inputs", type=Path, nargs="+")
     build.add_argument("--output", required=True, type=Path)
@@ -64,6 +71,9 @@ def main() -> None:
             raise SystemExit(1)
     elif args.command == "collect-metro":
         collect_metro_to_file(args.relations, args.output)
+    elif args.command == "collect-metro-network":
+        report = collect_metro_network(args.output_dir, args.cache_dir)
+        print(f"Собрано линий: {report['line_count']}")
     elif args.command == "build":
         build_gtfs(args.inputs, args.output)
     elif args.command == "validate":

@@ -10,7 +10,7 @@
     ],
     "operating_hours": "Единый транспортный портал Москвы",
     "operating_hours_url": "https://transport.mos.ru/metro/rezhim",
-    "retrieved_at": "2026-09-18T13:02:21+00:00"
+    "retrieved_at": "2026-09-18T15:56:58.559514+00:00"
   },
   "route": {
     "source_route_id": "metro-1",
@@ -59,13 +59,16 @@
         "seconds": 300
       }
     ],
-    "headway_note": "Расчётное приближение, не официальное расписание поездов."
+    "headway_note": "Расчётное приближение, не официальное расписание поездов.",
+    "duration_note": "Длительность всей поездки взята из отношения OSM."
   },
   "patterns": [
     {
+      "pattern_id": "305810",
       "direction_id": 0,
       "headsign": "Потапово",
       "duration_minutes": 63,
+      "duration_estimated": false,
       "stops": [
         {
           "source_stop_id": "osm-node-6938823544",
@@ -232,9 +235,11 @@
       ]
     },
     {
+      "pattern_id": "1475755",
       "direction_id": 1,
       "headsign": "Бульвар Рокоссовского",
       "duration_minutes": 63,
+      "duration_estimated": false,
       "stops": [
         {
           "source_stop_id": "osm-node-12157560725",
