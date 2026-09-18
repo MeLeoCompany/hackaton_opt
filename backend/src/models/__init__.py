@@ -5,7 +5,7 @@ from src.models.event import Event, EventType
 from src.models.office import Office
 from src.models.plan import Plan, PlanRunType
 from src.models.reference import Priority, Skill, Transport, WorkType
-from src.models.request import Request
+from src.models.request import Request, request_equipment
 from src.models.user import AppUser, UserRole
 
 __all__ = [
@@ -25,4 +25,5 @@ __all__ = [
     "UserRole",
     "WorkType",
     "engineer_skill",
+    "request_equipment",
 ]

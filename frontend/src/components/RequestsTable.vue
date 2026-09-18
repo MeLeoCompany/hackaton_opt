@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { NEW_REQUEST } from '../composables/useRequestsTable.js'
+import { useColumnWidths } from '../composables/useColumnWidths.js'
 import { REQUEST_COLUMNS as COLUMNS } from '../composables/useRequestsView.js'
 import { isUrgent, referenceName } from '../utils/referenceNames.js'
 import IconButton from './IconButton.vue'
@@ -55,6 +56,8 @@ function ariaSort(columnSortKey) {
 
 // заявку выбрали на карте — прокручиваем таблицу к её строке
 const tableRoot = ref(null)
+// ширины колонок — от ширины таблицы: компактные своей ширины, остальное — растущим
+const { widths } = useColumnWidths(COLUMNS, tableRoot)
 
 async function scrollToSelected() {
   if (props.selectedId === null) return
@@ -71,9 +74,9 @@ onMounted(scrollToSelected)
 
 <template>
   <div ref="tableRoot" class="table-scroll">
-    <table class="data-table fixed-columns">
+    <table class="data-table fixed-columns fluid">
       <colgroup>
-        <col v-for="column in COLUMNS" :key="column.key" :style="column.width ? { width: column.width } : null" />
+        <col v-for="column in COLUMNS" :key="column.key" :style="{ width: `${widths[column.key]}px` }" />
       </colgroup>
       <thead>
         <tr>
@@ -161,15 +164,18 @@ onMounted(scrollToSelected)
               </label>
             </td>
             <td class="wide-cell">{{ request.address }}</td>
-            <td class="number-cell nowrap">{{ request.latitude.toFixed(4) }}, {{ request.longitude.toFixed(4) }}</td>
+            <!-- на узком экране координаты уходят в две строки по запятой, а не обрезаются -->
+            <td class="coordinates-value">{{ request.latitude.toFixed(4) }}, {{ request.longitude.toFixed(4) }}</td>
             <td>
               {{ referenceName(references, 'work_types', request.work_type_id) }}
+              <!-- требуемое оборудование — под названием, каждое своей строкой -->
               <span
-                v-if="request.equipment_id"
+                v-for="equipmentId in request.equipment_ids ?? []"
+                :key="equipmentId"
                 class="equipment-badge"
                 title="Что техник должен привезти на заявку"
               >
-                ⚙ {{ referenceName(references, 'equipment', request.equipment_id) }}
+                ⚙ {{ referenceName(references, 'equipment', equipmentId) }}
               </span>
             </td>
             <td class="number-cell under-range-filter">{{ request.duration_minutes }}</td>
@@ -211,9 +217,13 @@ onMounted(scrollToSelected)
 </template>
 
 <style scoped>
-/* требование оборудования: отдельной строкой под типом работ, мелко и заметно */
+.coordinates-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* требуемое оборудование: каждое отдельной строкой под типом работ, мелко и заметно */
 .equipment-badge {
-  display: inline-block;
+  display: table;
   margin-top: 4px;
   padding: 0 6px;
   border-radius: 999px;
@@ -222,5 +232,9 @@ onMounted(scrollToSelected)
   font-size: 12px;
   line-height: 18px;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
 }
 </style>

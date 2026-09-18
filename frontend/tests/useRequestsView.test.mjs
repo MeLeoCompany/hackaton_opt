@@ -65,9 +65,9 @@ test('другая колонка всегда начинает с возрас�
 })
 
 const WITH_EQUIPMENT = [
-  { id: 1, address: 'А', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T07:00:00Z', is_active: true, equipment_id: 1 },
-  { id: 2, address: 'Б', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T08:00:00Z', is_active: true, equipment_id: 2 },
-  { id: 3, address: 'В', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T09:00:00Z', is_active: true, equipment_id: null },
+  { id: 1, address: 'А', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T07:00:00Z', is_active: true, equipment_ids: [1] },
+  { id: 2, address: 'Б', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T08:00:00Z', is_active: true, equipment_ids: [1, 2] },
+  { id: 3, address: 'В', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T09:00:00Z', is_active: true, equipment_ids: [] },
 ]
 
 test('фильтр «нужно любое оборудование» оставляет заявки с требованием', async () => {
@@ -80,7 +80,8 @@ test('фильтр «нужно любое оборудование» остав
 
 test('фильтр по конкретному оборудованию', async () => {
   const view = await harness(WITH_EQUIPMENT)
-  view.filters.equipmentId = 2
+  view.filters.equipmentId = 1
 
-  assert.deepEqual(ids(view), [2])
+  // заявка с роутером и приставкой тоже требует роутер
+  assert.deepEqual(ids(view), [1, 2])
 })

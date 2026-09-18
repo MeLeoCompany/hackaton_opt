@@ -19,7 +19,8 @@ class RequestWrite(BaseModel):
     skill_id: int | None = None
     transport_id: int | None = None  # пусто — транспорт не важен
     work_type_id: int | None = None  # тип работ из справочника нормативов
-    equipment_id: int | None = None  # какое оборудование нужно привезти; пусто — не нужно
+    # какое оборудование нужно привезти: несколько типов сразу; пусто — ничего
+    equipment_ids: list[int] = Field(default_factory=list)
     is_active: bool = True  # выключенная заявка не попадает в сборку задачи планирования
 
     @model_validator(mode="after")
@@ -30,6 +31,8 @@ class RequestWrite(BaseModel):
             )
         if self.window_end <= self.window_start:
             raise ValueError("конец окна должен быть позже начала")
+        if len(set(self.equipment_ids)) != len(self.equipment_ids):
+            raise ValueError("оборудование не должно повторяться")
         return self
 
 

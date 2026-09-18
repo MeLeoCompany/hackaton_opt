@@ -144,12 +144,13 @@ const officeLandmarks = computed(() =>
 
 .skill-checkboxes label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  white-space: nowrap;
+  min-width: 0;
 }
 
 .skill-checkboxes input {
+  flex-shrink: 0;
   width: 16px;
   min-width: 0;
   height: 16px;

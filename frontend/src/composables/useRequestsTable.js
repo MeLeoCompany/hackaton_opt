@@ -70,7 +70,7 @@ export function useRequestsTable() {
       skill_id: references.value.work_types[0]?.skill_id ?? '',
       transport_id: '',
       work_type_id: references.value.work_types[0]?.id ?? '',
-      equipment_id: '',
+      equipment_ids: [],
       is_active: true,
     }
   }
@@ -99,7 +99,7 @@ export function useRequestsTable() {
       skill_id: request.skill_id,
       transport_id: request.transport_id ?? '',
       work_type_id: request.work_type_id ?? '',
-      equipment_id: request.equipment_id ?? '',
+      equipment_ids: [...(request.equipment_ids ?? [])],
       is_active: request.is_active,
     }
   }
@@ -127,7 +127,7 @@ export function useRequestsTable() {
       skill_id: numberOrNull(values.skill_id),
       transport_id: numberOrNull(values.transport_id),
       work_type_id: numberOrNull(values.work_type_id),
-      equipment_id: numberOrNull(values.equipment_id),
+      equipment_ids: values.equipment_ids.map(Number),
       is_active: values.is_active,
     }
   }

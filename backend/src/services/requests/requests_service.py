@@ -71,11 +71,12 @@ async def create_request(session: AsyncSession, payload: RequestCreate, office_i
             [f"заявка №{payload.id} уже существует — измените её или укажите другой номер"]
         )
 
-    fields = {**payload.model_dump(), "office_id": office_id}
+    fields = {**payload.model_dump(exclude={"equipment_ids"}), "office_id": office_id}
     if fields["id"] is None:
         fields["id"] = smallest_free_id(await requests_repository.list_request_ids(session))
 
-    request = requests_repository.add_request(session, fields)
+    equipment = await requests_repository.get_equipment_by_ids(session, payload.equipment_ids)
+    request = requests_repository.add_request(session, fields, equipment)
     await session.flush()
     await session.commit()
     return request
@@ -87,7 +88,10 @@ async def update_request(
     request = await get_request(session, request_id, office_id)
     await check_references_exist(session, payload)
     await apply_work_type_norms(session, payload)
-    requests_repository.apply_changes(request, payload.model_dump())
+    equipment = await requests_repository.get_equipment_by_ids(session, payload.equipment_ids)
+    requests_repository.apply_changes(
+        request, payload.model_dump(exclude={"equipment_ids"}), equipment
+    )
     await session.commit()
     return request
 
@@ -160,10 +164,9 @@ async def export_requests_csv(
                     else ""
                 ),
                 "активна": "да" if request.is_active else "нет",
-                "оборудование": (
-                    references["equipment"].get(request.equipment_id, "")
-                    if request.equipment_id is not None
-                    else ""
+                "оборудование": ", ".join(
+                    references["equipment"].get(equipment_id, str(equipment_id))
+                    for equipment_id in request.equipment_ids
                 ),
             }
             for request in requests
@@ -242,11 +245,16 @@ async def import_requests_csv(
     if plan_date is not None:
         copy_rows_to_day(parsed.rows, plan_date)
 
+    equipment_by_id = {
+        item.id: item for item in await references_repository.list_equipment(session)
+    }
     ids_in_file = [row["id"] for row in parsed.rows if row["id"] is not None]
     existing_by_id = await requests_repository.get_requests_by_ids(session, ids_in_file)
     # номер из файла совпал с заявкой другого офиса — не трогаем её и не пишем поверх
     foreign = sorted(
-        request_id for request_id, request in existing_by_id.items() if request.office_id != office_id
+        request_id
+        for request_id, request in existing_by_id.items()
+        if request.office_id != office_id
     )
     if foreign:
         listed = ", ".join(f"№{request_id}" for request_id in foreign)
@@ -264,13 +272,20 @@ async def import_requests_csv(
     for fields in parsed.rows:
         existing_request = existing_by_id.get(fields["id"])
         fields_without_id = {name: value for name, value in fields.items() if name != "id"}
+        # оборудование — отдельным списком; нет колонки в файле — у заявки его не трогаем
+        equipment_ids = fields_without_id.pop("equipment_ids", None)
+        equipment = (
+            [equipment_by_id[equipment_id] for equipment_id in equipment_ids]
+            if equipment_ids is not None
+            else None
+        )
 
         if existing_request is not None:
             # «активна» в файле не указана — не трогаем: иначе повторная загрузка файла
             # молча включила бы обратно заявки, которые диспетчер выключил
             if fields_without_id["is_active"] is None:
                 del fields_without_id["is_active"]
-            requests_repository.apply_changes(existing_request, fields_without_id)
+            requests_repository.apply_changes(existing_request, fields_without_id, equipment)
             updated += 1
             continue
 
@@ -281,7 +296,7 @@ async def import_requests_csv(
         identifier = fields["id"] if fields["id"] is not None else smallest_free_id(taken_ids)
         taken_ids.add(identifier)
         fields_without_id["id"] = identifier
-        requests_repository.add_request(session, fields_without_id)
+        requests_repository.add_request(session, fields_without_id, equipment)
         created += 1
 
     await session.flush()
@@ -355,10 +370,13 @@ async def check_references_exist(session: AsyncSession, payload: RequestWrite) -
         and str(payload.transport_id) not in references.transports.id_by_key
     ):
         problems.append(f"транспорта №{payload.transport_id} нет в справочнике")
-    if (
-        payload.equipment_id is not None
-        and str(payload.equipment_id) not in references.equipment.id_by_key
-    ):
-        problems.append(f"оборудования №{payload.equipment_id} нет в справочнике")
+    missing_equipment = [
+        equipment_id
+        for equipment_id in payload.equipment_ids
+        if str(equipment_id) not in references.equipment.id_by_key
+    ]
+    if missing_equipment:
+        listed = ", ".join(f"№{equipment_id}" for equipment_id in missing_equipment)
+        problems.append(f"оборудования {listed} нет в справочнике")
     if problems:
         raise RequestDataError(problems)

@@ -17,22 +17,22 @@ export const EQUIPMENT_ANY = 'any'
 // '' — сортировка не выбрана: строки идут в порядке бэкенда
 const DEFAULT_SORT = ''
 
-// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
-// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки.
-// Ширины подобраны по самому длинному значению колонки («Общественный транспорт»,
-// «Локальная заявка / ремонт у клиента»): лишнее место здесь — это адреса в три строки,
-// когда боковое меню раскрыто. Адрес остаётся резиновым и забирает всё, что осталось.
+// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой.
+// width — компактная колонка своей ширины (номер, время, кнопки); grow и minWidth —
+// колонка с переносом по словам, забирает остаток ширины по весу; floor — до какой ширины
+// колонку можно сузить без обрезки (useColumnWidths.js). Колонки при этом не прыгают.
 export const REQUEST_COLUMNS = [
-  { key: 'id', label: '№', sortKey: 'id', width: '90px' },
+  { key: 'id', label: '№', sortKey: 'id', width: '100px' },
   { key: 'is_active', label: 'Активна', sortKey: 'is_active', width: '100px' },
-  { key: 'address', label: 'Адрес', sortKey: 'address', width: '' },
-  { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px' },
-  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', width: '265px' },
-  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '105px' },
+  { key: 'address', label: 'Адрес', sortKey: 'address', grow: 3, minWidth: 180, floor: 125 },
+  // «55.7065, 37.7395» на узком экране уходит в две строки по запятой
+  { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px', floor: 95 },
+  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', grow: 2, minWidth: 150, floor: 115 },
+  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '115px' },
   { key: 'window', label: 'Окно (МСК)', sortKey: 'window_start', width: '130px' },
-  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '120px' },
-  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '180px' },
-  { key: 'actions', label: '', sortKey: null, width: '130px' },
+  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '120px', floor: 105 },
+  { key: 'transport', label: 'Транспорт', sortKey: 'transport', grow: 1, minWidth: 125 },
+  { key: 'actions', label: '', sortKey: null, width: '130px', floor: 100 },
 ]
 
 // по фильтру на каждую колонку таблицы
@@ -86,9 +86,10 @@ export function useRequestsView(requests, references) {
 
     if (filters.priorityId !== '' && request.priority_id !== filters.priorityId) return false
     if (filters.workTypeId !== '' && request.work_type_id !== filters.workTypeId) return false
+    const equipmentIds = request.equipment_ids ?? []
     if (filters.equipmentId === EQUIPMENT_ANY) {
-      if (request.equipment_id === null || request.equipment_id === undefined) return false
-    } else if (filters.equipmentId !== '' && request.equipment_id !== filters.equipmentId) {
+      if (equipmentIds.length === 0) return false
+    } else if (filters.equipmentId !== '' && !equipmentIds.includes(filters.equipmentId)) {
       return false
     }
 

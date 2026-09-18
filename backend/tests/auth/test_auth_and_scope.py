@@ -114,7 +114,9 @@ async def test_engineer_of_another_office_looks_missing():
 async def test_plan_of_another_office_cannot_be_approved():
     foreign = SimpleNamespace(id=9, office_id=1, approved_at=None)
     with (
-        patch.object(planning_service.plans_repository, "get_plan", AsyncMock(return_value=foreign)),
+        patch.object(
+            planning_service.plans_repository, "get_plan", AsyncMock(return_value=foreign)
+        ),
         pytest.raises(planning_service.PlanNotFoundError),
     ):
         await planning_service.approve_plan(object(), 9, office_id=3)
@@ -126,6 +128,9 @@ async def test_import_cannot_overwrite_request_of_another_office():
     repository = requests_service.requests_repository
     with (
         patch.object(repository, "lock_request_ids", AsyncMock()),
+        patch.object(
+            requests_service.references_repository, "list_equipment", AsyncMock(return_value=[])
+        ),
         patch.object(requests_service, "load_reference_lookup", AsyncMock()),
         patch.object(
             requests_service,

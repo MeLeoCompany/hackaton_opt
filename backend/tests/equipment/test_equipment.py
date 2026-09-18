@@ -65,20 +65,34 @@ def test_csv_equipment_by_name():
     result = parse(HEADER + ";оборудование", ROW + ";тв-приставка")
 
     assert result.errors == []
-    assert result.rows[0]["equipment_id"] == 2
+    assert result.rows[0]["equipment_ids"] == [2]
+
+
+def test_csv_several_equipment_types_at_once():
+    result = parse(HEADER + ";оборудование", ROW + ';"Роутер, 2"')
+
+    assert result.errors == []
+    assert result.rows[0]["equipment_ids"] == [1, 2]
+
+
+def test_csv_same_equipment_twice_is_an_error():
+    result = parse(HEADER + ";оборудование", ROW + ';"Роутер, роутер"')
+
+    assert result.rows == []
+    assert any("дважды" in message for message in result.errors)
 
 
 def test_csv_empty_equipment_clears_requirement():
     result = parse(HEADER + ";оборудование", ROW + ";")
 
-    assert result.rows[0]["equipment_id"] is None
+    assert result.rows[0]["equipment_ids"] == []
 
 
 def test_csv_without_equipment_column_leaves_requirement_alone():
     result = parse(HEADER, ROW)
 
     # поля нет вовсе — у существующей заявки требование не изменится
-    assert "equipment_id" not in result.rows[0]
+    assert "equipment_ids" not in result.rows[0]
 
 
 def test_csv_unknown_equipment_is_an_error():
@@ -92,4 +106,4 @@ def test_template_shows_equipment_column():
     header, example, *_ = build_csv_template().splitlines()
 
     assert header.endswith(";оборудование")
-    assert example.endswith(";Роутер")
+    assert example.endswith(';"Роутер, ТВ-приставка"')

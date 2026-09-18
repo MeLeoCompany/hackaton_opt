@@ -3,15 +3,15 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Equipment, Request
+from src.models import Equipment, request_equipment
 
 
 async def list_equipment(session: AsyncSession) -> list[tuple[Equipment, int]]:
     """Типы оборудования по номеру вместе с числом заявок, которые их требуют."""
     request_count = (
         select(func.count())
-        .select_from(Request)
-        .where(Request.equipment_id == Equipment.id)
+        .select_from(request_equipment)
+        .where(request_equipment.c.equipment_id == Equipment.id)
         .scalar_subquery()
     )
     result = await session.execute(select(Equipment, request_count).order_by(Equipment.id))
@@ -31,7 +31,9 @@ async def find_equipment_by_name(session: AsyncSession, name: str) -> Equipment 
 
 async def count_requests(session: AsyncSession, equipment_id: int) -> int:
     count = await session.scalar(
-        select(func.count()).select_from(Request).where(Request.equipment_id == equipment_id)
+        select(func.count())
+        .select_from(request_equipment)
+        .where(request_equipment.c.equipment_id == equipment_id)
     )
     return int(count or 0)
 

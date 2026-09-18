@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { NEW_ENGINEER } from '../composables/useEngineersTable.js'
+import { useColumnWidths } from '../composables/useColumnWidths.js'
 import { ENGINEER_COLUMNS as COLUMNS } from '../composables/useEngineersView.js'
 import { referenceName } from '../utils/referenceNames.js'
 import { transportColor } from '../utils/transportColors.js'
@@ -51,6 +52,8 @@ function ariaSort(columnSortKey) {
 
 // исполнителя выбрали на карте — прокручиваем таблицу к его строке
 const tableRoot = ref(null)
+// ширины колонок — от ширины таблицы: компактные своей ширины, остальное — растущим
+const { widths } = useColumnWidths(COLUMNS, tableRoot)
 
 async function scrollToSelected() {
   if (props.selectedId === null) return
@@ -66,9 +69,9 @@ onMounted(scrollToSelected)
 
 <template>
   <div ref="tableRoot" class="table-scroll">
-    <table class="data-table fixed-columns">
+    <table class="data-table fixed-columns fluid">
       <colgroup>
-        <col v-for="column in COLUMNS" :key="column.key" :style="column.width ? { width: column.width } : null" />
+        <col v-for="column in COLUMNS" :key="column.key" :style="{ width: `${widths[column.key]}px` }" />
       </colgroup>
       <thead>
         <tr>

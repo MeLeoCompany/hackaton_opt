@@ -52,7 +52,11 @@ defineEmits(['show-in-table', 'close', 'toggle-active'])
         <div>
           <dt>Оборудование</dt>
           <dd>
-            {{ request.equipment_id ? referenceName(references, 'equipment', request.equipment_id) : 'не нужно' }}
+            {{
+              request.equipment_ids?.length
+                ? request.equipment_ids.map((equipmentId) => referenceName(references, 'equipment', equipmentId)).join(', ')
+                : 'не нужно'
+            }}
           </dd>
         </div>
         <div>

@@ -98,6 +98,7 @@ async def test_import_gives_rows_without_id_the_smallest_free_numbers():
     session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock())
     with (
         patch.object(repository, "lock_request_ids", AsyncMock()),
+        patch.object(service.references_repository, "list_equipment", AsyncMock(return_value=[])),
         patch.object(service, "load_reference_lookup", AsyncMock()),
         patch.object(
             service, "parse_requests_csv", return_value=SimpleNamespace(rows=rows, errors=[])
@@ -105,7 +106,9 @@ async def test_import_gives_rows_without_id_the_smallest_free_numbers():
         patch.object(repository, "get_requests_by_ids", AsyncMock(return_value={})),
         patch.object(repository, "list_request_ids", AsyncMock(return_value={2})),
         patch.object(
-            repository, "add_request", side_effect=lambda s, f: insertion_order.append(f["id"])
+            repository,
+            "add_request",
+            side_effect=lambda s, f, e=None: insertion_order.append(f["id"]),
         ),
     ):
         report = await service.import_requests_csv(session, b"csv", office_id=1)

@@ -10,9 +10,9 @@ import { referenceName } from '../utils/referenceNames.js'
 // width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
 export const ENGINEER_COLUMNS = [
   { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'name', label: 'Имя', sortKey: 'name', width: '250px' },
-  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '220px' },
-  { key: 'skills', label: 'Навыки', sortKey: 'skills', width: '' },
+  { key: 'name', label: 'Имя', sortKey: 'name', grow: 1, minWidth: 170, floor: 130 },
+  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '215px', floor: 170 },
+  { key: 'skills', label: 'Навыки', sortKey: 'skills', grow: 2, minWidth: 230, floor: 170 },
   { key: 'shift', label: 'Смена (МСК)', sortKey: 'shift_start', width: '130px' },
   // откуда выезжает: значок офиса или своей точки; в правке по значку открывается карта
   { key: 'start', label: 'Старт', sortKey: null, width: '72px' },

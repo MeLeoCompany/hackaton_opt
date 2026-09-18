@@ -49,8 +49,13 @@ const viewMode = ref('table')
 // карточка справа от карты занимает ровно три последние колонки таблицы (смена, старт,
 // действия): её левый край совпадает с линией колонки в шапке фильтров, а карта
 // заканчивается перед ней. Двух узких колонок старта и действий карточке мало.
-// +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
-const DETAILS_WIDTH = ENGINEER_COLUMNS.slice(-3).reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 1
+// ширины колонок шапки фильтров над картой — приходят от неё самой
+const filterWidths = ref({})
+const detailsWidth = computed(() => {
+  const total = ENGINEER_COLUMNS.slice(-3).reduce((sum, column) => sum + (filterWidths.value[column.key] ?? 0), 0)
+  // +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
+  return total ? `${total + 1}px` : undefined
+})
 
 const selectedEngineer = computed(
   () => filteredEngineers.value.find((engineer) => engineer.id === selectedId.value) ?? null,
@@ -157,8 +162,9 @@ onMounted(load)
         />
       </div>
 
-      <div v-else class="map-view" :style="{ '--details-width': `${DETAILS_WIDTH}px` }">
+      <div v-else class="map-view" :style="{ '--details-width': detailsWidth }">
         <EngineersFilters
+          @widths="filterWidths = $event"
           :filters="filters"
           :references="references"
           :active-count="activeFilterCount"

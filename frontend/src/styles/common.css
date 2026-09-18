@@ -566,6 +566,52 @@ button.link:disabled {
   overflow-wrap: break-word;
 }
 
+/* ---- таблицы, которые сжимаются вместе с окном (заявки, исполнители) ----
+   Ширины колонок там заданы долями (utils/tableWidth.js), прокрутки нет. Чтобы при сжатии
+   ничего не вылезало за границы ячеек и оставалось ровно:
+   - ячейка обрезает всё, что шире неё; текст без переноса и значки — с многоточием;
+   - поля не держат свою минимальную ширину, а занимают ячейку целиком;
+   - фильтр «чч:мм – чч:мм» и значение окна или смены под ним ужимаются одинаково
+     и остаются друг под другом. */
+.data-table.fixed-columns.fluid {
+  min-width: 0;
+}
+
+.data-table.fixed-columns.fluid th,
+.data-table.fixed-columns.fluid td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-table.fixed-columns.fluid .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
+.data-table.fixed-columns.fluid td input.short-input,
+.data-table.fixed-columns.fluid td input.wide-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.data-table.fixed-columns.fluid .filter-controls .time-range {
+  width: 100%;
+  max-width: 110px;
+}
+
+.data-table.fixed-columns.fluid .range-value {
+  width: 100%;
+  max-width: 108px;
+}
+
+.data-table.fixed-columns.fluid .range-value > span:not(.range-dash) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .data-table td.empty {
   text-align: center;
   color: #94a3b8;

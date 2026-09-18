@@ -59,10 +59,16 @@ const { takeRequestId } = usePlanFocus()
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
 
-// карточка справа от карты занимает ровно две последние колонки таблицы: её левый край
+// карточка справа от карты занимает ровно три последние колонки таблицы (приоритет,
+// транспорт, кнопки) — двух уже мало под её кнопки. Её левый край
 // совпадает с линией колонки в шапке фильтров, а карта заканчивается перед ней
-// +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
-const DETAILS_WIDTH = REQUEST_COLUMNS.slice(-2).reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 1
+// ширины колонок шапки фильтров над картой — приходят от неё самой
+const filterWidths = ref({})
+const detailsWidth = computed(() => {
+  const total = REQUEST_COLUMNS.slice(-3).reduce((sum, column) => sum + (filterWidths.value[column.key] ?? 0), 0)
+  // +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
+  return total ? `${total + 1}px` : undefined
+})
 
 const selectedRequest = computed(
   () => filteredRequests.value.find((request) => request.id === selectedId.value) ?? null,
@@ -222,8 +228,9 @@ onMounted(async () => {
         />
       </div>
 
-      <div v-else class="map-view" :style="{ '--details-width': `${DETAILS_WIDTH}px` }">
+      <div v-else class="map-view" :style="{ '--details-width': detailsWidth }">
         <RequestsFilters
+          @widths="filterWidths = $event"
           :filters="filters"
           :references="references"
           :active-count="activeFilterCount"

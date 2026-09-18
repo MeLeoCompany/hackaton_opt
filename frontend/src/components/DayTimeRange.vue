@@ -94,6 +94,7 @@ function apply() {
 .times :deep(.time-input) {
   flex: 1;
   width: auto;
+  min-width: 0;
 }
 
 .times .next-day {

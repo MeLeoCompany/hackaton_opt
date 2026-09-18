@@ -5,7 +5,7 @@ from datetime import date, datetime
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Assignment, Event, Plan, Request
+from src.models import Assignment, Equipment, Event, Plan, Request
 
 # Shared by request creation and CSV import; independent from engineer ID allocation.
 REQUEST_ID_LOCK_KEY = 7419821
@@ -116,15 +116,30 @@ async def get_requests_by_ids(session: AsyncSession, request_ids: list[int]) -> 
     return {request.id: request for request in result.scalars().all()}
 
 
-def add_request(session: AsyncSession, fields: dict) -> Request:
+def add_request(
+    session: AsyncSession, fields: dict, equipment: list[Equipment] | None = None
+) -> Request:
     request = Request(**fields)
+    request.equipment = equipment or []
     session.add(request)
     return request
 
 
-def apply_changes(request: Request, fields: dict) -> None:
+def apply_changes(request: Request, fields: dict, equipment: list[Equipment] | None = None) -> None:
+    """Меняет поля заявки; equipment=None — список оборудования не трогаем."""
     for field_name, value in fields.items():
         setattr(request, field_name, value)
+    if equipment is not None:
+        request.equipment = equipment
+
+
+async def get_equipment_by_ids(session: AsyncSession, equipment_ids: list[int]) -> list[Equipment]:
+    if not equipment_ids:
+        return []
+    result = await session.execute(
+        select(Equipment).where(Equipment.id.in_(equipment_ids)).order_by(Equipment.id)
+    )
+    return list(result.scalars().all())
 
 
 async def delete_request(session: AsyncSession, request: Request) -> None:
