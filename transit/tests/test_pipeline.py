@@ -148,10 +148,10 @@ def test_checked_in_pilot_builds_valid_gtfs(tmp_path: Path) -> None:
 
     counts = validate_gtfs(output)
     assert counts["routes.txt"] == 2
-    assert counts["trips.txt"] == 220
-    assert counts["stop_times.txt"] == 6485
+    assert counts["trips.txt"] == 1100
+    assert counts["stop_times.txt"] == 30245
     with zipfile.ZipFile(output) as archive:
-        assert "frequencies.txt" in archive.namelist()
+        assert "frequencies.txt" not in archive.namelist()
         assert "calendar_dates.txt" in archive.namelist()
 
 
@@ -172,7 +172,7 @@ def test_multiple_dates_of_same_bus_route_do_not_duplicate_route_or_shape(
 
     counts = validate_gtfs(output)
     assert counts["routes.txt"] == 2
-    assert counts["trips.txt"] == 438
+    assert counts["trips.txt"] == 1318
     assert counts["shapes.txt"] == 1899
 
 
@@ -186,8 +186,8 @@ def test_all_checked_in_metro_lines_build_valid_gtfs(tmp_path: Path) -> None:
     counts = validate_gtfs(output)
     assert len(metro) == 17
     assert counts["routes.txt"] == 17
-    assert counts["trips.txt"] == 34
-    assert counts["frequencies.txt"] == 204
+    assert counts["trips.txt"] == 14994
+    assert "frequencies.txt" not in counts
     assert counts["transfers.txt"] > 0
     with zipfile.ZipFile(output) as archive:
         stops = archive.read("stops.txt").decode("utf-8-sig")

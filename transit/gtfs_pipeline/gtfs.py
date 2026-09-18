@@ -165,17 +165,10 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
             )
             for pattern in dataset["patterns"]:
                 pattern_id = pattern.get("pattern_id", pattern["direction_id"])
-                trip_id = f"{route_id}-{pattern_id}-frequency"
-                tables["trips.txt"].append(
-                    [route_id, service_id, trip_id, pattern["direction_id"], ""]
-                )
                 offsets = _distributed_offsets(
                     pattern["stops"], pattern["duration_minutes"]
                 )
-                start = _minutes(service["headways"][0]["start"])
-                for sequence, (stop, offset) in enumerate(
-                    zip(pattern["stops"], offsets, strict=True), start=1
-                ):
+                for stop in pattern["stops"]:
                     stop_id = stop["source_stop_id"]
                     if stop_id not in stop_seen:
                         tables["stops.txt"].append(
@@ -189,20 +182,43 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                             ]
                         )
                         stop_seen.add(stop_id)
-                    value = gtfs_time(start + offset)
-                    tables["stop_times.txt"].append(
-                        [trip_id, value, value, stop_id, sequence]
-                    )
+
+                # Матричный движок R5 понимает вероятностные частотные рейсы, но
+                # движок подробных маршрутов не всегда восстанавливает их участки.
+                # Разворачиваем расчётные интервалы в конкретные отправления, чтобы
+                # оба режима использовали одно расписание.
                 for headway in service["headways"]:
-                    tables["frequencies.txt"].append(
-                        [
-                            trip_id,
-                            headway["start"],
-                            headway["end"],
-                            headway["seconds"],
-                            0,
-                        ]
-                    )
+                    first = _minutes(headway["start"])
+                    end = _minutes(headway["end"])
+                    if headway["seconds"] % 60:
+                        raise ValueError(
+                            "интервал метро должен задаваться целым числом минут"
+                        )
+                    step = headway["seconds"] // 60
+                    for departure in range(first, end, step):
+                        trip_id = f"{route_id}-{pattern_id}-{departure * 60}"
+                        tables["trips.txt"].append(
+                            [
+                                route_id,
+                                service_id,
+                                trip_id,
+                                pattern["direction_id"],
+                                "",
+                            ]
+                        )
+                        for sequence, (stop, offset) in enumerate(
+                            zip(pattern["stops"], offsets, strict=True), start=1
+                        ):
+                            value = gtfs_time(departure + offset)
+                            tables["stop_times.txt"].append(
+                                [
+                                    trip_id,
+                                    value,
+                                    value,
+                                    stop["source_stop_id"],
+                                    sequence,
+                                ]
+                            )
         else:
             raise ValueError(f"неподдерживаемый вид набора данных: {dataset['kind']}")
 

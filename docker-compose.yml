@@ -41,6 +41,51 @@ services:
       # маршрутизация с учётом времени суток нам не нужна, экономим на сборке
       build_time_zones: "False"
 
+  r5-osm:
+    profiles: ["transit"]
+    build:
+      context: ./transit/osm_extract
+    environment:
+      R5_OSM_SOURCE: /source/central-fed-district-latest.osm.pbf
+      R5_OSM_OUTPUT: /output/moscow-region.osm.pbf
+      R5_OSM_BBOX: ${R5_OSM_BBOX:-35.0,54.1,41.0,57.0}
+      R5_SOURCE_WAIT_SECONDS: ${R5_SOURCE_WAIT_SECONDS:-900}
+    volumes:
+      - valhalla_tiles:/source:ro
+      - r5_osm:/output
+    depends_on:
+      valhalla:
+        condition: service_started
+
+  r5:
+    profiles: ["transit"]
+    build:
+      context: ./transit/r5_service
+    container_name: routing_r5
+    restart: unless-stopped
+    environment:
+      R5_OSM_PATH: /data/osm/moscow-region.osm.pbf
+      R5_GTFS_PATH: /data/gtfs/moscow-pilot.gtfs.zip
+      R5_SOURCE_WAIT_SECONDS: ${R5_SOURCE_WAIT_SECONDS:-900}
+      R5_METRO_ENTRY_SECONDS: ${R5_METRO_ENTRY_SECONDS:-240}
+      R5_METRO_EXIT_SECONDS: ${R5_METRO_EXIT_SECONDS:-240}
+      R5_RELIABILITY_BUFFER_RATIO: ${R5_RELIABILITY_BUFFER_RATIO:-0.10}
+    ports:
+      - "8003:8003"
+    volumes:
+      - r5_osm:/data/osm:ro
+      - ./transit/generated:/data/gtfs:ro
+      - r5_cache:/root/.cache/r5py
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 5m
+    depends_on:
+      r5-osm:
+        condition: service_completed_successfully
+
   backend:
     build:
       context: ./backend
@@ -91,3 +136,5 @@ volumes:
   db_data:
   valhalla_tiles:
   frontend_node_modules:
+  r5_cache:
+  r5_osm:

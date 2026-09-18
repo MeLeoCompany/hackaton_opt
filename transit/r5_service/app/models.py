@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class Coordinate(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
+class RouteRequest(BaseModel):
+    origin: Coordinate
+    destination: Coordinate
+    departure_time: datetime
+
+    @model_validator(mode="after")
+    def validate_request(self) -> RouteRequest:
+        if self.departure_time.tzinfo is None:
+            raise ValueError("departure_time должен содержать часовой пояс")
+        if self.origin == self.destination:
+            raise ValueError("начальная и конечная точки должны различаться")
+        return self
+
+
+class RouteLeg(BaseModel):
+    mode: str
+    duration_seconds: int
+    wait_seconds: int
+    distance_meters: float | None
+    route_id: str | None
+    from_stop_id: str | None
+    to_stop_id: str | None
+    geometry: dict[str, Any] | None
+
+
+class RouteResponse(BaseModel):
+    departure_time: datetime
+    raw_duration_seconds: int
+    entry_exit_penalty_seconds: int
+    reliability_buffer_seconds: int
+    total_duration_seconds: int
+    walking_duration_seconds: int
+    waiting_duration_seconds: int
+    transit_duration_seconds: int
+    transfers: int
+    legs: list[RouteLeg]
+
+
+class HealthResponse(BaseModel):
+    status: str
+    network_loaded: bool
+    error: str | None = None
