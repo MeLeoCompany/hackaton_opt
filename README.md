@@ -21,4 +21,5 @@ docker compose up
   [db/README.md](db/README.md).
 - Структура бэкенда, расчёт расстояний и замеренные особенности — [backend/README.md](backend/README.md).
 - Фронтенд — [frontend/README.md](frontend/README.md).
-
+- Пилотный сборщик GTFS для будущего R5 (автобус + метро) —
+  [transit/README.md](transit/README.md).

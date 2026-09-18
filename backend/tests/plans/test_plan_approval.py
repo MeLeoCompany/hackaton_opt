@@ -5,10 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from src.schemas.plans import PlanSummary
 from src.services.planner import planning_service
-from src.services.planner.planning_service import PlanInUseError
+from src.services.planner.planning_service import PlanDataError, PlanInUseError
 
 
 def plan(plan_id, approved_at=None, plan_date=date(2026, 8, 17)):
@@ -37,13 +38,66 @@ async def test_approval_holds_plan_requests():
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=target)),
         patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
-        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=3)) as hold,
+        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3))) as hold,
         patch.object(planning_service, "summarize_plans", AsyncMock(return_value=[summary(9)])),
     ):
         await planning_service.approve_plan(session, 9)
 
     assert hold.await_args.args[1] is target
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stale_plan_cannot_steal_requests_held_by_another_plan():
+    target = plan(9)
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=target)),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
+        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(2, 3))),
+        pytest.raises(PlanInUseError, match="устарел"),
+    ):
+        await planning_service.approve_plan(session, 9)
+
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_approval_is_reported_as_conflict():
+    target = plan(9)
+    session = SimpleNamespace(
+        commit=AsyncMock(side_effect=IntegrityError("unique", {}, Exception())),
+        rollback=AsyncMock(),
+    )
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=target)),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
+        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3))),
+        pytest.raises(PlanInUseError, match="одновременно"),
+    ):
+        await planning_service.approve_plan(session, 9)
+
+    session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_legacy_plan_without_date_cannot_be_approved():
+    session = SimpleNamespace(commit=AsyncMock())
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=plan(9, plan_date=None))),
+        patch.object(repository, "hold_plan_requests", AsyncMock()) as hold,
+        pytest.raises(PlanDataError, match="не может быть утверждён"),
+    ):
+        await planning_service.approve_plan(session, 9)
+
+    hold.assert_not_awaited()
 
 
 @pytest.mark.asyncio
