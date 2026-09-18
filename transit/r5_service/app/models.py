@@ -11,6 +11,10 @@ class Coordinate(BaseModel):
     lon: float = Field(ge=-180, le=180)
 
 
+class MatrixPoint(Coordinate):
+    id: str = Field(min_length=1, max_length=128, pattern=r".*\S.*")
+
+
 class RouteRequest(BaseModel):
     origin: Coordinate
     destination: Coordinate
@@ -22,6 +26,20 @@ class RouteRequest(BaseModel):
             raise ValueError("departure_time должен содержать часовой пояс")
         if self.origin == self.destination:
             raise ValueError("начальная и конечная точки должны различаться")
+        return self
+
+
+class MatrixRequest(BaseModel):
+    points: list[MatrixPoint] = Field(min_length=2, max_length=1000)
+    departure_time: datetime
+
+    @model_validator(mode="after")
+    def validate_request(self) -> MatrixRequest:
+        if self.departure_time.tzinfo is None:
+            raise ValueError("departure_time должен содержать часовой пояс")
+        point_ids = [point.id for point in self.points]
+        if len(point_ids) != len(set(point_ids)):
+            raise ValueError("идентификаторы точек матрицы должны быть уникальными")
         return self
 
 
@@ -47,6 +65,15 @@ class RouteResponse(BaseModel):
     transit_duration_seconds: int
     transfers: int
     legs: list[RouteLeg]
+
+
+class MatrixResponse(BaseModel):
+    departure_time: datetime
+    departure_time_window_minutes: int
+    reliability_buffer_ratio: float
+    point_ids: list[str]
+    raw_durations_seconds: list[list[int | None]]
+    durations_seconds: list[list[int | None]]
 
 
 class HealthResponse(BaseModel):

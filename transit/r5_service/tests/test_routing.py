@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.config import Settings
-from app.routing import build_route_response, local_departure
+from app.models import MatrixPoint
+from app.routing import build_matrix_response, build_route_response, local_departure
 
 
 def settings() -> Settings:
@@ -15,6 +16,9 @@ def settings() -> Settings:
         metro_entry_seconds=240,
         metro_exit_seconds=240,
         reliability_buffer_ratio=0.1,
+        matrix_max_points=100,
+        matrix_time_window_minutes=10,
+        max_travel_minutes=240,
     )
 
 
@@ -73,3 +77,48 @@ def test_departure_is_converted_to_moscow_local_time() -> None:
     source = datetime(2026, 9, 18, 6, 30, tzinfo=timezone.utc)
 
     assert local_departure(source) == source.replace(hour=9, minute=30, tzinfo=None)
+
+
+def test_matrix_preserves_point_order_and_marks_unreachable_pairs() -> None:
+    departure = datetime(2026, 9, 18, 9, 0, tzinfo=timezone.utc)
+    points = [
+        MatrixPoint(id="engineer-7", lat=55.78, lon=37.68),
+        MatrixPoint(id="request-42", lat=55.69, lon=37.53),
+        MatrixPoint(id="request-43", lat=55.75, lon=37.61),
+    ]
+    rows = [
+        {"from_id": "engineer-7", "to_id": "request-42", "travel_time": 24},
+        {"from_id": "request-42", "to_id": "engineer-7", "travel_time": 25.5},
+        {"from_id": "engineer-7", "to_id": "request-43", "travel_time": float("nan")},
+    ]
+
+    result = build_matrix_response(rows, points, departure, settings())
+
+    assert result.point_ids == ["engineer-7", "request-42", "request-43"]
+    assert result.raw_durations_seconds == [
+        [0, 1440, None],
+        [1530, 0, None],
+        [None, None, 0],
+    ]
+    assert result.durations_seconds == [
+        [0, 1584, None],
+        [1683, 0, None],
+        [None, None, 0],
+    ]
+
+
+def test_matrix_ignores_rows_with_unknown_point_ids() -> None:
+    departure = datetime(2026, 9, 18, 9, 0, tzinfo=timezone.utc)
+    points = [
+        MatrixPoint(id="a", lat=55.7, lon=37.6),
+        MatrixPoint(id="b", lat=55.8, lon=37.7),
+    ]
+
+    result = build_matrix_response(
+        [{"from_id": "unknown", "to_id": "a", "travel_time": 5}],
+        points,
+        departure,
+        settings(),
+    )
+
+    assert result.raw_durations_seconds == [[0, None], [None, 0]]

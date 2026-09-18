@@ -8,8 +8,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 
 from .config import Settings
-from .models import HealthResponse, RouteRequest, RouteResponse
-from .routing import route
+from .models import (
+    HealthResponse,
+    MatrixRequest,
+    MatrixResponse,
+    RouteRequest,
+    RouteResponse,
+)
+from .routing import route, travel_time_matrix
 
 
 def _wait_for_file(path: Path, timeout: int) -> None:
@@ -37,7 +43,7 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.network = None
     app.state.load_error = None
-    app.state.route_lock = asyncio.Lock()
+    app.state.routing_lock = asyncio.Lock()
     try:
         app.state.network = await asyncio.to_thread(_load_network, settings)
     # Во время загрузки R5 библиотека JPype может вернуть разные исключения
@@ -49,7 +55,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Маршрутизатор общественного транспорта R5",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -76,7 +82,7 @@ async def public_transport_route(
     if network is None:
         raise HTTPException(status_code=503, detail="транспортный граф R5 не загружен")
     try:
-        async with request.app.state.route_lock:
+        async with request.app.state.routing_lock:
             return await asyncio.to_thread(
                 route,
                 network,
@@ -87,5 +93,34 @@ async def public_transport_route(
             )
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"ошибка R5: {error}") from error
+
+
+@app.post("/matrix", response_model=MatrixResponse)
+async def public_transport_matrix(
+    payload: MatrixRequest, request: Request
+) -> MatrixResponse:
+    network = request.app.state.network
+    if network is None:
+        raise HTTPException(status_code=503, detail="транспортный граф R5 не загружен")
+    settings = request.app.state.settings
+    if len(payload.points) > settings.matrix_max_points:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"матрица содержит {len(payload.points)} точек, "
+                f"разрешено не более {settings.matrix_max_points}"
+            ),
+        )
+    try:
+        async with request.app.state.routing_lock:
+            return await asyncio.to_thread(
+                travel_time_matrix,
+                network,
+                payload.points,
+                payload.departure_time,
+                settings,
+            )
     except Exception as error:
         raise HTTPException(status_code=502, detail=f"ошибка R5: {error}") from error

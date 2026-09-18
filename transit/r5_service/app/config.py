@@ -14,6 +14,9 @@ class Settings:
     metro_entry_seconds: int
     metro_exit_seconds: int
     reliability_buffer_ratio: float
+    matrix_max_points: int
+    matrix_time_window_minutes: int
+    max_travel_minutes: int
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -33,6 +36,11 @@ class Settings:
             reliability_buffer_ratio=float(
                 os.getenv("R5_RELIABILITY_BUFFER_RATIO", "0.10")
             ),
+            matrix_max_points=int(os.getenv("R5_MATRIX_MAX_POINTS", "100")),
+            matrix_time_window_minutes=int(
+                os.getenv("R5_MATRIX_TIME_WINDOW_MINUTES", "10")
+            ),
+            max_travel_minutes=int(os.getenv("R5_MAX_TRAVEL_MINUTES", "240")),
         )
         if settings.source_wait_seconds < 0:
             raise ValueError("R5_SOURCE_WAIT_SECONDS не может быть отрицательным")
@@ -42,4 +50,10 @@ class Settings:
             0 <= settings.reliability_buffer_ratio <= 1
         ):
             raise ValueError("R5_RELIABILITY_BUFFER_RATIO должен быть от 0 до 1")
+        if not 2 <= settings.matrix_max_points <= 1000:
+            raise ValueError("R5_MATRIX_MAX_POINTS должен быть от 2 до 1000")
+        if not 5 <= settings.matrix_time_window_minutes <= 120:
+            raise ValueError("R5_MATRIX_TIME_WINDOW_MINUTES должен быть от 5 до 120")
+        if not 1 <= settings.max_travel_minutes <= 24 * 60:
+            raise ValueError("R5_MAX_TRAVEL_MINUTES должен быть от 1 до 1440")
         return settings

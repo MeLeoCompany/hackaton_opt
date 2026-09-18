@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .config import Settings
-from .models import Coordinate, RouteLeg, RouteResponse
+from .models import (
+    Coordinate,
+    MatrixPoint,
+    MatrixResponse,
+    RouteLeg,
+    RouteResponse,
+)
 
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
@@ -27,6 +33,52 @@ def _optional_string(value: Any) -> str | None:
 
 def local_departure(value: datetime) -> datetime:
     return value.astimezone(MOSCOW_TZ).replace(tzinfo=None)
+
+
+def _minutes_to_seconds(value: Any) -> int | None:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return None
+    minutes = float(value)
+    if not math.isfinite(minutes) or minutes < 0:
+        return None
+    return round(minutes * 60)
+
+
+def build_matrix_response(
+    rows: list[dict[str, Any]],
+    points: list[MatrixPoint],
+    departure: datetime,
+    settings: Settings,
+) -> MatrixResponse:
+    point_ids = [point.id for point in points]
+    positions = {point_id: index for index, point_id in enumerate(point_ids)}
+    size = len(points)
+    raw: list[list[int | None]] = [[None] * size for _ in range(size)]
+    for index in range(size):
+        raw[index][index] = 0
+
+    for row in rows:
+        from_id = str(row.get("from_id"))
+        to_id = str(row.get("to_id"))
+        if from_id not in positions or to_id not in positions:
+            continue
+        raw[positions[from_id]][positions[to_id]] = _minutes_to_seconds(
+            row.get("travel_time")
+        )
+
+    multiplier = 1 + settings.reliability_buffer_ratio
+    adjusted = [
+        [None if seconds is None else round(seconds * multiplier) for seconds in row]
+        for row in raw
+    ]
+    return MatrixResponse(
+        departure_time=departure,
+        departure_time_window_minutes=settings.matrix_time_window_minutes,
+        reliability_buffer_ratio=settings.reliability_buffer_ratio,
+        point_ids=point_ids,
+        raw_durations_seconds=raw,
+        durations_seconds=adjusted,
+    )
 
 
 def build_route_response(
@@ -138,3 +190,38 @@ def route(
         options.append((response.total_duration_seconds, int(option), response))
     _, _, fastest = min(options, key=lambda item: (item[0], item[1]))
     return fastest
+
+
+def travel_time_matrix(
+    network: Any,
+    points: list[MatrixPoint],
+    departure: datetime,
+    settings: Settings,
+) -> MatrixResponse:
+    import geopandas
+    import r5py
+    from shapely import Point
+
+    locations = geopandas.GeoDataFrame(
+        {
+            "id": [point.id for point in points],
+            "geometry": [Point(point.lon, point.lat) for point in points],
+        },
+        crs="EPSG:4326",
+    )
+    result = r5py.TravelTimeMatrix(
+        network,
+        origins=locations,
+        destinations=locations,
+        departure=local_departure(departure),
+        departure_time_window=timedelta(
+            minutes=settings.matrix_time_window_minutes
+        ),
+        percentiles=[50],
+        transport_modes=[r5py.TransportMode.TRANSIT, r5py.TransportMode.WALK],
+        max_time=timedelta(minutes=settings.max_travel_minutes),
+        snap_to_network=True,
+    )
+    return build_matrix_response(
+        result.to_dict(orient="records"), points, departure, settings
+    )
