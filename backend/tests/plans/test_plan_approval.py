@@ -107,7 +107,9 @@ async def test_second_plan_of_the_day_is_not_approved():
 
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=plan(9))),
-        patch.object(repository, "get_approved_plan", AsyncMock(return_value=plan(8, datetime.now(UTC)))),
+        patch.object(
+            repository, "get_approved_plan", AsyncMock(return_value=plan(8, datetime.now(UTC)))
+        ),
         patch.object(repository, "hold_plan_requests", AsyncMock()) as hold,
         pytest.raises(PlanInUseError, match="№8"),
     ):
@@ -146,13 +148,17 @@ async def test_day_check_reports_requests_held_by_another_day():
     requests_repository = planning_service.requests_repository
 
     with (
-        patch.object(requests_repository, "list_active_requests_in_period", AsyncMock(return_value=[1, 2])),
+        patch.object(
+            requests_repository, "list_active_requests_in_period", AsyncMock(return_value=[1, 2])
+        ),
         patch.object(
             requests_repository,
             "list_requests_held_by_other_days",
             AsyncMock(return_value=[(held_request, plan(8, plan_date=date(2026, 8, 16)))]),
         ),
-        patch.object(planning_service.plans_repository, "get_approved_plan", AsyncMock(return_value=None)),
+        patch.object(
+            planning_service.plans_repository, "get_approved_plan", AsyncMock(return_value=None)
+        ),
     ):
         check = await planning_service.check_planning_day(AsyncMock(), date(2026, 8, 17))
 

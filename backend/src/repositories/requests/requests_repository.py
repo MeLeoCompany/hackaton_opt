@@ -31,7 +31,9 @@ async def list_requests_in_period(
 
 async def list_active_requests(session: AsyncSession) -> list[Request]:
     result = await session.execute(
-        select(Request).where(Request.is_active.is_(True)).order_by(Request.window_start, Request.id)
+        select(Request)
+        .where(Request.is_active.is_(True))
+        .order_by(Request.window_start, Request.id)
     )
     return list(result.scalars().all())
 

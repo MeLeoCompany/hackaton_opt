@@ -21,7 +21,9 @@ from src.models.reference import Skill, Transport
 engineer_skill = Table(
     "engineer_skill",
     Base.metadata,
-    Column("engineer_id", BigInteger, ForeignKey("engineer.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "engineer_id", BigInteger, ForeignKey("engineer.id", ondelete="CASCADE"), primary_key=True
+    ),
     Column("skill_id", SmallInteger, ForeignKey("skill.id"), primary_key=True),
 )
 

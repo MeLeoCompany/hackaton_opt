@@ -70,7 +70,9 @@ class LoadedDay:
 
 def planning_day(plan_date: date) -> PlanningDay:
     day_start = datetime.combine(plan_date, time.min, tzinfo=local_timezone())
-    return PlanningDay(plan_date=plan_date, day_start=day_start, day_end=day_start + timedelta(days=1))
+    return PlanningDay(
+        plan_date=plan_date, day_start=day_start, day_end=day_start + timedelta(days=1)
+    )
 
 
 def local_date_of(moment: datetime) -> date:
@@ -84,13 +86,20 @@ async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
     requests = await requests_repository.list_active_requests_in_period(
         session, day.day_start, day.day_end, plan_date=day.plan_date
     )
-    engineers = await engineers_repository.list_engineers_in_period(session, day.day_start, day.day_end)
-    engineers = [e for e in engineers
-                 if day.to_minutes(e.shift_start, round_up=True) <= day.to_minutes(e.shift_end)]
+    engineers = await engineers_repository.list_engineers_in_period(
+        session, day.day_start, day.day_end
+    )
+    engineers = [
+        e
+        for e in engineers
+        if day.to_minutes(e.shift_start, round_up=True) <= day.to_minutes(e.shift_end)
+    ]
     skills = await references_repository.list_skills(session)
     transports = await references_repository.list_transports(session)
     priorities = await references_repository.list_priorities(session)
-    urgent_priority_ids = {priority.id for priority in priorities if priority.name == URGENT_PRIORITY_NAME}
+    urgent_priority_ids = {
+        priority.id for priority in priorities if priority.name == URGENT_PRIORITY_NAME
+    }
 
     distance_km, travel_min = await build_day_matrices(engineers, requests)
 
@@ -148,7 +157,10 @@ async def build_day_matrices(
         Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))
         for engineer in engineers
     ]
-    points += [Point(latitude=float(request.latitude), longitude=float(request.longitude)) for request in requests]
+    points += [
+        Point(latitude=float(request.latitude), longitude=float(request.longitude))
+        for request in requests
+    ]
 
     distance_km: dict[int, np.ndarray] = {}
     travel_min: dict[int, np.ndarray] = {}
@@ -161,9 +173,9 @@ async def build_day_matrices(
             ) from error
 
         distance_km[transport_id] = replace_unreachable(matrix.distances_km, UNREACHABLE_KM)
-        travel_min[transport_id] = np.ceil(replace_unreachable(matrix.durations_min, UNREACHABLE_MINUTES)).astype(
-            np.int32
-        )
+        travel_min[transport_id] = np.ceil(
+            replace_unreachable(matrix.durations_min, UNREACHABLE_MINUTES)
+        ).astype(np.int32)
 
     return distance_km, travel_min
 

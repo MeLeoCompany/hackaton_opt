@@ -20,7 +20,11 @@ REFERENCES = ReferenceLookup(
         [(1, "Автомобиль"), (2, "Пешеход"), (3, "Велосипед"), (4, "Общественный транспорт")]
     ),
     work_types=reference_options(
-        [(1, "Подключение клиентов, базовая"), (2, "Авария на ТКД"), (4, "Локальная заявка / ремонт у клиента")]
+        [
+            (1, "Подключение клиентов, базовая"),
+            (2, "Авария на ТКД"),
+            (4, "Локальная заявка / ремонт у клиента"),
+        ]
     ),
     work_type_norms={
         1: WorkTypeNorm(skill_id=2, work_minutes=70),
@@ -132,7 +136,12 @@ def test_blank_lines_are_skipped():
 
 def test_active_column():
     header = HEADER + ";активна"
-    result = parse(header, GOOD_ROW + ";нет", GOOD_ROW.replace("101", "102") + ";Да", GOOD_ROW.replace("101", "103") + ";")
+    result = parse(
+        header,
+        GOOD_ROW + ";нет",
+        GOOD_ROW.replace("101", "102") + ";Да",
+        GOOD_ROW.replace("101", "103") + ";",
+    )
 
     assert result.errors == []
     assert [row["is_active"] for row in result.rows] == [False, True, None]
@@ -142,7 +151,9 @@ def test_active_column_is_optional():
     result = parse(HEADER, GOOD_ROW)
 
     assert result.errors == []
-    assert result.rows[0]["is_active"] is None  # сервис решит: новая — активна, старая — без изменений
+    assert (
+        result.rows[0]["is_active"] is None
+    )  # сервис решит: новая — активна, старая — без изменений
 
 
 def test_bad_active_value():
@@ -157,7 +168,9 @@ def test_empty_file():
     assert result.errors == ["файл пустой"]
 
 
-WORK_TYPE_HEADER = "адрес;широта;долгота;тип_работ;длительность_мин;окно_начало;окно_конец;приоритет;навык"
+WORK_TYPE_HEADER = (
+    "адрес;широта;долгота;тип_работ;длительность_мин;окно_начало;окно_конец;приоритет;навык"
+)
 
 
 def test_work_type_fills_duration_and_skill():
@@ -190,7 +203,9 @@ def test_without_work_type_duration_and_skill_are_required():
     )
 
     assert result.rows == []
-    assert any("длительность_мин" in message and "тип_работ" in message for message in result.errors)
+    assert any(
+        "длительность_мин" in message and "тип_работ" in message for message in result.errors
+    )
     assert any("навык" in message and "тип_работ" in message for message in result.errors)
 
 

@@ -89,7 +89,7 @@ async def _request_matrix_block(
     costing_options: dict[str, dict[str, float | bool]] | None,
 ) -> tuple[list[int], list[int], list[list[dict]]]:
     """Запрашивает у Valhalla кусок матрицы: из точек from_indices во все точки to_indices."""
-    payload = {
+    payload: dict[str, object] = {
         "sources": _to_valhalla_locations([points[index] for index in from_indices]),
         "targets": _to_valhalla_locations([points[index] for index in to_indices]),
         "costing": costing,
@@ -169,7 +169,7 @@ async def route_legs(points: list[Point], transport: TransportKind) -> list[Trav
 
     async with httpx.AsyncClient(base_url=settings.valhalla_url, timeout=120.0) as client:
         for piece in _split_route(points, MAX_ROUTE_LOCATIONS):
-            payload = {
+            payload: dict[str, object] = {
                 "locations": _to_valhalla_locations(piece),
                 "costing": costing,
                 "units": "kilometers",

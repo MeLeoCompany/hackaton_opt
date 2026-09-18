@@ -29,9 +29,13 @@ async def handle_in_use(_: HttpRequest, error: InUseError) -> JSONResponse:
 
 @app.exception_handler(DataError)
 async def handle_data_error(_: HttpRequest, error: DataError) -> JSONResponse:
-    return JSONResponse(status_code=422, content={"detail": "Проверьте данные", "errors": error.messages})
+    return JSONResponse(
+        status_code=422, content={"detail": "Проверьте данные", "errors": error.messages}
+    )
 
 
 @app.exception_handler(ExternalServiceError)
-async def handle_external_service_error(_: HttpRequest, error: ExternalServiceError) -> JSONResponse:
+async def handle_external_service_error(
+    _: HttpRequest, error: ExternalServiceError
+) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": str(error)})

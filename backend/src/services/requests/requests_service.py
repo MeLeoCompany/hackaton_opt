@@ -129,13 +129,21 @@ async def export_requests_csv(session: AsyncSession, plan_date: date | None = No
                 "адрес": request.address,
                 "широта": f"{float(request.latitude):.6f}",
                 "долгота": f"{float(request.longitude):.6f}",
-                "тип_работ": references["work_types"].get(request.work_type_id, ""),
+                "тип_работ": (
+                    references["work_types"].get(request.work_type_id, "")
+                    if request.work_type_id is not None
+                    else ""
+                ),
                 "длительность_мин": request.duration_minutes,
                 "окно_начало": format_datetime(request.window_start, timezone),
                 "окно_конец": format_datetime(request.window_end, timezone),
                 "приоритет": references["priorities"].get(request.priority_id, ""),
                 "навык": references["skills"].get(request.skill_id, ""),
-                "транспорт": references["transports"].get(request.transport_id, ""),
+                "транспорт": (
+                    references["transports"].get(request.transport_id, "")
+                    if request.transport_id is not None
+                    else ""
+                ),
                 "активна": "да" if request.is_active else "нет",
             }
             for request in requests
@@ -146,15 +154,20 @@ async def export_requests_csv(session: AsyncSession, plan_date: date | None = No
 async def load_reference_names(session: AsyncSession) -> dict[str, dict[int, str]]:
     """Названия справочников по номеру — для выгрузки в CSV."""
     return {
-        "skills": {skill.id: skill.name for skill in await references_repository.list_skills(session)},
+        "skills": {
+            skill.id: skill.name for skill in await references_repository.list_skills(session)
+        },
         "priorities": {
-            priority.id: priority.name for priority in await references_repository.list_priorities(session)
+            priority.id: priority.name
+            for priority in await references_repository.list_priorities(session)
         },
         "transports": {
-            transport.id: transport.name for transport in await references_repository.list_transports(session)
+            transport.id: transport.name
+            for transport in await references_repository.list_transports(session)
         },
         "work_types": {
-            work_type.id: work_type.name for work_type in await references_repository.list_work_types(session)
+            work_type.id: work_type.name
+            for work_type in await references_repository.list_work_types(session)
         },
     }
 

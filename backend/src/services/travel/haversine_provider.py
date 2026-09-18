@@ -32,8 +32,12 @@ class TransportProfile:
 
 PROFILES: dict[TransportKind, TransportProfile] = {
     TransportKind.CAR: TransportProfile(speed_kmh=30.0, detour_factor=1.30, fixed_overhead_min=5.0),
-    TransportKind.PEDESTRIAN: TransportProfile(speed_kmh=5.0, detour_factor=1.15, fixed_overhead_min=0.0),
-    TransportKind.BICYCLE: TransportProfile(speed_kmh=15.0, detour_factor=1.25, fixed_overhead_min=2.0),
+    TransportKind.PEDESTRIAN: TransportProfile(
+        speed_kmh=5.0, detour_factor=1.15, fixed_overhead_min=0.0
+    ),
+    TransportKind.BICYCLE: TransportProfile(
+        speed_kmh=15.0, detour_factor=1.25, fixed_overhead_min=2.0
+    ),
     TransportKind.PUBLIC_TRANSPORT: TransportProfile(
         speed_kmh=18.0, detour_factor=1.35, fixed_overhead_min=10.0
     ),
@@ -49,7 +53,9 @@ def _straight_line_km(origin: Point, destination: Point) -> float:
 
     haversine = (
         math.sin(latitude_difference / 2) ** 2
-        + math.cos(origin_latitude) * math.cos(destination_latitude) * math.sin(longitude_difference / 2) ** 2
+        + math.cos(origin_latitude)
+        * math.cos(destination_latitude)
+        * math.sin(longitude_difference / 2) ** 2
     )
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(haversine))
 

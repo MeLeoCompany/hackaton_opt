@@ -39,7 +39,9 @@ async def download_csv_template() -> Response:
 
 
 @router.get("/export", summary="Выгрузить исполнителей дня в CSV")
-async def export_engineers(plan_date: date | None = None, session: AsyncSession = Depends(get_db)) -> Response:
+async def export_engineers(
+    plan_date: date | None = None, session: AsyncSession = Depends(get_db)
+) -> Response:
     content = await engineers_service.export_engineers_csv(session, plan_date)
     name = f"engineers_{plan_date:%Y-%m-%d}.csv" if plan_date else "engineers_all.csv"
     return Response(
@@ -49,7 +51,9 @@ async def export_engineers(plan_date: date | None = None, session: AsyncSession 
     )
 
 
-@router.post("/import", response_model=EngineerImportReport, summary="Загрузить исполнителей из CSV")
+@router.post(
+    "/import", response_model=EngineerImportReport, summary="Загрузить исполнителей из CSV"
+)
 async def import_engineers(
     file: UploadFile = File(...),
     plan_date: date | None = None,
@@ -67,17 +71,26 @@ async def get_engineer(engineer_id: int, session: AsyncSession = Depends(get_db)
     return await engineers_service.get_engineer(session, engineer_id)
 
 
-@router.post("", response_model=EngineerRead, status_code=status.HTTP_201_CREATED, summary="Добавить исполнителя")
+@router.post(
+    "",
+    response_model=EngineerRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Добавить исполнителя",
+)
 async def create_engineer(payload: EngineerCreate, session: AsyncSession = Depends(get_db)):
     return await engineers_service.create_engineer(session, payload)
 
 
 @router.put("/{engineer_id}", response_model=EngineerRead, summary="Изменить исполнителя")
-async def update_engineer(engineer_id: int, payload: EngineerWrite, session: AsyncSession = Depends(get_db)):
+async def update_engineer(
+    engineer_id: int, payload: EngineerWrite, session: AsyncSession = Depends(get_db)
+):
     return await engineers_service.update_engineer(session, engineer_id, payload)
 
 
-@router.delete("/{engineer_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить исполнителя")
+@router.delete(
+    "/{engineer_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить исполнителя"
+)
 async def delete_engineer(engineer_id: int, session: AsyncSession = Depends(get_db)) -> Response:
     await engineers_service.delete_engineer(session, engineer_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

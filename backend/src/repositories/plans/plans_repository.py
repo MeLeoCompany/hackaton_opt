@@ -79,7 +79,9 @@ async def hold_plan_requests(
     )
     assigned_count = int(
         await session.scalar(
-            select(func.count()).select_from(Assignment).where(
+            select(func.count())
+            .select_from(Assignment)
+            .where(
                 Assignment.plan_id == plan.id,
                 Assignment.engineer_id.is_not(None),
             )

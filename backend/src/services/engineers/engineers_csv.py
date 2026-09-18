@@ -95,7 +95,9 @@ def parse_engineers_csv(
     reader.fieldnames = [normalize_column_name(name) for name in reader.fieldnames or []]
 
     missing_columns = [
-        column for column in COLUMNS if column not in OPTIONAL_COLUMNS and column not in reader.fieldnames
+        column
+        for column in COLUMNS
+        if column not in OPTIONAL_COLUMNS and column not in reader.fieldnames
     ]
     if missing_columns:
         return EngineerCsvParseResult(
@@ -150,7 +152,9 @@ def parse_row(
     )
     skill_ids = parse_skills(cell(raw_row, "навыки"), references.skills, errors)
 
-    shift_start = parse_datetime(cell(raw_row, "смена_начало"), "смена_начало", local_timezone, errors)
+    shift_start = parse_datetime(
+        cell(raw_row, "смена_начало"), "смена_начало", local_timezone, errors
+    )
     shift_end = parse_datetime(cell(raw_row, "смена_конец"), "смена_конец", local_timezone, errors)
     if shift_start and shift_end and shift_end <= shift_start:
         errors.append("«смена_конец» должна быть позже, чем «смена_начало»")

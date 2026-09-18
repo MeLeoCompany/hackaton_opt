@@ -116,6 +116,9 @@ def test_replaced_legs_say_how_the_person_travels():
     assert metro_leg.mode is TravelMode.METRO
     assert walk_leg.mode is TravelMode.WALK
     # наземный участок остаётся как был
-    assert transit_provider.legs_with_transit(
-        [STROGINO, MARYINO], [TravelLeg(distance_km=53.0, duration_min=20.0)]
-    )[0].mode is TravelMode.ROAD
+    assert (
+        transit_provider.legs_with_transit(
+            [STROGINO, MARYINO], [TravelLeg(distance_km=53.0, duration_min=20.0)]
+        )[0].mode
+        is TravelMode.ROAD
+    )

@@ -16,7 +16,9 @@ ENGINEER_ID_LOCK_KEY = 7419822
 
 
 async def list_engineers(session: AsyncSession) -> list[Engineer]:
-    result = await session.execute(select(Engineer).options(selectinload(Engineer.skills)).order_by(Engineer.input_order))
+    result = await session.execute(
+        select(Engineer).options(selectinload(Engineer.skills)).order_by(Engineer.input_order)
+    )
     return list(result.scalars().all())
 
 
@@ -81,6 +83,4 @@ async def list_engineer_ids(session: AsyncSession) -> set[int]:
 
 async def lock_engineer_ids(session: AsyncSession) -> None:
     """Serialize explicit and automatic engineer IDs until commit/rollback."""
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(:key)"), {"key": ENGINEER_ID_LOCK_KEY}
-    )
+    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ENGINEER_ID_LOCK_KEY})

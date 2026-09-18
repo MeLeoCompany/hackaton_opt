@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates
-from src.models import Assignment, Plan, PlanRunType, Request
+from src.models import Assignment, Engineer, Plan, PlanRunType, Request
 from src.repositories.plans import plans_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
@@ -581,7 +581,9 @@ async def build_engineer_route(
 
 
 def route_visits(
-    ordered: list[AssignmentView], engineer: object, candidates_by_request: dict[int, int]
+    ordered: list[AssignmentView],
+    engineer: Engineer | SimpleNamespace,
+    candidates_by_request: dict[int, int],
 ) -> list[PlanVisit]:
     """Визиты по порядку; каждый знает, когда исполнитель освободился до него."""
     visits = []
@@ -595,7 +597,7 @@ def route_visits(
                 candidate_engineers=candidates_by_request.get(assignment.request.id),
             )
         )
-        available_from = assignment.planned_arrival_time + timedelta(
+        available_from = assigned_arrival_time(assignment) + timedelta(
             minutes=assignment.request.duration_minutes
         )
     return visits
@@ -614,6 +616,13 @@ def assigned_visit_order(assignment: AssignmentView) -> int:
     if assignment.visit_order is None:
         raise ValueError("у назначения нет порядка посещения")
     return int(assignment.visit_order)
+
+
+def assigned_arrival_time(assignment: AssignmentView) -> datetime:
+    """Время визита назначенной строки; NULL допустим только у неназначенной заявки."""
+    if assignment.planned_arrival_time is None:
+        raise ValueError("у назначения нет времени прибытия")
+    return assignment.planned_arrival_time
 
 
 def to_plan_visit(

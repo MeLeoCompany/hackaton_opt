@@ -41,7 +41,9 @@ async def download_csv_template() -> Response:
 
 
 @router.get("/export", summary="Выгрузить заявки дня в CSV")
-async def export_requests(plan_date: date | None = None, session: AsyncSession = Depends(get_db)) -> Response:
+async def export_requests(
+    plan_date: date | None = None, session: AsyncSession = Depends(get_db)
+) -> Response:
     content = await requests_service.export_requests_csv(session, plan_date)
     name = f"requests_{plan_date:%Y-%m-%d}.csv" if plan_date else "requests_all.csv"
     return Response(
@@ -70,8 +72,12 @@ async def import_requests(
     response_model=RequestActivityReport,
     summary="Включить или выключить заявки для планирования",
 )
-async def set_requests_active(payload: RequestActivityUpdate, session: AsyncSession = Depends(get_db)):
-    return await requests_service.set_requests_active(session, payload.request_ids, payload.is_active)
+async def set_requests_active(
+    payload: RequestActivityUpdate, session: AsyncSession = Depends(get_db)
+):
+    return await requests_service.set_requests_active(
+        session, payload.request_ids, payload.is_active
+    )
 
 
 @router.get("/{request_id}", response_model=RequestRead, summary="Одна заявка")
@@ -79,13 +85,17 @@ async def get_request(request_id: int, session: AsyncSession = Depends(get_db)):
     return await requests_service.get_request(session, request_id)
 
 
-@router.post("", response_model=RequestRead, status_code=status.HTTP_201_CREATED, summary="Добавить заявку")
+@router.post(
+    "", response_model=RequestRead, status_code=status.HTTP_201_CREATED, summary="Добавить заявку"
+)
 async def create_request(payload: RequestCreate, session: AsyncSession = Depends(get_db)):
     return await requests_service.create_request(session, payload)
 
 
 @router.put("/{request_id}", response_model=RequestRead, summary="Изменить заявку")
-async def update_request(request_id: int, payload: RequestWrite, session: AsyncSession = Depends(get_db)):
+async def update_request(
+    request_id: int, payload: RequestWrite, session: AsyncSession = Depends(get_db)
+):
     return await requests_service.update_request(session, request_id, payload)
 
 

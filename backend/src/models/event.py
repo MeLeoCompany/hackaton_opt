@@ -27,7 +27,12 @@ class Event(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     event_type: Mapped[EventType] = mapped_column(
-        Enum(EventType, name="event_type", create_type=False, values_callable=lambda cls: [e.value for e in cls])
+        Enum(
+            EventType,
+            name="event_type",
+            create_type=False,
+            values_callable=lambda cls: [e.value for e in cls],
+        )
     )
     event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     request_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("request.id"))
