@@ -915,7 +915,7 @@ button.link:disabled {
 /* в таблице, меню и окне визита статусы одной ширины — колонка читается ровно */
 .status-badge.status-fixed {
   box-sizing: border-box;
-  width: 92px;
+  width: 100px;
   text-align: center;
 }
 

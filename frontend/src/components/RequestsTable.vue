@@ -5,6 +5,7 @@ import { NEW_REQUEST } from '../composables/useRequestsTable.js'
 import { useColumnWidths } from '../composables/useColumnWidths.js'
 import { REQUEST_COLUMNS as COLUMNS } from '../composables/useRequestsView.js'
 import { isUrgent, referenceName } from '../utils/referenceNames.js'
+import { statusCode } from '../utils/requestStatuses.js'
 import IconButton from './IconButton.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
 import RequestEditCells from './RequestEditCells.vue'
@@ -34,6 +35,7 @@ defineEmits([
   'change-status',
   'history',
   'open-plan',
+  'duplicate',
   'work-type-picked',
   'reset-filters',
   'show-on-map',
@@ -188,10 +190,24 @@ onMounted(scrollToSelected)
             <td>{{ referenceName(references, 'transports', request.transport_id) }}</td>
             <td>
               <div class="row-actions" @dblclick.stop>
+                <!-- отменённую не правят и в «Новая» не возвращают — её копируют в новую -->
                 <IconButton
-                  icon="edit"
-                  label="Изменить"
+                  v-if="statusCode(references, request.status_id) === 'cancelled'"
+                  icon="copy"
+                  label="Создать копию — новую заявку с теми же данными, её можно править"
                   :disabled="editingId !== null"
+                  @click.stop="$emit('duplicate', request)"
+                />
+                <!-- править можно только новую: заявка в плане — часть маршрутов бригад -->
+                <IconButton
+                  v-else
+                  icon="edit"
+                  :label="
+                    statusCode(references, request.status_id) === 'new'
+                      ? 'Изменить'
+                      : 'Изменить нельзя: заявка уже в плане, в работе или выполнена'
+                  "
+                  :disabled="editingId !== null || statusCode(references, request.status_id) !== 'new'"
                   @click.stop="$emit('edit', request)"
                 />
                 <IconButton

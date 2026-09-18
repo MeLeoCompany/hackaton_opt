@@ -3,7 +3,7 @@
 // Значок короче текста и читается быстрее; подпись видна при наведении и доступна скринридеру.
 // Обработчик @click родителя вешается прямо на <button>, поэтому работают и модификаторы (.stop).
 defineProps({
-  icon: { type: String, required: true }, // edit | delete | save | cancel | export | import | sync | clock
+  icon: { type: String, required: true }, // edit | delete | save | cancel | export | import | sync | clock | copy
   label: { type: String, required: true },
   variant: { type: String, default: '' }, // '' | primary | danger
 })
@@ -17,6 +17,8 @@ const ICON_PATHS = {
   import: 'M12 15V4M8 8l4-4 4 4M4 19h16',
   // две стрелки по кругу — синхронизировать сейчас
   sync: 'M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4',
+  // два листа — копия заявки
+  copy: 'M9 9h11v11H9zM5 15V4h11',
   // часы — синхронизировать на заданное время
   clock: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
 }

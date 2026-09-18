@@ -34,6 +34,13 @@ const name = computed(() => referenceName(props.references, 'request_statuses', 
 const code = computed(() => statusCode(props.references, props.statusId))
 const transitions = computed(() => manualTransitions(props.references, props.statusId, props.planId))
 
+// переходов руками нет — объясняем почему и что делать
+const noTransitionsText = computed(() => {
+  if (code.value === 'cancelled') return 'Отмена окончательна. Чтобы снова выполнить работу — сделайте копию заявки (кнопка в строке)'
+  if (code.value === 'done') return 'Заявка выполнена — статус окончательный'
+  return 'Статус сменится сам — при утверждении плана или синхронизации'
+})
+
 function onOutsideClick(event) {
   if (panel.value?.contains(event.target) || trigger.value?.contains(event.target)) return
   close()
@@ -141,7 +148,7 @@ onBeforeUnmount(close)
           {{ transition.name }}
         </span>
       </button>
-      <p v-if="!transitions.length" class="status-empty">Из этого статуса заявка переходит сама</p>
+      <p v-if="!transitions.length" class="status-empty">{{ noTransitionsText }}</p>
       <button
         v-if="planId !== null && withPlanLink"
         type="button"

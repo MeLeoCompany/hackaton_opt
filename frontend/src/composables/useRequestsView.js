@@ -25,7 +25,7 @@ const DEFAULT_SORT = ''
 export const REQUEST_COLUMNS = [
   { key: 'id', label: '№', sortKey: 'id', width: '100px' },
   // плашка статуса одной ширины и значок истории рядом
-  { key: 'status', label: 'Статус', sortKey: 'status', width: '140px' },
+  { key: 'status', label: 'Статус', sortKey: 'status', width: '150px' },
   { key: 'address', label: 'Адрес', sortKey: 'address', grow: 3, minWidth: 180, floor: 125 },
   // «55.7065, 37.7395» на узком экране уходит в две строки по запятой
   { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px', floor: 95 },

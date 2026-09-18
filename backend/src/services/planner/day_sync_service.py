@@ -189,8 +189,8 @@ async def expired_new_requests(
         PlannedTransition(
             request,
             RequestStatusId.CANCELLED,
-            f"окно {hhmm(request.window_start)}–{hhmm(request.window_end)} закончилось, "
-            "а в плане заявки нет — выполнить её в срок уже нельзя",
+            f"не в плане, окно {hhmm(request.window_start)}–{hhmm(request.window_end)} "
+            "уже закончилось",
             warning=True,
         )
         for request in requests

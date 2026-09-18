@@ -61,8 +61,29 @@ async def get_request(session: AsyncSession, request_id: int, office_id: int) ->
     return request
 
 
+def not_editable_reason(request: Request) -> str | None:
+    """Почему заявку менять нельзя; None — можно.
+
+    Менять можно только «Новую»: заявка в плане, в работе или выполненная — часть плана, её
+    правка тихо разошлась бы с маршрутами бригад. Отменённую не правят, а копируют в новую.
+    """
+    if request.status_id == RequestStatusId.NEW:
+        return None
+    status_name = request.status.name if request.status is not None else "не «Новая»"
+    advice = (
+        "сделайте её копию — копия будет новой, её можно править"
+        if request.status_id == RequestStatusId.CANCELLED
+        else "менять её нельзя, чтобы не разойтись с планом"
+    )
+    return f"заявка №{request.id} уже «{status_name}»: {advice}"
+
+
 async def create_request(
-    session: AsyncSession, payload: RequestCreate, office_id: int, user_id: int | None = None
+    session: AsyncSession,
+    payload: RequestCreate,
+    office_id: int,
+    user_id: int | None = None,
+    comment: str = "Заявка создана",
 ) -> Request:
     await requests_repository.lock_request_ids(session)
     await check_references_exist(session, payload)
@@ -93,7 +114,7 @@ async def create_request(
         RequestStatusId.NEW,
         manual=True,
         user_id=user_id,
-        comment="Заявка создана",
+        comment=comment,
     )
     await session.flush()
     await session.commit()
@@ -104,6 +125,9 @@ async def update_request(
     session: AsyncSession, request_id: int, payload: RequestWrite, office_id: int
 ) -> Request:
     request = await get_request(session, request_id, office_id)
+    reason = not_editable_reason(request)
+    if reason is not None:
+        raise RequestDataError([reason])
     await check_references_exist(session, payload)
     await apply_work_type_norms(session, payload)
     requests_repository.apply_changes(
@@ -111,6 +135,40 @@ async def update_request(
     )
     await session.commit()
     return request
+
+
+async def duplicate_request(
+    session: AsyncSession, request_id: int, office_id: int, user_id: int | None = None
+) -> Request:
+    """Копия отменённой заявки: новая заявка с теми же адресом, окном и работами.
+
+    Отмена окончательна — в «Новая» отменённую не возвращают. Если работу всё же нужно
+    сделать, оператор копирует заявку: копия «Новая», её можно поправить и спланировать.
+    """
+    source = await get_request(session, request_id, office_id)
+    if source.status_id != RequestStatusId.CANCELLED:
+        raise RequestDataError(
+            [f"копировать можно только отменённую заявку, а №{request_id} — «{source.status.name}»"]
+        )
+    payload = RequestCreate(
+        address=source.address,
+        latitude=float(source.latitude),
+        longitude=float(source.longitude),
+        duration_minutes=source.duration_minutes,
+        window_start=source.window_start,
+        window_end=source.window_end,
+        priority_id=source.priority_id,
+        skill_id=source.skill_id,
+        transport_id=source.transport_id,
+        work_type_id=source.work_type_id,
+        equipment=[
+            {"equipment_id": item.equipment_id, "quantity": item.quantity}
+            for item in source.equipment
+        ],
+    )
+    return await create_request(
+        session, payload, office_id, user_id, comment=f"Копия отменённой заявки №{request_id}"
+    )
 
 
 async def delete_request(session: AsyncSession, request_id: int, office_id: int) -> None:
@@ -325,6 +383,16 @@ async def import_requests_csv(
         raise RequestDataError(
             [f"заявки {listed} уже есть в другом офисе — уберите номера или укажите другие"]
         )
+
+    # в плане, в работе, выполненные и отменённые файл не перезаписывает: менять можно
+    # только «Новые» (см. not_editable_reason)
+    locked = [
+        reason
+        for request in existing_by_id.values()
+        if (reason := not_editable_reason(request)) is not None
+    ]
+    if locked:
+        raise RequestDataError(sorted(locked))
 
     # номера строк без номера подбираем заранее: они не должны совпасть ни с занятыми
     # в БД, ни с явными номерами из файла, ни друг с другом

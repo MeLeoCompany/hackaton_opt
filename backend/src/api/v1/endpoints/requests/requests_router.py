@@ -147,7 +147,7 @@ async def create_request(
     return await requests_service.create_request(session, payload, office_id, user.id)
 
 
-@router.put("/{request_id}", response_model=RequestRead, summary="Изменить заявку")
+@router.put("/{request_id}", response_model=RequestRead, summary="Изменить заявку (только «Новую»)")
 async def update_request(
     request_id: int,
     payload: RequestWrite,
@@ -155,6 +155,21 @@ async def update_request(
     office_id: int = Depends(current_office_id),
 ):
     return await requests_service.update_request(session, request_id, payload, office_id)
+
+
+@router.post(
+    "/{request_id}/duplicate",
+    response_model=RequestRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Копия отменённой заявки — новая заявка с теми же данными",
+)
+async def duplicate_request(
+    request_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    return await requests_service.duplicate_request(session, request_id, office_id, user.id)
 
 
 @router.delete("/{request_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить заявку")

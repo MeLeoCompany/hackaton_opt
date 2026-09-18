@@ -13,6 +13,11 @@ export function updateRequest(requestId, fields) {
   return apiRequest('PUT', `/requests/${requestId}`, { json: fields })
 }
 
+// копия отменённой заявки: новая заявка с теми же данными (отменённую в «Новая» не возвращают)
+export function duplicateRequest(requestId) {
+  return apiRequest('POST', `/requests/${requestId}/duplicate`)
+}
+
 export function deleteRequest(requestId) {
   return apiRequest('DELETE', `/requests/${requestId}`)
 }

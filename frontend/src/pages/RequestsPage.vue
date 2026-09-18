@@ -39,6 +39,7 @@ const {
   cancelEdit,
   saveForm,
   remove,
+  duplicate,
   setStatus,
   showNotice,
 } = useRequestsTable()
@@ -109,6 +110,14 @@ function showInTable(requestId) {
 function showOnMap(requestId) {
   selectRequest(requestId)
   viewMode.value = 'map'
+}
+
+// копия отменённой — сразу строкой правки; фильтры могут её скрыть, тогда снимаем их
+async function duplicateAndShow(request) {
+  const copyId = await duplicate(request)
+  if (copyId === null) return
+  if (!filteredRequests.value.some((item) => item.id === copyId)) resetFilters()
+  selectRequest(copyId)
 }
 
 function changeStatus(request, statusId) {
@@ -259,6 +268,7 @@ onMounted(async () => {
           @cancel="cancelEdit"
           @save="saveForm"
           @remove="remove"
+          @duplicate="duplicateAndShow"
           @work-type-picked="applyWorkTypeNorms"
           @reset-filters="resetFilters"
           @show-on-map="showOnMap"

@@ -30,6 +30,8 @@ function harness() {
     'listRequests',
     'setRequestsStatus',
     'referenceName',
+    'duplicateRequest',
+    'equipmentPayload',
     source + '; return useRequestsTable()',
   )
   const table = make(
@@ -49,6 +51,8 @@ function harness() {
       return statusReply.respond()
     },
     (references, listName, id) => references[listName].find((item) => item.id === id).name,
+    async (requestId) => ({ id: requestId + 1 }),
+    (value) => value,
   )
   table.references.value = { skills: [], priorities: [{ id: 1 }], transports: [], work_types: WORK_TYPES }
   return { table, lists, selectedDay, statusCalls, statusReply, notices, errors }
@@ -141,4 +145,20 @@ test('возвращённая в «Новая» заявка отвязывае
   await table.setStatus([7], 1)
 
   assert.deepEqual(table.requests.value, [{ id: 7, status_id: 1, is_active: true, approved_plan_id: null }])
+})
+
+test('копия отменённой заявки сразу открывается на правку', async () => {
+  const { table, lists, notices } = harness()
+  const copying = table.duplicate({ id: 7 })
+  await Promise.resolve()
+  await Promise.resolve()
+  lists['2026-08-17']([
+    { id: 7, status_id: 4, address: 'Ленина, 1', window_start: 'a', window_end: 'b', equipment: [] },
+    { id: 8, status_id: 1, address: 'Ленина, 1', window_start: 'a', window_end: 'b', equipment: [] },
+  ])
+  assert.equal(await copying, 8)
+
+  assert.equal(table.editingId.value, 8)
+  assert.equal(table.form.value.address, 'Ленина, 1')
+  assert.match(notices.at(-1), /№8 — копия отменённой №7/)
 })

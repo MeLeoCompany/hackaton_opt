@@ -7,6 +7,7 @@ import { fetchReferences } from '../api/referencesApi.js'
 import {
   createRequest,
   deleteRequest,
+  duplicateRequest,
   exportRequestsCsv,
   importRequestsCsv,
   listRequests,
@@ -199,6 +200,22 @@ export function useRequestsTable() {
     }
   }
 
+  // копия отменённой заявки: создаём, перезагружаем список и сразу открываем копию на правку
+  async function duplicate(request) {
+    clearMessages()
+    try {
+      const copy = await duplicateRequest(request.id)
+      await Promise.all([load(), refreshDaysWithRequests()])
+      const loaded = requests.value.find((item) => item.id === copy.id)
+      if (loaded) startEdit(loaded)
+      showNotice(`Создана заявка №${copy.id} — копия отменённой №${request.id}. Поправьте её и сохраните`)
+      return copy.id
+    } catch (error) {
+      showError(error)
+      return null
+    }
+  }
+
   // ---- слепок дня ----
 
   async function exportDay() {
@@ -262,6 +279,7 @@ export function useRequestsTable() {
     cancelEdit,
     saveForm,
     remove,
+    duplicate,
     setStatus,
     showNotice,
   }

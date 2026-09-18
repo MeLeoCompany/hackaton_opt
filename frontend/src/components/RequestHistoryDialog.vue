@@ -28,11 +28,9 @@ onMounted(async () => {
   }
 })
 
-// кто сменил: оператор по имени; системный переход — «система», а если его запустил
-// человек (утвердил план) — «система · имя»
+// кто сменил: по имени; без имени — «система» (сама, например при переносе данных)
 function whoChanged(entry) {
-  if (entry.manual) return entry.user_name ?? 'оператор'
-  return entry.user_name ? `система · ${entry.user_name}` : 'система'
+  return entry.user_name ?? (entry.manual ? 'Оператор' : 'Система')
 }
 </script>
 
@@ -49,7 +47,14 @@ function whoChanged(entry) {
       <p v-else-if="!entries.length" class="muted">Статус заявки ещё не менялся</p>
 
       <ol v-else class="history">
-        <li v-for="entry in entries" :key="entry.id">
+        <!-- шапка колонок: без неё «Администратор» и «№22» в строках читаются хуже -->
+        <li class="history-head" aria-hidden="true">
+          <span>Когда</span>
+          <span>Переход</span>
+          <span>Пользователь</span>
+          <span>План</span>
+        </li>
+        <li v-for="entry in entries" :key="entry.id" :title="entry.comment">
           <span class="history-when">
             {{ formatDay(moscowDateOf(entry.changed_at)) }}
             <strong>{{ moscowTimeOf(entry.changed_at) }}</strong>
@@ -69,10 +74,10 @@ function whoChanged(entry) {
               {{ referenceName(references, 'request_statuses', entry.to_status_id) }}
             </span>
           </span>
-          <span class="history-details muted">
-            {{ whoChanged(entry) }}<template v-if="entry.plan_id !== null"> · план №{{ entry.plan_id }}</template
-            ><template v-if="entry.comment"> · {{ entry.comment }}</template>
-          </span>
+          <!-- кто и по какому плану — каждое своей колонкой; пояснение перехода — подсказкой
+               на строке, чтобы не загромождать -->
+          <span class="history-who">{{ whoChanged(entry) }}</span>
+          <span class="history-plan">{{ entry.plan_id !== null ? `№${entry.plan_id}` : '—' }}</span>
         </li>
       </ol>
     </div>
@@ -120,7 +125,7 @@ function whoChanged(entry) {
   margin: 0;
 }
 
-/* записи по порядку сверху вниз: когда · что сменилось · кто и почему */
+/* записи по порядку сверху вниз: когда · что сменилось · кто · по какому плану */
 .history {
   display: flex;
   flex-direction: column;
@@ -130,11 +135,11 @@ function whoChanged(entry) {
   list-style: none;
 }
 
-/* три колонки одной ширины во всех строках: когда | переход | кто и почему;
+/* четыре колонки одной ширины во всех строках: когда | переход | кто | план;
    между ними вертикальные черты */
 .history li {
   display: grid;
-  grid-template-columns: 124px 236px minmax(0, 1fr);
+  grid-template-columns: 124px 252px minmax(0, 1fr) 72px;
   align-items: center;
   padding: 7px 0;
   border-top: 1px solid #e2e8f0;
@@ -171,7 +176,7 @@ function whoChanged(entry) {
 
 .history-appeared {
   box-sizing: border-box;
-  width: 92px;
+  width: 100px;
   color: #94a3b8;
   font-size: 12px;
   text-align: center;
@@ -181,9 +186,20 @@ function whoChanged(entry) {
   color: #94a3b8;
 }
 
-.history-details {
+.history-head {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.history-who {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.history-plan {
+  color: #475569;
+  font-variant-numeric: tabular-nums;
 }
 
 </style>
