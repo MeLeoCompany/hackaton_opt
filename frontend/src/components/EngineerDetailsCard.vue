@@ -47,7 +47,12 @@ defineEmits(['show-in-table', 'close'])
         </div>
         <div>
           <dt>Старт</dt>
-          <dd>{{ engineer.start_latitude.toFixed(4) }}, {{ engineer.start_longitude.toFixed(4) }}</dd>
+          <dd>
+            <template v-if="engineer.start_at_office">
+              Офис «{{ referenceName(references, 'offices', engineer.office_id) }}» ·
+            </template>
+            {{ engineer.start_latitude.toFixed(4) }}, {{ engineer.start_longitude.toFixed(4) }}
+          </dd>
         </div>
       </dl>
 

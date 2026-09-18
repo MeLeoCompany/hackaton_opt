@@ -10,11 +10,12 @@ import { referenceName } from '../utils/referenceNames.js'
 // width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
 export const ENGINEER_COLUMNS = [
   { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'name', label: 'Имя', sortKey: 'name', width: '260px' },
+  { key: 'name', label: 'Имя', sortKey: 'name', width: '250px' },
   { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '220px' },
   { key: 'skills', label: 'Навыки', sortKey: 'skills', width: '' },
   { key: 'shift', label: 'Смена (МСК)', sortKey: 'shift_start', width: '130px' },
-  { key: 'start', label: 'Старт', sortKey: null, width: '150px' },
+  // откуда выезжает: значок офиса или своей точки; в правке по значку открывается карта
+  { key: 'start', label: 'Старт', sortKey: null, width: '72px' },
   { key: 'actions', label: '', sortKey: null, width: '130px' },
 ]
 
@@ -30,7 +31,7 @@ function emptyFilters() {
     skillId: '', // '' — любой; иначе исполнитель должен уметь этот навык
     shiftFrom: '', // 'HH:MM' — смена начинается не раньше
     shiftTo: '', // 'HH:MM' — смена начинается не позже
-    startText: '', // часть координат старта, как они показаны в таблице
+    startKind: '', // '' — любой старт, 'office' — из офиса, 'own' — из своей точки
   }
 }
 
@@ -53,17 +54,13 @@ export function useEngineersView(engineers, references) {
     if (filters.transportId !== '' && engineer.transport_id !== filters.transportId) return false
     if (filters.skillId !== '' && !engineer.skill_ids.includes(filters.skillId)) return false
 
+    if (filters.startKind === 'office' && !engineer.start_at_office) return false
+    if (filters.startKind === 'own' && engineer.start_at_office) return false
+
     const shiftStart = moscowTimeOf(engineer.shift_start)
     if (filters.shiftFrom && shiftStart < filters.shiftFrom) return false
     if (filters.shiftTo && shiftStart > filters.shiftTo) return false
 
-    const start = filters.startText.trim().replace(',', '').toLowerCase()
-    if (
-      start &&
-      !`${engineer.start_latitude.toFixed(4)} ${engineer.start_longitude.toFixed(4)}`.includes(start)
-    ) {
-      return false
-    }
 
     return true
   }

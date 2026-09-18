@@ -38,22 +38,27 @@ class RequestDataError(DataError):
     """Данные заявки не прошли проверку."""
 
 
-async def list_requests(session: AsyncSession, plan_date: date | None = None) -> list[Request]:
-    """Все заявки или только те, чьё окно попадает в выбранный день."""
+async def list_requests(
+    session: AsyncSession, office_id: int, plan_date: date | None = None
+) -> list[Request]:
+    """Все заявки офиса или только те, чьё окно попадает в выбранный день."""
     if plan_date is None:
-        return await requests_repository.list_requests(session)
+        return await requests_repository.list_requests(session, office_id=office_id)
     day_start, day_end = day_bounds(plan_date)
-    return await requests_repository.list_requests_in_period(session, day_start, day_end)
+    return await requests_repository.list_requests_in_period(
+        session, day_start, day_end, office_id=office_id
+    )
 
 
-async def get_request(session: AsyncSession, request_id: int) -> Request:
+async def get_request(session: AsyncSession, request_id: int, office_id: int) -> Request:
+    """Заявка офиса. Чужая выглядит как несуществующая: о заявках других офисов не сообщаем."""
     request = await requests_repository.get_request(session, request_id)
-    if request is None:
+    if request is None or request.office_id != office_id:
         raise RequestNotFoundError(f"Заявка №{request_id} не найдена")
     return request
 
 
-async def create_request(session: AsyncSession, payload: RequestCreate) -> Request:
+async def create_request(session: AsyncSession, payload: RequestCreate, office_id: int) -> Request:
     await requests_repository.lock_request_ids(session)
     await check_references_exist(session, payload)
     await apply_work_type_norms(session, payload)
@@ -66,7 +71,7 @@ async def create_request(session: AsyncSession, payload: RequestCreate) -> Reque
             [f"заявка №{payload.id} уже существует — измените её или укажите другой номер"]
         )
 
-    fields = payload.model_dump()
+    fields = {**payload.model_dump(), "office_id": office_id}
     if fields["id"] is None:
         fields["id"] = smallest_free_id(await requests_repository.list_request_ids(session))
 
@@ -76,8 +81,10 @@ async def create_request(session: AsyncSession, payload: RequestCreate) -> Reque
     return request
 
 
-async def update_request(session: AsyncSession, request_id: int, payload: RequestWrite) -> Request:
-    request = await get_request(session, request_id)
+async def update_request(
+    session: AsyncSession, request_id: int, payload: RequestWrite, office_id: int
+) -> Request:
+    request = await get_request(session, request_id, office_id)
     await check_references_exist(session, payload)
     await apply_work_type_norms(session, payload)
     requests_repository.apply_changes(request, payload.model_dump())
@@ -85,8 +92,8 @@ async def update_request(session: AsyncSession, request_id: int, payload: Reques
     return request
 
 
-async def delete_request(session: AsyncSession, request_id: int) -> None:
-    request = await get_request(session, request_id)
+async def delete_request(session: AsyncSession, request_id: int, office_id: int) -> None:
+    request = await get_request(session, request_id, office_id)
 
     assignments, events = await requests_repository.count_request_usages(session, request_id)
     if assignments or events:
@@ -100,11 +107,17 @@ async def delete_request(session: AsyncSession, request_id: int) -> None:
 
 
 async def set_requests_active(
-    session: AsyncSession, request_ids: list[int], is_active: bool
+    session: AsyncSession, request_ids: list[int], is_active: bool, office_id: int
 ) -> RequestActivityReport:
-    """Включает или выключает заявки для планирования. Если хоть одной нет — не меняет ничего."""
+    """Включает или выключает заявки офиса. Если хоть одной нет — не меняет ничего."""
     unique_ids = list(dict.fromkeys(request_ids))
-    existing_by_id = await requests_repository.get_requests_by_ids(session, unique_ids)
+    existing_by_id = {
+        request_id: request
+        for request_id, request in (
+            await requests_repository.get_requests_by_ids(session, unique_ids)
+        ).items()
+        if request.office_id == office_id
+    }
 
     missing_ids = [request_id for request_id in unique_ids if request_id not in existing_by_id]
     if missing_ids:
@@ -117,9 +130,11 @@ async def set_requests_active(
     return RequestActivityReport(updated=len(unique_ids))
 
 
-async def export_requests_csv(session: AsyncSession, plan_date: date | None = None) -> str:
-    """Заявки дня в CSV — слепок дня, который можно загрузить обратно или в другой день."""
-    requests = await list_requests(session, plan_date)
+async def export_requests_csv(
+    session: AsyncSession, office_id: int, plan_date: date | None = None
+) -> str:
+    """Заявки офиса за день в CSV — слепок дня, который можно загрузить обратно или в другой день."""
+    requests = await list_requests(session, office_id, plan_date)
     references = await load_reference_names(session)
     timezone = local_timezone()
     return build_requests_csv(
@@ -145,6 +160,11 @@ async def export_requests_csv(session: AsyncSession, plan_date: date | None = No
                     else ""
                 ),
                 "активна": "да" if request.is_active else "нет",
+                "оборудование": (
+                    references["equipment"].get(request.equipment_id, "")
+                    if request.equipment_id is not None
+                    else ""
+                ),
             }
             for request in requests
         ]
@@ -168,6 +188,10 @@ async def load_reference_names(session: AsyncSession) -> dict[str, dict[int, str
         "work_types": {
             work_type.id: work_type.name
             for work_type in await references_repository.list_work_types(session)
+        },
+        "equipment": {
+            equipment.id: equipment.name
+            for equipment in await references_repository.list_equipment(session)
         },
     }
 
@@ -196,7 +220,7 @@ def copy_rows_to_day(rows: list[dict], plan_date: date) -> None:
 
 
 async def import_requests_csv(
-    session: AsyncSession, content: bytes, plan_date: date | None = None
+    session: AsyncSession, content: bytes, office_id: int, plan_date: date | None = None
 ) -> RequestImportReport:
     """Загружает заявки из CSV одной транзакцией.
 
@@ -220,6 +244,15 @@ async def import_requests_csv(
 
     ids_in_file = [row["id"] for row in parsed.rows if row["id"] is not None]
     existing_by_id = await requests_repository.get_requests_by_ids(session, ids_in_file)
+    # номер из файла совпал с заявкой другого офиса — не трогаем её и не пишем поверх
+    foreign = sorted(
+        request_id for request_id, request in existing_by_id.items() if request.office_id != office_id
+    )
+    if foreign:
+        listed = ", ".join(f"№{request_id}" for request_id in foreign)
+        raise RequestDataError(
+            [f"заявки {listed} уже есть в другом офисе — уберите номера или укажите другие"]
+        )
 
     # номера строк без номера подбираем заранее: они не должны совпасть ни с занятыми
     # в БД, ни с явными номерами из файла, ни друг с другом
@@ -244,6 +277,7 @@ async def import_requests_csv(
         # новая заявка без указанной активности — активна
         if fields_without_id["is_active"] is None:
             fields_without_id["is_active"] = True
+        fields_without_id["office_id"] = office_id
         identifier = fields["id"] if fields["id"] is not None else smallest_free_id(taken_ids)
         taken_ids.add(identifier)
         fields_without_id["id"] = identifier
@@ -260,11 +294,13 @@ async def load_reference_lookup(session: AsyncSession) -> ReferenceLookup:
     priorities = await references_repository.list_priorities(session)
     transports = await references_repository.list_transports(session)
     work_types = await references_repository.list_work_types(session)
+    equipment = await references_repository.list_equipment(session)
     return ReferenceLookup(
         skills=reference_options([(skill.id, skill.name) for skill in skills]),
         priorities=reference_options([(priority.id, priority.name) for priority in priorities]),
         transports=reference_options([(transport.id, transport.name) for transport in transports]),
         work_types=reference_options([(work_type.id, work_type.name) for work_type in work_types]),
+        equipment=reference_options([(item.id, item.name) for item in equipment]),
         work_type_norms={
             work_type.id: WorkTypeNorm(
                 skill_id=work_type.skill_id, work_minutes=work_type.work_minutes
@@ -302,7 +338,7 @@ async def apply_work_type_norms(session: AsyncSession, payload: RequestWrite) ->
 
 
 async def check_references_exist(session: AsyncSession, payload: RequestWrite) -> None:
-    """Проверяет, что приоритет, навык, транспорт и тип работ заявки есть в справочниках."""
+    """Проверяет, что приоритет, навык, транспорт, тип работ и оборудование есть в справочниках."""
     references = await load_reference_lookup(session)
     problems = []
     if str(payload.priority_id) not in references.priorities.id_by_key:
@@ -319,5 +355,10 @@ async def check_references_exist(session: AsyncSession, payload: RequestWrite) -
         and str(payload.transport_id) not in references.transports.id_by_key
     ):
         problems.append(f"транспорта №{payload.transport_id} нет в справочнике")
+    if (
+        payload.equipment_id is not None
+        and str(payload.equipment_id) not in references.equipment.id_by_key
+    ):
+        problems.append(f"оборудования №{payload.equipment_id} нет в справочнике")
     if problems:
         raise RequestDataError(problems)

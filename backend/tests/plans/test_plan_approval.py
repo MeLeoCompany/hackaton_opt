@@ -11,9 +11,14 @@ from src.schemas.plans import PlanSummary
 from src.services.planner import planning_service
 from src.services.planner.planning_service import PlanDataError, PlanInUseError
 
+# офис диспетчера, от имени которого идут вызовы
+OFFICE = 1
+
 
 def plan(plan_id, approved_at=None, plan_date=date(2026, 8, 17)):
-    return SimpleNamespace(id=plan_id, plan_date=plan_date, approved_at=approved_at)
+    return SimpleNamespace(
+        id=plan_id, plan_date=plan_date, approved_at=approved_at, office_id=OFFICE
+    )
 
 
 def summary(plan_id):
@@ -41,7 +46,7 @@ async def test_approval_holds_plan_requests():
         patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3))) as hold,
         patch.object(planning_service, "summarize_plans", AsyncMock(return_value=[summary(9)])),
     ):
-        await planning_service.approve_plan(session, 9)
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
 
     assert hold.await_args.args[1] is target
     session.commit.assert_awaited_once()
@@ -59,7 +64,7 @@ async def test_stale_plan_cannot_steal_requests_held_by_another_plan():
         patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(2, 3))),
         pytest.raises(PlanInUseError, match="устарел"),
     ):
-        await planning_service.approve_plan(session, 9)
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
 
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
@@ -80,7 +85,7 @@ async def test_concurrent_approval_is_reported_as_conflict():
         patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3))),
         pytest.raises(PlanInUseError, match="одновременно"),
     ):
-        await planning_service.approve_plan(session, 9)
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
 
     session.rollback.assert_awaited_once()
 
@@ -95,7 +100,7 @@ async def test_legacy_plan_without_date_cannot_be_approved():
         patch.object(repository, "hold_plan_requests", AsyncMock()) as hold,
         pytest.raises(PlanDataError, match="не может быть утверждён"),
     ):
-        await planning_service.approve_plan(session, 9)
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
 
     hold.assert_not_awaited()
 
@@ -113,7 +118,7 @@ async def test_second_plan_of_the_day_is_not_approved():
         patch.object(repository, "hold_plan_requests", AsyncMock()) as hold,
         pytest.raises(PlanInUseError, match="№8"),
     ):
-        await planning_service.approve_plan(session, 9)
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
 
     hold.assert_not_awaited()
     session.commit.assert_not_awaited()
@@ -130,7 +135,7 @@ async def test_cancelling_approval_releases_requests():
         patch.object(repository, "release_plan_requests", AsyncMock(return_value=3)) as release,
         patch.object(planning_service, "summarize_plans", AsyncMock(return_value=[summary(9)])),
     ):
-        await planning_service.cancel_plan_approval(session, 9)
+        await planning_service.cancel_plan_approval(session, 9, office_id=OFFICE)
 
     release.assert_awaited_once_with(session, target)
     session.commit.assert_awaited_once()
@@ -160,7 +165,9 @@ async def test_day_check_reports_requests_held_by_another_day():
             planning_service.plans_repository, "get_approved_plan", AsyncMock(return_value=None)
         ),
     ):
-        check = await planning_service.check_planning_day(AsyncMock(), date(2026, 8, 17))
+        check = await planning_service.check_planning_day(
+            AsyncMock(), date(2026, 8, 17), office_id=OFFICE
+        )
 
     assert check.active_requests == 2
     assert check.approved_plan_id is None

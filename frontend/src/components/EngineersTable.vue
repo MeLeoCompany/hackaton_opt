@@ -6,6 +6,7 @@ import { ENGINEER_COLUMNS as COLUMNS } from '../composables/useEngineersView.js'
 import { referenceName } from '../utils/referenceNames.js'
 import { transportColor } from '../utils/transportColors.js'
 import IconButton from './IconButton.vue'
+import StartPointIcon from './StartPointIcon.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
 import EngineerEditCells from './EngineerEditCells.vue'
 import EngineersFilterControl from './EngineersFilterControl.vue'
@@ -35,6 +36,7 @@ const contextPoints = computed(() =>
       label: engineer.name,
     })),
 )
+
 
 function sortArrow(columnSortKey) {
   if (props.sortKey !== columnSortKey) return '↕'
@@ -146,8 +148,15 @@ onMounted(scrollToSelected)
             <td class="range-cell">
               <TimeRangeValue :start="engineer.shift_start" :end="engineer.shift_end" />
             </td>
-            <td class="number-cell">
-              {{ engineer.start_latitude.toFixed(4) }}, {{ engineer.start_longitude.toFixed(4) }}
+            <td
+              class="start-cell"
+              :title="
+                engineer.start_at_office
+                  ? `Из офиса «${referenceName(references, 'offices', engineer.office_id)}»`
+                  : `Своя точка: ${engineer.start_latitude.toFixed(4)}, ${engineer.start_longitude.toFixed(4)}`
+              "
+            >
+              <StartPointIcon :at-office="engineer.start_at_office" />
             </td>
             <td>
               <div class="row-actions" @dblclick.stop>
@@ -176,3 +185,4 @@ onMounted(scrollToSelected)
     </table>
   </div>
 </template>
+

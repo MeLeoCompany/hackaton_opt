@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -40,6 +41,10 @@ class Engineer(Base):
     shift_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     shift_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     transport_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("transport.id"))
+    # чья бригада; с другими офисами она не работает
+    office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
+    # выезжает из своего офиса: старт = точка офиса, иначе — своя точка
+    start_at_office: Mapped[bool] = mapped_column(Boolean, default=False)
 
     transport: Mapped["Transport"] = relationship()
     skills: Mapped[list["Skill"]] = relationship(secondary=engineer_skill)

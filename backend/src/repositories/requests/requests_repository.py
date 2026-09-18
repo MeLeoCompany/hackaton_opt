@@ -11,28 +11,36 @@ from src.models import Assignment, Event, Plan, Request
 REQUEST_ID_LOCK_KEY = 7419821
 
 
-async def list_requests(session: AsyncSession) -> list[Request]:
-    """Все заявки, ближайшие по времени окна — первыми."""
-    result = await session.execute(select(Request).order_by(Request.window_start, Request.id))
-    return list(result.scalars().all())
-
-
-async def list_requests_in_period(
-    session: AsyncSession, period_start: datetime, period_end: datetime
-) -> list[Request]:
-    """Заявки (и выключенные тоже), окно которых пересекается с периодом [period_start, period_end)."""
+async def list_requests(session: AsyncSession, *, office_id: int) -> list[Request]:
+    """Все заявки офиса, ближайшие по времени окна — первыми."""
     result = await session.execute(
         select(Request)
-        .where(Request.window_start < period_end, Request.window_end > period_start)
+        .where(Request.office_id == office_id)
         .order_by(Request.window_start, Request.id)
     )
     return list(result.scalars().all())
 
 
-async def list_active_requests(session: AsyncSession) -> list[Request]:
+async def list_requests_in_period(
+    session: AsyncSession, period_start: datetime, period_end: datetime, *, office_id: int
+) -> list[Request]:
+    """Заявки офиса (и выключенные тоже), окно которых пересекается с [period_start, period_end)."""
     result = await session.execute(
         select(Request)
-        .where(Request.is_active.is_(True))
+        .where(
+            Request.office_id == office_id,
+            Request.window_start < period_end,
+            Request.window_end > period_start,
+        )
+        .order_by(Request.window_start, Request.id)
+    )
+    return list(result.scalars().all())
+
+
+async def list_active_requests(session: AsyncSession, *, office_id: int) -> list[Request]:
+    result = await session.execute(
+        select(Request)
+        .where(Request.office_id == office_id, Request.is_active.is_(True))
         .order_by(Request.window_start, Request.id)
     )
     return list(result.scalars().all())
@@ -43,8 +51,10 @@ async def list_active_requests_in_period(
     period_start: datetime,
     period_end: datetime,
     plan_date: date | None = None,
+    *,
+    office_id: int,
 ) -> list[Request]:
-    """Активные заявки, окно которых пересекается с периодом [period_start, period_end).
+    """Активные заявки офиса, окно которых пересекается с периодом [period_start, period_end).
 
     Если указан plan_date, заявки, закреплённые за утверждённым планом другого дня,
     не возвращаются: они уже распределены и второй раз выполняться не должны.
@@ -52,6 +62,7 @@ async def list_active_requests_in_period(
     query = (
         select(Request)
         .where(
+            Request.office_id == office_id,
             Request.is_active.is_(True),
             Request.window_start < period_end,
             Request.window_end > period_start,
@@ -67,7 +78,12 @@ async def list_active_requests_in_period(
 
 
 async def list_requests_held_by_other_days(
-    session: AsyncSession, period_start: datetime, period_end: datetime, plan_date: date
+    session: AsyncSession,
+    period_start: datetime,
+    period_end: datetime,
+    plan_date: date,
+    *,
+    office_id: int,
 ) -> list[tuple[Request, Plan]]:
     """Заявки дня, закреплённые за утверждённым планом другого дня, вместе с этим планом.
 
@@ -77,6 +93,7 @@ async def list_requests_held_by_other_days(
         select(Request, Plan)
         .join(Plan, Plan.id == Request.approved_plan_id)
         .where(
+            Request.office_id == office_id,
             Request.is_active.is_(True),
             Request.window_start < period_end,
             Request.window_end > period_start,

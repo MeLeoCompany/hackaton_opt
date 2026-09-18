@@ -63,3 +63,24 @@ test('другая колонка всегда начинает с возрас�
   assert.equal(view.sortDirection.value, 'asc')
   assert.deepEqual(ids(view), [2, 1, 3])
 })
+
+const WITH_EQUIPMENT = [
+  { id: 1, address: 'А', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T07:00:00Z', is_active: true, equipment_id: 1 },
+  { id: 2, address: 'Б', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T08:00:00Z', is_active: true, equipment_id: 2 },
+  { id: 3, address: 'В', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T09:00:00Z', is_active: true, equipment_id: null },
+]
+
+test('фильтр «нужно любое оборудование» оставляет заявки с требованием', async () => {
+  const view = await harness(WITH_EQUIPMENT)
+  view.filters.equipmentId = 'any'
+
+  assert.deepEqual(ids(view), [1, 2])
+  assert.equal(view.activeFilterCount.value, 1)
+})
+
+test('фильтр по конкретному оборудованию', async () => {
+  const view = await harness(WITH_EQUIPMENT)
+  view.filters.equipmentId = 2
+
+  assert.deepEqual(ids(view), [2])
+})

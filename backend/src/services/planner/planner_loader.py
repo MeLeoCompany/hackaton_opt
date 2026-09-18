@@ -1,8 +1,8 @@
 """Сборка задачи планирования на один день из БД: БД -> ProblemInstance.
 
-В задачу дня попадают:
-  - заявки: активные, окно которых пересекается с этим днём;
-  - исполнители: смена которых пересекается с этим днём.
+В задачу дня офиса попадают:
+  - заявки офиса: активные, окно которых пересекается с этим днём;
+  - бригады офиса: смена которых пересекается с этим днём.
 
 Время переводится в целые минуты от 00:00 этого дня по Москве и обрезается границами дня.
 Матрицы расстояний и времени в пути считаются через Valhalla — по одной паре на каждый тип
@@ -61,6 +61,7 @@ class PlanningDay:
 @dataclass
 class LoadedDay:
     day: PlanningDay
+    office_id: int  # чей день: заявки и бригады только этого офиса
     instance: ProblemInstance
     requests: list[Request]  # в том же порядке, что instance.requests
     engineers: list[Engineer]  # в том же порядке, что instance.engineers, навыки загружены
@@ -80,14 +81,15 @@ def local_date_of(moment: datetime) -> date:
     return moment.astimezone(local_timezone()).date()
 
 
-async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
-    # заявки, закреплённые за утверждённым планом другого дня, в задачу не попадают:
+async def load_day(session: AsyncSession, day: PlanningDay, office_id: int) -> LoadedDay:
+    # офисы изолированы: бригады офиса берут только заявки своего офиса.
+    # Заявки, закреплённые за утверждённым планом другого дня, в задачу не попадают:
     # окно через полночь иначе выполнялось бы дважды
     requests = await requests_repository.list_active_requests_in_period(
-        session, day.day_start, day.day_end, plan_date=day.plan_date
+        session, day.day_start, day.day_end, plan_date=day.plan_date, office_id=office_id
     )
     engineers = await engineers_repository.list_engineers_in_period(
-        session, day.day_start, day.day_end
+        session, day.day_start, day.day_end, office_id=office_id
     )
     engineers = [
         e
@@ -135,6 +137,7 @@ async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
 
     return LoadedDay(
         day=day,
+        office_id=office_id,
         instance=instance,
         requests=requests,
         engineers=engineers,

@@ -17,10 +17,26 @@ class WorkTypeItem(ReferenceItem):
     baseline_minutes: int
 
 
+class OfficeItem(ReferenceItem):
+    """Офис с координатами: из него выбирают старт исполнителя."""
+
+    address: str
+    latitude: float
+    longitude: float
+
+
+class EquipmentItem(ReferenceItem):
+    """Тип оборудования: его можно потребовать в заявке."""
+
+    description: str
+
+
 class ReferencesRead(BaseModel):
-    """Все справочники, из которых диспетчер выбирает значения заявки."""
+    """Все справочники, из которых диспетчер выбирает значения заявок и исполнителей."""
 
     skills: list[ReferenceItem]
     priorities: list[ReferenceItem]
     transports: list[ReferenceItem]
     work_types: list[WorkTypeItem]
+    offices: list[OfficeItem] = []
+    equipment: list[EquipmentItem] = []

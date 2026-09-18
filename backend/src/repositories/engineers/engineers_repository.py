@@ -15,21 +15,28 @@ from src.models import Assignment, Engineer, Event, Skill
 ENGINEER_ID_LOCK_KEY = 7419822
 
 
-async def list_engineers(session: AsyncSession) -> list[Engineer]:
+async def list_engineers(session: AsyncSession, *, office_id: int) -> list[Engineer]:
     result = await session.execute(
-        select(Engineer).options(selectinload(Engineer.skills)).order_by(Engineer.input_order)
+        select(Engineer)
+        .options(selectinload(Engineer.skills))
+        .where(Engineer.office_id == office_id)
+        .order_by(Engineer.input_order)
     )
     return list(result.scalars().all())
 
 
 async def list_engineers_in_period(
-    session: AsyncSession, period_start: datetime, period_end: datetime
+    session: AsyncSession, period_start: datetime, period_end: datetime, *, office_id: int
 ) -> list[Engineer]:
-    """Исполнители, смена которых пересекается с периодом [period_start, period_end)."""
+    """Бригады офиса, смена которых пересекается с периодом [period_start, period_end)."""
     result = await session.execute(
         select(Engineer)
         .options(selectinload(Engineer.skills))
-        .where(Engineer.shift_start < period_end, Engineer.shift_end > period_start)
+        .where(
+            Engineer.office_id == office_id,
+            Engineer.shift_start < period_end,
+            Engineer.shift_end > period_start,
+        )
         .order_by(Engineer.input_order)
     )
     return list(result.scalars().all())

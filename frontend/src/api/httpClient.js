@@ -1,4 +1,8 @@
 // Общий HTTP-клиент. Все запросы идут на относительный /api — в дев-режиме его проксирует vite.
+// Каждый запрос несёт токен входа и выбранный офис (authSession.js); ответ 401 значит,
+// что сессия кончилась, — интерфейс возвращается к экрану входа.
+
+import { authHeaders, sessionExpired } from './authSession.js'
 
 export class ApiError extends Error {
   constructor(message, details = []) {
@@ -28,10 +32,14 @@ const FIELD_LABELS = {
   skill_ids: 'Навыки',
   plan_date: 'День плана',
   file: 'Файл',
+  login: 'Логин',
+  password: 'Пароль',
+  role: 'Роль',
+  office_id: 'Офис',
 }
 
 export async function apiRequest(method, path, { json, formData } = {}) {
-  const options = { method, headers: {} }
+  const options = { method, headers: authHeaders() }
   if (json !== undefined) {
     options.headers['Content-Type'] = 'application/json'
     options.body = JSON.stringify(json)
@@ -44,12 +52,15 @@ export async function apiRequest(method, path, { json, formData } = {}) {
   if (response.status === 204) return null
 
   const body = await response.json().catch(() => null)
+  // неверный пароль при входе — тоже 401, но это ошибка формы, а не конец сессии
+  if (response.status === 401 && path !== '/auth/login') sessionExpired()
   if (!response.ok) throw toApiError(response.status, body)
   return body
 }
 
 export async function apiDownload(path) {
-  const response = await fetch(`/api/v1${path}`)
+  const response = await fetch(`/api/v1${path}`, { headers: authHeaders() })
+  if (response.status === 401) sessionExpired()
   if (!response.ok) throw new ApiError(`Не удалось скачать файл: ${response.status}`)
   return response.blob()
 }

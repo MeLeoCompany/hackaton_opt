@@ -1,17 +1,34 @@
 <script setup>
 // Фильтр одной колонки заявок. Один и тот же компонент стоит в шапке таблицы и в панели
 // над картой — поэтому фильтры в обоих видах выглядят и работают одинаково.
-import { NO_TRANSPORT } from '../composables/useRequestsView.js'
+import { computed } from 'vue'
+
+import { EQUIPMENT_ANY, NO_TRANSPORT } from '../composables/useRequestsView.js'
 
 import TimeInput from './TimeInput.vue'
 
-defineProps({
+const props = defineProps({
   column: { type: String, required: true }, // key колонки из REQUEST_COLUMNS
   filters: { type: Object, required: true }, // объект из useRequestsView, меняется напрямую
   references: { type: Object, required: true },
   activeFilterCount: { type: Number, required: true },
 })
 defineEmits(['reset'])
+
+// колонка «Тип работ» фильтрует или по типу, или по нужному оборудованию: одно значение
+// списка -> одно из двух полей фильтра, второе сбрасывается
+const workTypeOrEquipment = computed({
+  get() {
+    if (props.filters.equipmentId !== '') return `equipment:${props.filters.equipmentId}`
+    if (props.filters.workTypeId !== '') return `work:${props.filters.workTypeId}`
+    return ''
+  },
+  set(value) {
+    const [kind, id] = value ? value.split(':') : ['', '']
+    props.filters.workTypeId = kind === 'work' ? Number(id) : ''
+    props.filters.equipmentId = kind === 'equipment' ? (id === EQUIPMENT_ANY ? EQUIPMENT_ANY : Number(id)) : ''
+  },
+})
 </script>
 
 <template>
@@ -43,9 +60,23 @@ defineEmits(['reset'])
     aria-label="фильтр по координатам"
   />
 
-  <select v-else-if="column === 'work_type'" v-model="filters.workTypeId" aria-label="фильтр по типу работ">
+  <!-- один список на колонку: тип работ или нужное оборудование — вторая строка фильтров
+       сделала бы шапку выше у всей таблицы -->
+  <select
+    v-else-if="column === 'work_type'"
+    v-model="workTypeOrEquipment"
+    aria-label="фильтр по типу работ или оборудованию"
+  >
     <option value="">любой</option>
-    <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
+    <optgroup label="Тип работ">
+      <option v-for="item in references.work_types" :key="item.id" :value="`work:${item.id}`">{{ item.name }}</option>
+    </optgroup>
+    <optgroup v-if="references.equipment?.length" label="Нужно оборудование">
+      <option :value="`equipment:${EQUIPMENT_ANY}`">любое</option>
+      <option v-for="item in references.equipment" :key="item.id" :value="`equipment:${item.id}`">
+        {{ item.name }}
+      </option>
+    </optgroup>
   </select>
 
   <div v-else-if="column === 'duration'" class="range-pair">

@@ -2,13 +2,16 @@
 
 Формат файла (шаблон отдаёт GET /api/v1/engineers/csv-template):
 
-    id;имя;широта_старта;долгота_старта;транспорт;навыки;смена_начало;смена_конец
+    id;имя;широта_старта;долгота_старта;транспорт;навыки;смена_начало;смена_конец;старт_из_офиса
 
 - разделитель «;»; подойдут также «,» и табуляция — определяется по строке заголовка;
 - «навыки» — от одного до трёх названий или номеров через запятую («Локальные работы, 3»);
 - транспорт — названием из справочника (регистр не важен) или номером;
 - id можно не заполнять — номер присвоится сам; если заполнен и такой исполнитель есть,
   он будет обновлён;
+- обычно бригада выезжает из офиса того, кто загружает файл: оставьте широту и долготу
+  пустыми — старт встанет в точку офиса. «старт_из_офиса» необязателен: «да» — из офиса
+  (координаты из файла не используются), «нет» — из своей точки, тогда координаты нужны;
 - время — «17.08.2026 09:00» или «2026-08-17T09:00»; без часового пояса считается московским.
 
 Разбор строк, чисел, справочников и времени переиспользуется из CSV заявок: формат колонок
@@ -21,6 +24,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 
 from src.services.requests.requests_csv import (
+    ACTIVE_WORDS,
+    INACTIVE_WORDS,
     CsvParseResult,
     ReferenceOptions,
     cell,
@@ -43,8 +48,9 @@ COLUMNS = [
     "навыки",
     "смена_начало",
     "смена_конец",
+    "старт_из_офиса",
 ]
-OPTIONAL_COLUMNS = {"id"}
+OPTIONAL_COLUMNS = {"id", "старт_из_офиса"}
 
 MAX_SKILLS = 3
 
@@ -65,10 +71,10 @@ def build_csv_template() -> str:
     """Текст шаблона: заголовок и две строки-примера (с номером и без)."""
     lines = [
         ";".join(COLUMNS),
-        ";Бригада Соколов;55.7400;37.6580;Автомобиль;Локальные работы, Аварийные работы;"
-        "17.08.2026 09:00;17.08.2026 18:00",
-        "42;Бригада Мельников;55.7090;37.7368;Пешеход;Работы на подключение и дозаказы;"
-        "17.08.2026 10:00;17.08.2026 21:00",
+        ";Бригада Соколов;;;Автомобиль;Локальные работы, Аварийные работы;"
+        "17.08.2026 09:00;17.08.2026 18:00;",
+        "42;Бригада Мельников;55.7400;37.6580;Пешеход;Работы на подключение и дозаказы;"
+        "17.08.2026 10:00;17.08.2026 21:00;нет",
     ]
     return "\n".join(lines) + "\n"
 
@@ -145,8 +151,19 @@ def parse_row(
     if not name:
         errors.append("не заполнено поле «имя»")
 
-    latitude = parse_number(cell(raw_row, "широта_старта"), "широта_старта", -90, 90, errors)
-    longitude = parse_number(cell(raw_row, "долгота_старта"), "долгота_старта", -180, 180, errors)
+    no_coordinates = not cell(raw_row, "широта_старта") and not cell(raw_row, "долгота_старта")
+    raw_flag = cell(raw_row, "старт_из_офиса")
+    # обычно бригада выезжает из офиса: координат нет и флаг не задан — значит, из офиса
+    start_at_office = (
+        parse_yes_no(raw_flag, "старт_из_офиса", errors) if raw_flag else no_coordinates
+    )
+    if start_at_office and no_coordinates:
+        latitude, longitude = 0.0, 0.0  # подставит сервис из офиса
+    else:
+        latitude = parse_number(cell(raw_row, "широта_старта"), "широта_старта", -90, 90, errors)
+        longitude = parse_number(
+            cell(raw_row, "долгота_старта"), "долгота_старта", -180, 180, errors
+        )
     transport_id = parse_reference(
         cell(raw_row, "транспорт"), "транспорт", references.transports, errors, required=True
     )
@@ -159,6 +176,7 @@ def parse_row(
     if shift_start and shift_end and shift_end <= shift_start:
         errors.append("«смена_конец» должна быть позже, чем «смена_начало»")
 
+
     return {
         "id": engineer_id,
         "name": name,
@@ -168,6 +186,7 @@ def parse_row(
         "skill_ids": skill_ids,
         "shift_start": shift_start,
         "shift_end": shift_end,
+        "start_at_office": start_at_office,
     }
 
 
@@ -191,6 +210,19 @@ def parse_skills(raw_value: str, skills: ReferenceOptions, errors: list[str]) ->
     if len(skill_ids) > MAX_SKILLS:
         errors.append(f"навыков не должно быть больше {MAX_SKILLS}")
     return skill_ids
+
+
+def parse_yes_no(raw_value: str, column: str, errors: list[str]) -> bool:
+    """«да» / «нет» -> True / False; пусто — «нет»."""
+    if not raw_value:
+        return False
+    normalized = raw_value.strip().lower()
+    if normalized in ACTIVE_WORDS:
+        return True
+    if normalized in INACTIVE_WORDS:
+        return False
+    errors.append(f"«{raw_value}» в поле «{column}» — укажите «да» или «нет»")
+    return False
 
 
 def format_datetime(moment: datetime, local_timezone: tzinfo) -> str:

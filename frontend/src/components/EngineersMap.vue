@@ -1,6 +1,7 @@
 <script setup>
 // Карта исполнителей: стартовая точка каждого исполнителя, прошедшего фильтры.
-// Цвет — тип транспорта, выбранный — крупнее с тёмной обводкой.
+// Цвет — тип транспорта, выбранный — крупнее с тёмной обводкой. Офисы из справочника —
+// синие квадраты под точками: видно, кто выезжает из офиса, а кто из своей точки.
 
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -20,6 +21,7 @@ const emit = defineEmits(['select'])
 const container = ref(null)
 let map = null
 let markerLayer = null
+let officeLayer = null
 const markerByEngineerId = new Map()
 // номера исполнителей, под которых последний раз подгонялся масштаб
 let fittedEngineerIds = ''
@@ -40,11 +42,34 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (symbol) => `&#${symbol.charCodeAt(0)};`)
 }
 
+const OFFICE_ICON = L.divIcon({
+  className: 'office-marker',
+  html: '<span></span>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+})
+
+function drawOffices() {
+  officeLayer.clearLayers()
+  for (const office of props.references.offices ?? []) {
+    L.marker([office.latitude, office.longitude], { icon: OFFICE_ICON, zIndexOffset: -1000 })
+      .bindTooltip(`<b>Офис «${escapeHtml(office.name)}»</b><br>${escapeHtml(office.address)}`, {
+        direction: 'top',
+        offset: [0, -6],
+      })
+      .addTo(officeLayer)
+  }
+}
+
 function tooltipHtml(engineer) {
   const transport = referenceName(props.references, 'transports', engineer.transport_id)
   const skills = engineer.skill_ids.map((skillId) => referenceName(props.references, 'skills', skillId)).join(', ')
+  const start = engineer.start_at_office
+    ? `выезд из офиса «${escapeHtml(referenceName(props.references, 'offices', engineer.office_id))}»<br>`
+    : ''
   return (
     `<b>${escapeHtml(engineer.name)}</b> · ${escapeHtml(transport)}<br>` +
+    start +
     `смена ${formatMoscowWindow(engineer.shift_start, engineer.shift_end)}<br>` +
     `<span style="color:#64748b">${escapeHtml(skills)}</span>`
   )
@@ -87,11 +112,14 @@ onMounted(async () => {
     attribution: '&copy; OpenStreetMap',
     maxZoom: 19,
   }).addTo(map)
+  // офисы ниже точек исполнителей: кружок бригады, стоящей в офисе, лежит поверх квадрата
+  officeLayer = L.layerGroup().addTo(map)
   markerLayer = L.layerGroup().addTo(map)
 
   // карта появляется по кнопке — даём раскладке досчитать размер контейнера
   await nextTick()
   map.invalidateSize()
+  drawOffices()
   drawMarkers()
   highlightSelected()
 })
@@ -99,7 +127,13 @@ onMounted(async () => {
 onBeforeUnmount(() => map?.remove())
 
 watch(() => props.engineers, drawMarkers)
-watch(() => props.references, drawMarkers)
+watch(
+  () => props.references,
+  () => {
+    drawOffices()
+    drawMarkers()
+  },
+)
 watch(() => props.selectedId, highlightSelected)
 </script>
 
@@ -110,7 +144,30 @@ watch(() => props.selectedId, highlightSelected)
       <span v-for="transport in references.transports" :key="transport.id">
         <i class="legend-dot" :style="{ background: transportColor(transport.id) }"></i>{{ transport.name }}
       </span>
+      <span v-if="references.offices?.length"><i class="office-legend"></i>офис</span>
       <span class="muted">на карте: {{ engineers.length }}</span>
     </div>
   </div>
 </template>
+
+<style scoped>
+:deep(.office-marker span) {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  background: #1d4ed8;
+  box-shadow: 0 0 0 1px #1d4ed8;
+}
+
+.office-legend {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  background: #1d4ed8;
+  vertical-align: -1px;
+}
+</style>

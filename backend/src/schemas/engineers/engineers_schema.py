@@ -14,6 +14,8 @@ class EngineerWrite(BaseModel):
     shift_start: datetime
     shift_end: datetime
     transport_id: int
+    # выезжает из своего офиса: старт ставится в точку офиса, координаты из запроса не нужны
+    start_at_office: bool = False
     # по ТЗ у исполнителя от 1 до 3 навыков
     skill_ids: list[int] = Field(min_length=1, max_length=3)
 
@@ -37,6 +39,7 @@ class EngineerCreate(EngineerWrite):
 
 class EngineerRead(EngineerWrite):
     id: int
+    office_id: int  # чья бригада; задаётся офисом того, кто её завёл
 
 
 class EngineerImportReport(BaseModel):

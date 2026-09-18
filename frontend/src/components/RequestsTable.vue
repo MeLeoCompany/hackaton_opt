@@ -162,7 +162,16 @@ onMounted(scrollToSelected)
             </td>
             <td class="wide-cell">{{ request.address }}</td>
             <td class="number-cell nowrap">{{ request.latitude.toFixed(4) }}, {{ request.longitude.toFixed(4) }}</td>
-            <td>{{ referenceName(references, 'work_types', request.work_type_id) }}</td>
+            <td>
+              {{ referenceName(references, 'work_types', request.work_type_id) }}
+              <span
+                v-if="request.equipment_id"
+                class="equipment-badge"
+                title="Что техник должен привезти на заявку"
+              >
+                ⚙ {{ referenceName(references, 'equipment', request.equipment_id) }}
+              </span>
+            </td>
             <td class="number-cell under-range-filter">{{ request.duration_minutes }}</td>
             <td class="range-cell">
               <TimeRangeValue :start="request.window_start" :end="request.window_end" />
@@ -200,3 +209,18 @@ onMounted(scrollToSelected)
     </table>
   </div>
 </template>
+
+<style scoped>
+/* требование оборудования: отдельной строкой под типом работ, мелко и заметно */
+.equipment-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+</style>

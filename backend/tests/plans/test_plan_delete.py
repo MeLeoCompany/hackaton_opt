@@ -12,7 +12,7 @@ from src.services.planner.planning_service import PlanNotFoundError
 
 @pytest.mark.asyncio
 async def test_plan_is_deleted_and_committed():
-    plan = SimpleNamespace(id=9, approved_at=None)
+    plan = SimpleNamespace(id=9, approved_at=None, office_id=1)
     session = SimpleNamespace(commit=AsyncMock())
     repository = planning_service.plans_repository
 
@@ -20,7 +20,7 @@ async def test_plan_is_deleted_and_committed():
         patch.object(repository, "get_plan", AsyncMock(return_value=plan)),
         patch.object(repository, "delete_plan", AsyncMock()) as delete_plan,
     ):
-        await planning_service.delete_plan(session, 9)
+        await planning_service.delete_plan(session, 9, office_id=1)
 
     delete_plan.assert_awaited_once_with(session, plan)
     session.commit.assert_awaited_once()
@@ -35,7 +35,7 @@ async def test_deleting_missing_plan_is_not_found():
         patch.object(repository, "get_plan", AsyncMock(return_value=None)),
         pytest.raises(PlanNotFoundError),
     ):
-        await planning_service.delete_plan(session, 99)
+        await planning_service.delete_plan(session, 99, office_id=1)
 
     session.commit.assert_not_awaited()
 
@@ -47,7 +47,7 @@ async def test_approved_plan_is_not_deleted():
 
     from src.services.planner.planning_service import PlanInUseError
 
-    plan = SimpleNamespace(id=9, approved_at=datetime(2026, 8, 17, tzinfo=UTC))
+    plan = SimpleNamespace(id=9, approved_at=datetime(2026, 8, 17, tzinfo=UTC), office_id=1)
     session = SimpleNamespace(commit=AsyncMock())
     repository = planning_service.plans_repository
 
@@ -56,7 +56,7 @@ async def test_approved_plan_is_not_deleted():
         patch.object(repository, "delete_plan", AsyncMock()) as delete_plan,
         pytest.raises(PlanInUseError, match="утверждён"),
     ):
-        await planning_service.delete_plan(session, 9)
+        await planning_service.delete_plan(session, 9, office_id=1)
 
     delete_plan.assert_not_awaited()
     session.commit.assert_not_awaited()

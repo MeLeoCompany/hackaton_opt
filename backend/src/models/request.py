@@ -39,6 +39,10 @@ class Request(Base):
     work_type_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("work_type.id"))
     # заявка закреплена за утверждённым планом: другие дни её не берут (окна через полночь)
     approved_plan_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("plan.id"))
+    # чья заявка: её видит и планирует только этот офис
+    office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
+    # какое оборудование нужно для заявки; None — не нужно
+    equipment_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("equipment.id"))
     # выключенная заявка хранится, но в сборку задачи планирования не попадает
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
 

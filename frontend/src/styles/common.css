@@ -452,6 +452,12 @@ button.link:disabled {
   padding: 4px 6px;
 }
 
+/* значок старта бригады высотой 24 — в той же полосе, что поля и кнопки, по центру колонки */
+.data-table.fixed-columns tbody td.start-cell {
+  padding: 4px 6px;
+  text-align: center;
+}
+
 /* переключатель высотой 18 — по центру той же полосы в 24 пикселя */
 .data-table.fixed-columns tbody td:has(.switch) {
   padding: 7px 13px 4px;

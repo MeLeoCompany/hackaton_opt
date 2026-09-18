@@ -46,10 +46,11 @@ const {
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
 
-// карточка справа от карты занимает ровно две последние колонки таблицы: её левый край
-// совпадает с линией колонки в шапке фильтров, а карта заканчивается перед ней
+// карточка справа от карты занимает ровно три последние колонки таблицы (смена, старт,
+// действия): её левый край совпадает с линией колонки в шапке фильтров, а карта
+// заканчивается перед ней. Двух узких колонок старта и действий карточке мало.
 // +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
-const DETAILS_WIDTH = ENGINEER_COLUMNS.slice(-2).reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 1
+const DETAILS_WIDTH = ENGINEER_COLUMNS.slice(-3).reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 1
 
 const selectedEngineer = computed(
   () => filteredEngineers.value.find((engineer) => engineer.id === selectedId.value) ?? null,

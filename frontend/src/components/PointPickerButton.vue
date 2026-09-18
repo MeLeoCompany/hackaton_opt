@@ -12,6 +12,9 @@ defineProps({
   latitude: { type: [Number, String], default: '' },
   longitude: { type: [Number, String], default: '' },
   contextPoints: { type: Array, default: () => [] },
+  landmarks: { type: Array, default: () => [] },
+  // точка «по умолчанию» (офис): в окне карты кнопка вернуть её одним нажатием
+  home: { type: Object, default: null },
 })
 const emit = defineEmits(['pick'])
 
@@ -42,6 +45,8 @@ function pick(latitude, longitude) {
     :latitude="latitude"
     :longitude="longitude"
     :context-points="contextPoints"
+    :landmarks="landmarks"
+    :home="home"
     @pick="pick"
     @close="open = false"
   />
@@ -59,4 +64,5 @@ function pick(latitude, longitude) {
   padding: 0;
   color: #2563eb;
 }
+
 </style>

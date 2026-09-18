@@ -48,10 +48,20 @@ function applyPickedPoint(latitude, longitude) {
     </div>
   </td>
   <td>
-    <select v-model="form.work_type_id" @change="emit('work-type-picked', form.work_type_id)">
-      <option value="">не указан</option>
-      <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
-    </select>
+    <!-- оборудование живёт под типом работ: оно следует из работы, а своя колонка съела бы
+         место у адреса -->
+    <div class="work-type-cell">
+      <select v-model="form.work_type_id" aria-label="тип работ" @change="emit('work-type-picked', form.work_type_id)">
+        <option value="">не указан</option>
+        <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
+      </select>
+      <select v-model="form.equipment_id" aria-label="нужное оборудование" title="Что техник должен привезти">
+        <option value="">без оборудования</option>
+        <option v-for="item in references.equipment ?? []" :key="item.id" :value="item.id">
+          нужно: {{ item.name }}
+        </option>
+      </select>
+    </div>
   </td>
   <td>
     <input v-model="form.duration_minutes" type="number" min="1" class="short-input" />
@@ -85,6 +95,12 @@ function applyPickedPoint(latitude, longitude) {
 </template>
 
 <style scoped>
+.work-type-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .coordinates-cell {
   display: flex;
   align-items: center;

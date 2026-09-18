@@ -108,7 +108,7 @@ async def test_import_gives_rows_without_id_the_smallest_free_numbers():
             repository, "add_request", side_effect=lambda s, f: insertion_order.append(f["id"])
         ),
     ):
-        report = await service.import_requests_csv(session, b"csv")
+        report = await service.import_requests_csv(session, b"csv", office_id=1)
 
     # 1 занят явной строкой файла, 2 — заявкой в БД
     assert insertion_order == [3, 1, 4]

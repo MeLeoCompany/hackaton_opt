@@ -11,6 +11,9 @@ export const NO_TRANSPORT = 'none'
 
 export const PAGE_SIZES = [10, 25, 50, 100]
 
+// значение фильтра оборудования «нужно хоть какое-то»
+export const EQUIPMENT_ANY = 'any'
+
 // '' — сортировка не выбрана: строки идут в порядке бэкенда
 const DEFAULT_SORT = ''
 
@@ -40,6 +43,7 @@ function emptyFilters() {
     text: '', // часть адреса
     coordinates: '', // часть координат, как они показаны в таблице
     workTypeId: '', // '' — любой тип работ
+    equipmentId: '', // '' — неважно, EQUIPMENT_ANY — нужно любое, иначе номер оборудования
     durationFrom: '', // минуты работы на месте, не меньше
     durationTo: '', // минуты работы на месте, не больше
     timeFrom: '', // 'HH:MM' — окно начинается не раньше
@@ -82,6 +86,11 @@ export function useRequestsView(requests, references) {
 
     if (filters.priorityId !== '' && request.priority_id !== filters.priorityId) return false
     if (filters.workTypeId !== '' && request.work_type_id !== filters.workTypeId) return false
+    if (filters.equipmentId === EQUIPMENT_ANY) {
+      if (request.equipment_id === null || request.equipment_id === undefined) return false
+    } else if (filters.equipmentId !== '' && request.equipment_id !== filters.equipmentId) {
+      return false
+    }
 
     if (filters.transportId === NO_TRANSPORT) {
       if (request.transport_id !== null) return false

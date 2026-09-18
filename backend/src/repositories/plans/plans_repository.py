@@ -16,10 +16,12 @@ def add_plan(
     plan_date: date,
     solver: str,
     *,
+    office_id: int,
     solve_duration_ms: Decimal | None = None,
     objective_policy: dict | None = None,
 ) -> Plan:
     plan = Plan(
+        office_id=office_id,
         run_type=run_type,
         plan_date=plan_date,
         solver=solver,
@@ -45,19 +47,31 @@ async def delete_plan(session: AsyncSession, plan: Plan) -> None:
     await session.delete(plan)
 
 
-async def list_plans(session: AsyncSession, plan_date: date | None) -> list[Plan]:
-    """Планы, новые первыми; если указан день — только на этот день."""
-    query = select(Plan).order_by(Plan.created_at.desc(), Plan.id.desc())
+async def list_plans(
+    session: AsyncSession, plan_date: date | None, *, office_id: int
+) -> list[Plan]:
+    """Планы офиса, новые первыми; если указан день — только на этот день."""
+    query = (
+        select(Plan)
+        .where(Plan.office_id == office_id)
+        .order_by(Plan.created_at.desc(), Plan.id.desc())
+    )
     if plan_date is not None:
         query = query.where(Plan.plan_date == plan_date)
     result = await session.execute(query)
     return list(result.scalars().all())
 
 
-async def get_approved_plan(session: AsyncSession, plan_date: date) -> Plan | None:
-    """Утверждённый план дня; на день он может быть только один."""
+async def get_approved_plan(
+    session: AsyncSession, plan_date: date, *, office_id: int
+) -> Plan | None:
+    """Утверждённый план офиса на день; у офиса на день он может быть только один."""
     result = await session.execute(
-        select(Plan).where(Plan.plan_date == plan_date, Plan.approved_at.is_not(None))
+        select(Plan).where(
+            Plan.office_id == office_id,
+            Plan.plan_date == plan_date,
+            Plan.approved_at.is_not(None),
+        )
     )
     return result.scalar_one_or_none()
 

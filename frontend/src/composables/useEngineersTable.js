@@ -14,6 +14,7 @@ import {
 import { fetchReferences } from '../api/referencesApi.js'
 import { downloadBlob } from '../utils/downloadFile.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
+import { isAtOffice } from '../utils/officePoint.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
 
@@ -22,7 +23,7 @@ export const NEW_ENGINEER = 'new'
 export function useEngineersTable() {
   const { selectedDay } = useSelectedDay()
   const engineers = ref([])
-  const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
+  const references = ref({ skills: [], priorities: [], transports: [], work_types: [], offices: [] })
 
   const loading = ref(false)
   const saving = ref(false)
@@ -57,6 +58,8 @@ export function useEngineersTable() {
   function startCreate() {
     clearMessages()
     editingId.value = NEW_ENGINEER
+    // как правило бригады выезжают из офиса — новая сразу стоит в своём офисе
+    const office = references.value.offices?.[0] ?? null
     form.value = {
       id: '',
       name: '',
@@ -64,8 +67,8 @@ export function useEngineersTable() {
       skill_ids: [],
       shift_start: '',
       shift_end: '',
-      start_latitude: '',
-      start_longitude: '',
+      start_latitude: office?.latitude ?? '',
+      start_longitude: office?.longitude ?? '',
     }
   }
 
@@ -102,6 +105,8 @@ export function useEngineersTable() {
       skill_ids: values.skill_ids.map(Number),
       shift_start: values.shift_start ? fromMoscowInputValue(values.shift_start) : null,
       shift_end: values.shift_end ? fromMoscowInputValue(values.shift_end) : null,
+      // координаты совпали с офисом — бригада выезжает из офиса и переедет вместе с ним
+      start_at_office: isAtOffice(values.start_latitude, values.start_longitude, references.value.offices?.[0]),
       start_latitude: numberOrNull(values.start_latitude),
       start_longitude: numberOrNull(values.start_longitude),
     }

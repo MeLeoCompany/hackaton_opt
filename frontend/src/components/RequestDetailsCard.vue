@@ -50,6 +50,12 @@ defineEmits(['show-in-table', 'close', 'toggle-active'])
           <dd>{{ referenceName(references, 'work_types', request.work_type_id) }}</dd>
         </div>
         <div>
+          <dt>Оборудование</dt>
+          <dd>
+            {{ request.equipment_id ? referenceName(references, 'equipment', request.equipment_id) : 'не нужно' }}
+          </dd>
+        </div>
+        <div>
           <dt>Навык</dt>
           <dd>
             <span class="badge">{{ referenceName(references, 'skills', request.skill_id) }}</span>

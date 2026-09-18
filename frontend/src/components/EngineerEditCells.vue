@@ -1,9 +1,13 @@
 <script setup>
 // Ячейки строки таблицы исполнителей в режиме редактирования (всё, кроме номера).
 // form — объект формы из useEngineersTable, поля ввода меняют его напрямую.
+import { computed, ref } from 'vue'
+
 import DayTimeRange from './DayTimeRange.vue'
 import IconButton from './IconButton.vue'
-import PointPickerButton from './PointPickerButton.vue'
+import { isAtOffice } from '../utils/officePoint.js'
+import PointPickerDialog from './PointPickerDialog.vue'
+import StartPointIcon from './StartPointIcon.vue'
 
 const props = defineProps({
   form: { type: Object, required: true },
@@ -14,10 +18,44 @@ const props = defineProps({
 })
 const emit = defineEmits(['save', 'cancel'])
 
+// офис бригады — это офис учётки: в справочниках формы он один
+const office = computed(() => props.references.offices?.[0] ?? null)
+const atOffice = computed(() => isAtOffice(props.form.start_latitude, props.form.start_longitude, office.value))
+
+const startHint = computed(() => {
+  if (atOffice.value) return `Из офиса «${office.value.name}». Нажмите, чтобы выбрать другую точку`
+  const latitude = Number(props.form.start_latitude).toFixed(4)
+  const longitude = Number(props.form.start_longitude).toFixed(4)
+  return `Своя точка ${latitude}, ${longitude}. Нажмите, чтобы изменить или вернуть в офис`
+})
+
+// кнопка «В офис» в окне карты: вернуть старт в точку офиса одним нажатием
+const officeHome = computed(() =>
+  office.value
+    ? { latitude: office.value.latitude, longitude: office.value.longitude, label: `В офис «${office.value.name}»` }
+    : null,
+)
+
+const pickerOpen = ref(false)
+
 function applyPickedPoint(latitude, longitude) {
   props.form.start_latitude = latitude
   props.form.start_longitude = longitude
+  pickerOpen.value = false
 }
+
+// офис на карте выбора — рядом с ним обычно и ставят свою точку
+const officeLandmarks = computed(() =>
+  office.value
+    ? [
+        {
+          latitude: office.value.latitude,
+          longitude: office.value.longitude,
+          label: `Офис «${office.value.name}» · ${office.value.address}`,
+        },
+      ]
+    : [],
+)
 </script>
 
 <template>
@@ -40,21 +78,21 @@ function applyPickedPoint(latitude, longitude) {
   <td>
     <DayTimeRange v-model:start="form.shift_start" v-model:end="form.shift_end" />
   </td>
-  <td>
-    <div class="coordinates-cell">
-      <div class="coordinate-inputs">
-        <input v-model="form.start_latitude" type="number" step="any" placeholder="широта" />
-        <input v-model="form.start_longitude" type="number" step="any" placeholder="долгота" />
-      </div>
-      <PointPickerButton
-        title="Откуда выезжает бригада"
-        hint="Указать координаты на карте"
-        :latitude="form.start_latitude"
-        :longitude="form.start_longitude"
-        :context-points="contextPoints"
-        @pick="applyPickedPoint"
-      />
-    </div>
+  <td class="start-cell">
+    <button type="button" class="start-button" :title="startHint" :aria-label="startHint" @click="pickerOpen = true">
+      <StartPointIcon :at-office="atOffice" />
+    </button>
+    <PointPickerDialog
+      v-if="pickerOpen"
+      title="Откуда выезжает бригада"
+      :latitude="form.start_latitude"
+      :longitude="form.start_longitude"
+      :context-points="contextPoints"
+      :landmarks="officeLandmarks"
+      :home="officeHome"
+      @pick="applyPickedPoint"
+      @close="pickerOpen = false"
+    />
   </td>
   <td>
     <div class="row-actions">
@@ -71,25 +109,38 @@ function applyPickedPoint(latitude, longitude) {
 </template>
 
 <style scoped>
+/* значок старта — кнопкой того же размера и на том же месте, что в просмотре строки:
+   без своей рамки, кликабельность показывает тонкое кольцо, при наведении — ярче */
+.start-button {
+  display: inline-flex;
+  width: 28px;
+  min-width: 0;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  line-height: 0;
+  vertical-align: top;
+  box-shadow: 0 0 0 1px #93c5fd;
+  cursor: pointer;
+}
+
+.start-button:hover,
+.start-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #2563eb;
+}
+
 .skill-checkboxes {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.coordinates-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 
-.coordinate-inputs {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
+
+
 
 .skill-checkboxes label {
   display: flex;

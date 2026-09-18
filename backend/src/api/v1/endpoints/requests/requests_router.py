@@ -9,6 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.deps import current_office_id
 from src.db.session import get_db
 from src.schemas.requests import (
     RequestActivityReport,
@@ -26,8 +27,12 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[RequestRead], summary="Все заявки, ближайшие по окну — первыми")
-async def list_requests(plan_date: date | None = None, session: AsyncSession = Depends(get_db)):
-    return await requests_service.list_requests(session, plan_date)
+async def list_requests(
+    plan_date: date | None = None,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await requests_service.list_requests(session, office_id, plan_date)
 
 
 @router.get("/csv-template", summary="Шаблон CSV для загрузки заявок")
@@ -42,9 +47,11 @@ async def download_csv_template() -> Response:
 
 @router.get("/export", summary="Выгрузить заявки дня в CSV")
 async def export_requests(
-    plan_date: date | None = None, session: AsyncSession = Depends(get_db)
+    plan_date: date | None = None,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
 ) -> Response:
-    content = await requests_service.export_requests_csv(session, plan_date)
+    content = await requests_service.export_requests_csv(session, office_id, plan_date)
     name = f"requests_{plan_date:%Y-%m-%d}.csv" if plan_date else "requests_all.csv"
     return Response(
         # BOM в начале — чтобы Excel открыл кириллицу без кракозябр
@@ -59,12 +66,13 @@ async def import_requests(
     file: UploadFile = File(...),
     plan_date: date | None = None,
     session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
 ):
     """plan_date — перенести файл в этот день копией: время суток то же, номера новые."""
     content = await file.read()
     if len(content) > MAX_CSV_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Файл больше 5 МБ")
-    return await requests_service.import_requests_csv(session, content, plan_date)
+    return await requests_service.import_requests_csv(session, content, office_id, plan_date)
 
 
 @router.patch(
@@ -73,33 +81,50 @@ async def import_requests(
     summary="Включить или выключить заявки для планирования",
 )
 async def set_requests_active(
-    payload: RequestActivityUpdate, session: AsyncSession = Depends(get_db)
+    payload: RequestActivityUpdate,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
 ):
     return await requests_service.set_requests_active(
-        session, payload.request_ids, payload.is_active
+        session, payload.request_ids, payload.is_active, office_id
     )
 
 
 @router.get("/{request_id}", response_model=RequestRead, summary="Одна заявка")
-async def get_request(request_id: int, session: AsyncSession = Depends(get_db)):
-    return await requests_service.get_request(session, request_id)
+async def get_request(
+    request_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await requests_service.get_request(session, request_id, office_id)
 
 
 @router.post(
     "", response_model=RequestRead, status_code=status.HTTP_201_CREATED, summary="Добавить заявку"
 )
-async def create_request(payload: RequestCreate, session: AsyncSession = Depends(get_db)):
-    return await requests_service.create_request(session, payload)
+async def create_request(
+    payload: RequestCreate,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await requests_service.create_request(session, payload, office_id)
 
 
 @router.put("/{request_id}", response_model=RequestRead, summary="Изменить заявку")
 async def update_request(
-    request_id: int, payload: RequestWrite, session: AsyncSession = Depends(get_db)
+    request_id: int,
+    payload: RequestWrite,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
 ):
-    return await requests_service.update_request(session, request_id, payload)
+    return await requests_service.update_request(session, request_id, payload, office_id)
 
 
 @router.delete("/{request_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить заявку")
-async def delete_request(request_id: int, session: AsyncSession = Depends(get_db)) -> Response:
-    await requests_service.delete_request(session, request_id)
+async def delete_request(
+    request_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+) -> Response:
+    await requests_service.delete_request(session, request_id, office_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

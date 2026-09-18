@@ -66,9 +66,9 @@ class PlanDataError(DataError):
     """План на этот день построить нельзя."""
 
 
-async def list_planning_days(session: AsyncSession) -> list[PlanningDayOption]:
-    """Московские дни, с которыми пересекаются окна активных заявок."""
-    requests = await requests_repository.list_active_requests(session)
+async def list_planning_days(session: AsyncSession, *, office_id: int) -> list[PlanningDayOption]:
+    """Московские дни, с которыми пересекаются окна активных заявок офиса."""
+    requests = await requests_repository.list_active_requests(session, office_id=office_id)
     request_count_by_day: dict[date, int] = defaultdict(int)
     for request in requests:
         for plan_date in intersected_local_dates(request.window_start, request.window_end):
@@ -79,10 +79,10 @@ async def list_planning_days(session: AsyncSession) -> list[PlanningDayOption]:
     ]
 
 
-async def load_planning_day(session: AsyncSession, plan_date: date) -> LoadedDay:
-    """Загружает данные дня и проверяет наличие заявок и исполнителей."""
+async def load_planning_day(session: AsyncSession, plan_date: date, office_id: int) -> LoadedDay:
+    """Загружает данные дня офиса и проверяет наличие заявок и исполнителей."""
     day = planner_loader.planning_day(plan_date)
-    loaded = await planner_loader.load_day(session, day)
+    loaded = await planner_loader.load_day(session, day, office_id)
     if loaded.instance.n_requests == 0:
         raise PlanDataError([f"На {plan_date:%d.%m.%Y} нет активных заявок"])
     if loaded.instance.n_engineers == 0:
@@ -97,6 +97,8 @@ async def build_plan_for_day(
     solver: SolverName = SolverName.CUOPT,
     objective_order: list[ObjectiveCriterion]
     | tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+    *,
+    office_id: int,
 ) -> PlanSummary:
     """Считает план дня выбранным решателем и сохраняет его отдельной записью.
 
@@ -104,7 +106,7 @@ async def build_plan_for_day(
     пробег, сколько заявок назначено). Пары для сравнения не создаются: сравнить можно любые
     два уже посчитанных плана.
     """
-    loaded = await load_planning_day(session, plan_date)
+    loaded = await load_planning_day(session, plan_date, office_id)
     policy = validate_objective_order(objective_order)
 
     started = time.perf_counter()
@@ -194,9 +196,9 @@ async def total_route_distance(
     )
 
 
-async def delete_plan(session: AsyncSession, plan_id: int) -> None:
+async def delete_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> None:
     """Удаляет план вместе с его назначениями — чтобы день можно было пересчитать заново."""
-    plan = await find_plan(session, plan_id)
+    plan = await find_plan(session, plan_id, office_id=office_id)
     if plan.approved_at is not None:
         raise PlanInUseError(
             f"План №{plan_id} утверждён: сначала снимите утверждение, иначе заявки останутся "
@@ -206,20 +208,21 @@ async def delete_plan(session: AsyncSession, plan_id: int) -> None:
     await session.commit()
 
 
-async def find_plan(session: AsyncSession, plan_id: int) -> Plan:
+async def find_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> Plan:
+    """План офиса. Чужой выглядит как несуществующий."""
     plan = await plans_repository.get_plan(session, plan_id)
-    if plan is None:
+    if plan is None or plan.office_id != office_id:
         raise PlanNotFoundError(f"План №{plan_id} не найден")
     return plan
 
 
-async def approve_plan(session: AsyncSession, plan_id: int) -> PlanSummary:
+async def approve_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> PlanSummary:
     """Утверждает план дня и закрепляет за ним назначенные заявки.
 
     Заявка с окном через полночь попадает в оба дня, и планы обоих дней вправе её взять.
     Утверждение фиксирует, чей это день: закреплённую заявку другие дни больше не берут.
     """
-    plan = await find_plan(session, plan_id)
+    plan = await find_plan(session, plan_id, office_id=office_id)
     if plan.approved_at is not None:
         return (await summarize_plans(session, [plan]))[0]
     if plan.plan_date is None:
@@ -228,7 +231,7 @@ async def approve_plan(session: AsyncSession, plan_id: int) -> PlanSummary:
         )
     plan_date = plan.plan_date
 
-    approved = await plans_repository.get_approved_plan(session, plan_date)
+    approved = await plans_repository.get_approved_plan(session, plan_date, office_id=office_id)
     if approved is not None:
         raise PlanInUseError(
             f"На {plan_date:%d.%m.%Y} уже утверждён план №{approved.id}: "
@@ -257,25 +260,29 @@ async def approve_plan(session: AsyncSession, plan_id: int) -> PlanSummary:
     return (await summarize_plans(session, [plan]))[0]
 
 
-async def cancel_plan_approval(session: AsyncSession, plan_id: int) -> PlanSummary:
+async def cancel_plan_approval(
+    session: AsyncSession, plan_id: int, *, office_id: int
+) -> PlanSummary:
     """Снимает утверждение: заявки плана снова доступны любому дню."""
-    plan = await find_plan(session, plan_id)
+    plan = await find_plan(session, plan_id, office_id=office_id)
     if plan.approved_at is not None:
         await plans_repository.release_plan_requests(session, plan)
         await session.commit()
     return (await summarize_plans(session, [plan]))[0]
 
 
-async def check_planning_day(session: AsyncSession, plan_date: date) -> PlanDayCheck:
+async def check_planning_day(
+    session: AsyncSession, plan_date: date, *, office_id: int
+) -> PlanDayCheck:
     """Что ждёт диспетчера перед расчётом: сколько заявок дня и какие уже заняты другим днём."""
     day = planner_loader.planning_day(plan_date)
     requests = await requests_repository.list_active_requests_in_period(
-        session, day.day_start, day.day_end, plan_date=plan_date
+        session, day.day_start, day.day_end, plan_date=plan_date, office_id=office_id
     )
     held = await requests_repository.list_requests_held_by_other_days(
-        session, day.day_start, day.day_end, plan_date
+        session, day.day_start, day.day_end, plan_date, office_id=office_id
     )
-    approved = await plans_repository.get_approved_plan(session, plan_date)
+    approved = await plans_repository.get_approved_plan(session, plan_date, office_id=office_id)
 
     return PlanDayCheck(
         plan_date=plan_date,
@@ -315,6 +322,7 @@ async def save_solution(
         run_type,
         day.plan_date,
         solver,
+        office_id=loaded.office_id,
         solve_duration_ms=(
             Decimal(str(round(solve_duration_ms, 3))) if solve_duration_ms is not None else None
         ),
@@ -410,8 +418,10 @@ def can_serve_as_first_visit(loaded: LoadedDay, request_index: int, engineer_ind
     )
 
 
-async def list_plans(session: AsyncSession, plan_date: date | None) -> list[PlanSummary]:
-    plans = await plans_repository.list_plans(session, plan_date)
+async def list_plans(
+    session: AsyncSession, plan_date: date | None, *, office_id: int
+) -> list[PlanSummary]:
+    plans = await plans_repository.list_plans(session, plan_date, office_id=office_id)
     return await summarize_plans(session, plans)
 
 
@@ -473,10 +483,10 @@ def count_urgent_assignments(snapshot: dict | None, assigned_request_ids: set[in
     return sum(bool(request["is_urgent"]) for request in assigned)
 
 
-async def get_plan_detail(session: AsyncSession, plan_id: int) -> PlanDetail:
+async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int) -> PlanDetail:
     """План с маршрутами: порядок визитов, пробег и линия каждого маршрута, неназначенные заявки."""
     plan = await plans_repository.get_plan(session, plan_id)
-    if plan is None:
+    if plan is None or plan.office_id != office_id:
         raise PlanNotFoundError(f"План №{plan_id} не найден")
 
     stored_assignments = await plans_repository.list_plan_assignments(session, plan_id)

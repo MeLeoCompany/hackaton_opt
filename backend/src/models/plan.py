@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Enum, Numeric, Text, func
+from sqlalchemy import BigInteger, Date, DateTime, Enum, ForeignKey, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -46,3 +46,5 @@ class Plan(Base):
     # когда план утверждён; NULL — черновик. Утверждённый план на день только один:
     # его заявки закрепляются за ним и в планы других дней не попадают
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # чей план; утверждается один план на офис и день
+    office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))

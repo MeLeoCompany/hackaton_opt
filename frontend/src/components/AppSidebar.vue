@@ -6,8 +6,13 @@ import { ref } from 'vue'
 const props = defineProps({
   sections: { type: Array, required: true }, // [{ key, label, icon, items? }]
   activeTab: { type: String, required: true },
+  user: { type: Object, required: true },
+  isAdmin: { type: Boolean, required: true },
+  offices: { type: Array, default: () => [] },
+  officeId: { type: Number, default: null },
+  officeName: { type: String, default: '' },
 })
-const emit = defineEmits(['open'])
+const emit = defineEmits(['open', 'choose-office', 'logout'])
 
 const STORAGE_KEY = 'routing.sidebarExpanded'
 
@@ -68,6 +73,32 @@ function sectionIsActive(section) {
           {{ item.label }}
         </button>
       </div>
+    </div>
+
+    <!-- внизу: кто вошёл и в каком офисе. Диспетчер офис не выбирает — он из учётки -->
+    <div class="account">
+      <template v-if="expanded">
+        <div class="account-name" :title="user.login">{{ user.name }}</div>
+        <select
+          v-if="isAdmin"
+          :value="officeId"
+          class="office-select"
+          aria-label="офис, с которым работаете"
+          title="Офис, с которым работаете"
+          @change="emit('choose-office', Number($event.target.value))"
+        >
+          <option v-for="office in offices" :key="office.id" :value="office.id">Офис «{{ office.name }}»</option>
+        </select>
+        <div v-else class="account-office">Офис «{{ officeName }}»</div>
+      </template>
+      <button
+        class="logout"
+        :title="expanded ? '' : `${user.name} · офис «${officeName}» · выйти`"
+        @click="emit('logout')"
+      >
+        <span class="icon" aria-hidden="true">⎋</span>
+        <span v-if="expanded" class="label">Выйти</span>
+      </button>
     </div>
   </nav>
 </template>
@@ -143,6 +174,43 @@ function sectionIsActive(section) {
 .item-button.active {
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.account-name {
+  padding: 0 10px;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-office {
+  padding: 0 10px;
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.office-select {
+  margin: 0 4px;
+  font-size: 12px;
+}
+
+.logout {
+  padding: 8px 10px;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .sidebar button:hover:not(.active) {

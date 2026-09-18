@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
+import { isAtOffice } from '../src/utils/officePoint.js'
+
 function harness() {
   const file = fs.readFileSync(new URL('../src/composables/useEngineersTable.js', import.meta.url), 'utf8')
   // всё до первого объявления — импорты, они заменяются аргументами new Function
@@ -13,7 +15,7 @@ function harness() {
   const selectedDay = { value: '2026-08-17' }
   const make = new Function(
     'ref', 'watch', 'useMessages', 'useSelectedDay', 'toMoscowInputValue',
-    'fetchReferences', 'listEngineers',
+    'fetchReferences', 'listEngineers', 'isAtOffice',
     source + '; return useEngineersTable()',
   )
   const table = make(
@@ -24,6 +26,7 @@ function harness() {
     (value) => value,
     async () => ({ skills: [], priorities: [], transports: [], work_types: [] }),
     (day) => new Promise((resolve) => { lists[day] = resolve }),
+    isAtOffice,
   )
   return { table, lists, selectedDay }
 }
@@ -39,4 +42,29 @@ test('поздний ответ старого дня не заменяет ис
 
   assert.deepEqual(table.engineers.value, [{ id: 18 }])
   assert.equal(table.loading.value, false)
+})
+
+test('новая бригада по умолчанию стоит в своём офисе', async () => {
+  const { table } = harness()
+  table.references.value = {
+    skills: [],
+    priorities: [],
+    transports: [{ id: 1, name: 'Автомобиль' }],
+    work_types: [],
+    offices: [{ id: 3, name: 'Югоцентр', address: 'проезд Симферопольский, 7', latitude: 55.664757, longitude: 37.615839 }],
+  }
+
+  table.startCreate()
+
+  assert.equal(table.form.value.start_latitude, 55.664757)
+  assert.equal(table.form.value.start_longitude, 37.615839)
+})
+
+test('без офиса в справочнике координаты старта пустые', () => {
+  const { table } = harness()
+  table.references.value = { skills: [], priorities: [], transports: [], work_types: [] }
+
+  table.startCreate()
+
+  assert.equal(table.form.value.start_latitude, '')
 })
