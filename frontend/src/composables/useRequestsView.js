@@ -15,17 +15,20 @@ export const PAGE_SIZES = [10, 25, 50, 100]
 const DEFAULT_SORT = ''
 
 // sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
-// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
+// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки.
+// Ширины подобраны по самому длинному значению колонки («Общественный транспорт»,
+// «Локальная заявка / ремонт у клиента»): лишнее место здесь — это адреса в три строки,
+// когда боковое меню раскрыто. Адрес остаётся резиновым и забирает всё, что осталось.
 export const REQUEST_COLUMNS = [
   { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'is_active', label: 'Активна', sortKey: 'is_active', width: '110px' },
+  { key: 'is_active', label: 'Активна', sortKey: 'is_active', width: '100px' },
   { key: 'address', label: 'Адрес', sortKey: 'address', width: '' },
   { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px' },
-  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', width: '320px' },
-  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '110px' },
+  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', width: '265px' },
+  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '105px' },
   { key: 'window', label: 'Окно (МСК)', sortKey: 'window_start', width: '130px' },
-  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '130px' },
-  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '190px' },
+  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '120px' },
+  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '180px' },
   { key: 'actions', label: '', sortKey: null, width: '130px' },
 ]
 

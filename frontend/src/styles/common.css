@@ -556,6 +556,8 @@ button.link:disabled {
 
 .data-table td.wide-cell {
   min-width: 220px;
+  /* «ул.Грайвороновская,» длиннее колонки — переносим внутри слова, а не за край ячейки */
+  overflow-wrap: break-word;
 }
 
 .data-table td.empty {
