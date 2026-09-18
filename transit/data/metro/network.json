@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "kind": "metro_network_manifest",
+  "source": "OpenStreetMap через Overpass API (ODbL)",
+  "retrieved_at": "2026-09-18T15:56:58.570395+00:00",
+  "line_count": 17,
+  "lines": [
+    {
+      "ref": "1",
+      "name": "Сокольническая линия",
+      "file": "line-1.json",
+      "relation_ids": [
+        305810,
+        1475755
+      ],
+      "stops_by_direction": [
+        27,
+        27
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "2",
+      "name": "Замоскворецкая линия",
+      "file": "line-2.json",
+      "relation_ids": [
+        2657084,
+        2657085
+      ],
+      "stops_by_direction": [
+        24,
+        24
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "3",
+      "name": "Арбатско-Покровская линия",
+      "file": "line-3.json",
+      "relation_ids": [
+        302149,
+        1472298
+      ],
+      "stops_by_direction": [
+        22,
+        22
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "4",
+      "name": "Филёвская линия",
+      "file": "line-4.json",
+      "relation_ids": [
+        302148,
+        1463285
+      ],
+      "stops_by_direction": [
+        11,
+        11
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "5",
+      "name": "Кольцевая линия",
+      "file": "line-5.json",
+      "relation_ids": [
+        300607,
+        1462011
+      ],
+      "stops_by_direction": [
+        13,
+        13
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "6",
+      "name": "Калужско-Рижская линия",
+      "file": "line-6.json",
+      "relation_ids": [
+        300618,
+        1514369
+      ],
+      "stops_by_direction": [
+        24,
+        24
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "7",
+      "name": "Таганско-Краснопресненская линия",
+      "file": "line-7.json",
+      "relation_ids": [
+        309620,
+        1516303
+      ],
+      "stops_by_direction": [
+        23,
+        23
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "8",
+      "name": "Калининская линия",
+      "file": "line-8.json",
+      "relation_ids": [
+        326491,
+        1526350
+      ],
+      "stops_by_direction": [
+        8,
+        8
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "9",
+      "name": "Серпуховско-Тимирязевская линия",
+      "file": "line-9.json",
+      "relation_ids": [
+        301486,
+        1570093
+      ],
+      "stops_by_direction": [
+        25,
+        25
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "10",
+      "name": "Люблинско-Дмитровская линия",
+      "file": "line-10.json",
+      "relation_ids": [
+        309623,
+        1532874
+      ],
+      "stops_by_direction": [
+        26,
+        26
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "11",
+      "name": "Большая кольцевая линия",
+      "file": "line-11.json",
+      "relation_ids": [
+        13525792,
+        13525793
+      ],
+      "stops_by_direction": [
+        30,
+        30
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "12",
+      "name": "Бутовская линия",
+      "file": "line-12.json",
+      "relation_ids": [
+        1580607,
+        3873066
+      ],
+      "stops_by_direction": [
+        7,
+        7
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "15",
+      "name": "Некрасовская линия",
+      "file": "line-15.json",
+      "relation_ids": [
+        10011654,
+        10011655
+      ],
+      "stops_by_direction": [
+        8,
+        8
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "16",
+      "name": "Троицкая линия",
+      "file": "line-16.json",
+      "relation_ids": [
+        18020151,
+        18020152
+      ],
+      "stops_by_direction": [
+        11,
+        11
+      ],
+      "duration_estimated": true
+    },
+    {
+      "ref": "17",
+      "name": "Рублёво-Архангельская линия",
+      "file": "line-17.json",
+      "relation_ids": [
+        21362056,
+        21362057
+      ],
+      "stops_by_direction": [
+        5,
+        5
+      ],
+      "duration_estimated": true
+    },
+    {
+      "ref": "4А",
+      "name": "Филёвская линия",
+      "file": "line-4a.json",
+      "relation_ids": [
+        302147,
+        1463286
+      ],
+      "stops_by_direction": [
+        6,
+        6
+      ],
+      "duration_estimated": false
+    },
+    {
+      "ref": "8А",
+      "name": "Солнцевская линия",
+      "file": "line-8a.json",
+      "relation_ids": [
+        6855052,
+        6855053
+      ],
+      "stops_by_direction": [
+        14,
+        14
+      ],
+      "duration_estimated": false
+    }
+  ]
+}

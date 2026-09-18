@@ -150,7 +150,8 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                 ]
             )
             for pattern in dataset["patterns"]:
-                trip_id = f"{route_id}-{pattern['direction_id']}-frequency"
+                pattern_id = pattern.get("pattern_id", pattern["direction_id"])
+                trip_id = f"{route_id}-{pattern_id}-frequency"
                 tables["trips.txt"].append(
                     [route_id, service_id, trip_id, pattern["direction_id"], ""]
                 )

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from gtfs_pipeline.gtfs import build_gtfs
+from gtfs_pipeline.osm_metro import MetroDataError, normalize_line
 from gtfs_pipeline.transport_mos import (
     ScheduleParseError,
     collect_bus_route,
@@ -168,3 +169,28 @@ def test_multiple_dates_of_same_bus_route_do_not_duplicate_route_or_shape(
     assert counts["routes.txt"] == 2
     assert counts["trips.txt"] == 438
     assert counts["shapes.txt"] == 1899
+
+
+def test_all_checked_in_metro_lines_build_valid_gtfs(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    metro = sorted((root / "transit/data/metro").glob("line-*.json"))
+    output = tmp_path / "metro.zip"
+
+    build_gtfs(metro, output)
+
+    counts = validate_gtfs(output)
+    assert len(metro) == 17
+    assert counts["routes.txt"] == 17
+    assert counts["trips.txt"] == 34
+    assert counts["frequencies.txt"] == 204
+
+
+def test_metro_normalizer_rejects_single_direction() -> None:
+    raw = {
+        "elements": [
+            {"type": "relation", "id": 1, "tags": {"ref": "1"}, "members": []}
+        ]
+    }
+
+    with pytest.raises(MetroDataError, match="два направления"):
+        normalize_line(raw, relation_ids=[1])

@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "kind": "metro_frequency",
+  "source": {
+    "topology": "OpenStreetMap через Overpass API (ODbL)",
+    "topology_url": "https://www.openstreetmap.org/",
+    "relation_ids": [
+      301486,
+      1570093
+    ],
+    "operating_hours": "Единый транспортный портал Москвы",
+    "operating_hours_url": "https://transport.mos.ru/metro/rezhim",
+    "retrieved_at": "2026-09-18T15:56:58.566007+00:00"
+  },
+  "route": {
+    "source_route_id": "metro-9",
+    "short_name": "9",
+    "long_name": "Серпуховско-Тимирязевская линия",
+    "route_type": 1,
+    "color": "ADACAC"
+  },
+  "service": {
+    "start_date": "2026-09-18",
+    "end_date": "2026-12-31",
+    "daily": true,
+    "official_operating_window": [
+      "05:30:00",
+      "25:00:00"
+    ],
+    "headways": [
+      {
+        "start": "05:30:00",
+        "end": "06:30:00",
+        "seconds": 300
+      },
+      {
+        "start": "06:30:00",
+        "end": "10:00:00",
+        "seconds": 120
+      },
+      {
+        "start": "10:00:00",
+        "end": "16:00:00",
+        "seconds": 180
+      },
+      {
+        "start": "16:00:00",
+        "end": "20:00:00",
+        "seconds": 120
+      },
+      {
+        "start": "20:00:00",
+        "end": "23:00:00",
+        "seconds": 180
+      },
+      {
+        "start": "23:00:00",
+        "end": "25:00:00",
+        "seconds": 300
+      }
+    ],
+    "headway_note": "Расчётное приближение, не официальное расписание поездов.",
+    "duration_note": "Длительность всей поездки взята из отношения OSM."
+  },
+  "patterns": [
+    {
+      "pattern_id": "301486",
+      "direction_id": 0,
+      "headsign": "Бульвар Дмитрия Донского",
+      "duration_minutes": 60,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-6937152846",
+          "name": "Алтуфьево",
+          "lat": 55.8979232,
+          "lon": 37.5872554
+        },
+        {
+          "source_stop_id": "osm-node-6937152848",
+          "name": "Бибирево",
+          "lat": 55.8838284,
+          "lon": 37.6034891
+        },
+        {
+          "source_stop_id": "osm-node-6937152850",
+          "name": "Отрадное",
+          "lat": 55.8632165,
+          "lon": 37.604566
+        },
+        {
+          "source_stop_id": "osm-node-6937152852",
+          "name": "Владыкино",
+          "lat": 55.8471959,
+          "lon": 37.5898182
+        },
+        {
+          "source_stop_id": "osm-node-312814742",
+          "name": "Петровско-Разумовская",
+          "lat": 55.8350169,
+          "lon": 37.5742794
+        },
+        {
+          "source_stop_id": "osm-node-6937152854",
+          "name": "Тимирязевская",
+          "lat": 55.8171074,
+          "lon": 37.5762821
+        },
+        {
+          "source_stop_id": "osm-node-6937152856",
+          "name": "Дмитровская",
+          "lat": 55.8065401,
+          "lon": 37.581719
+        },
+        {
+          "source_stop_id": "osm-node-6937152858",
+          "name": "Савёловская",
+          "lat": 55.7924469,
+          "lon": 37.5886625
+        },
+        {
+          "source_stop_id": "osm-node-6937152860",
+          "name": "Менделеевская",
+          "lat": 55.7808733,
+          "lon": 37.6019012
+        },
+        {
+          "source_stop_id": "osm-node-6937152862",
+          "name": "Цветной бульвар",
+          "lat": 55.7709026,
+          "lon": 37.6177439
+        },
+        {
+          "source_stop_id": "osm-node-6937152868",
+          "name": "Чеховская",
+          "lat": 55.764884,
+          "lon": 37.608944
+        },
+        {
+          "source_stop_id": "osm-node-6937152870",
+          "name": "Боровицкая",
+          "lat": 55.7509611,
+          "lon": 37.6068809
+        },
+        {
+          "source_stop_id": "osm-node-6937152872",
+          "name": "Полянка",
+          "lat": 55.738104,
+          "lon": 37.6170396
+        },
+        {
+          "source_stop_id": "osm-node-6937152876",
+          "name": "Серпуховская",
+          "lat": 55.7279251,
+          "lon": 37.6246795
+        },
+        {
+          "source_stop_id": "osm-node-6937152878",
+          "name": "Тульская",
+          "lat": 55.7086642,
+          "lon": 37.6227144
+        },
+        {
+          "source_stop_id": "osm-node-6937223800",
+          "name": "Нагатинская",
+          "lat": 55.6829892,
+          "lon": 37.622316
+        },
+        {
+          "source_stop_id": "osm-node-6937223797",
+          "name": "Нагорная",
+          "lat": 55.6719609,
+          "lon": 37.6101763
+        },
+        {
+          "source_stop_id": "osm-node-6937223795",
+          "name": "Нахимовский проспект",
+          "lat": 55.6626792,
+          "lon": 37.6055396
+        },
+        {
+          "source_stop_id": "osm-node-6937223793",
+          "name": "Севастопольская",
+          "lat": 55.6526737,
+          "lon": 37.5983365
+        },
+        {
+          "source_stop_id": "osm-node-6937223791",
+          "name": "Чертановская",
+          "lat": 55.6404121,
+          "lon": 37.6066186
+        },
+        {
+          "source_stop_id": "osm-node-6937223789",
+          "name": "Южная",
+          "lat": 55.6222705,
+          "lon": 37.6091287
+        },
+        {
+          "source_stop_id": "osm-node-6937223787",
+          "name": "Пражская",
+          "lat": 55.6123917,
+          "lon": 37.604426
+        },
+        {
+          "source_stop_id": "osm-node-6937223785",
+          "name": "Улица Академика Янгеля",
+          "lat": 55.5949963,
+          "lon": 37.6003083
+        },
+        {
+          "source_stop_id": "osm-node-6937152883",
+          "name": "Аннино",
+          "lat": 55.5825379,
+          "lon": 37.5963676
+        },
+        {
+          "source_stop_id": "osm-node-6937152881",
+          "name": "Бульвар Дмитрия Донского",
+          "lat": 55.5692699,
+          "lon": 37.5767599
+        }
+      ]
+    },
+    {
+      "pattern_id": "1570093",
+      "direction_id": 1,
+      "headsign": "Алтуфьево",
+      "duration_minutes": 60,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-6937152882",
+          "name": "Бульвар Дмитрия Донского",
+          "lat": 55.5692176,
+          "lon": 37.5769794
+        },
+        {
+          "source_stop_id": "osm-node-6937152884",
+          "name": "Аннино",
+          "lat": 55.5825076,
+          "lon": 37.5967047
+        },
+        {
+          "source_stop_id": "osm-node-6937223786",
+          "name": "Улица Академика Янгеля",
+          "lat": 55.5949838,
+          "lon": 37.6005635
+        },
+        {
+          "source_stop_id": "osm-node-6937223788",
+          "name": "Пражская",
+          "lat": 55.6123662,
+          "lon": 37.6046262
+        },
+        {
+          "source_stop_id": "osm-node-6937223790",
+          "name": "Южная",
+          "lat": 55.6222474,
+          "lon": 37.60933
+        },
+        {
+          "source_stop_id": "osm-node-6937223792",
+          "name": "Чертановская",
+          "lat": 55.6405009,
+          "lon": 37.6067501
+        },
+        {
+          "source_stop_id": "osm-node-6937223794",
+          "name": "Севастопольская",
+          "lat": 55.6526753,
+          "lon": 37.5985367
+        },
+        {
+          "source_stop_id": "osm-node-6937223796",
+          "name": "Нахимовский проспект",
+          "lat": 55.6626215,
+          "lon": 37.6057194
+        },
+        {
+          "source_stop_id": "osm-node-6937223798",
+          "name": "Нагорная",
+          "lat": 55.6719361,
+          "lon": 37.6103772
+        },
+        {
+          "source_stop_id": "osm-node-6937223801",
+          "name": "Нагатинская",
+          "lat": 55.6829569,
+          "lon": 37.6225135
+        },
+        {
+          "source_stop_id": "osm-node-6937152879",
+          "name": "Тульская",
+          "lat": 55.7086648,
+          "lon": 37.6229201
+        },
+        {
+          "source_stop_id": "osm-node-6937152877",
+          "name": "Серпуховская",
+          "lat": 55.7279702,
+          "lon": 37.6249873
+        },
+        {
+          "source_stop_id": "osm-node-6937152873",
+          "name": "Полянка",
+          "lat": 55.7382183,
+          "lon": 37.617338
+        },
+        {
+          "source_stop_id": "osm-node-6937152871",
+          "name": "Боровицкая",
+          "lat": 55.7509817,
+          "lon": 37.6072316
+        },
+        {
+          "source_stop_id": "osm-node-6937152869",
+          "name": "Чеховская",
+          "lat": 55.7647628,
+          "lon": 37.6091913
+        },
+        {
+          "source_stop_id": "osm-node-6937152863",
+          "name": "Цветной бульвар",
+          "lat": 55.7708466,
+          "lon": 37.6180488
+        },
+        {
+          "source_stop_id": "osm-node-6937152861",
+          "name": "Менделеевская",
+          "lat": 55.7810494,
+          "lon": 37.6020608
+        },
+        {
+          "source_stop_id": "osm-node-6937152859",
+          "name": "Савёловская",
+          "lat": 55.7925297,
+          "lon": 37.5889811
+        },
+        {
+          "source_stop_id": "osm-node-6937152857",
+          "name": "Дмитровская",
+          "lat": 55.8065817,
+          "lon": 37.5820628
+        },
+        {
+          "source_stop_id": "osm-node-6937152855",
+          "name": "Тимирязевская",
+          "lat": 55.8171438,
+          "lon": 37.576495
+        },
+        {
+          "source_stop_id": "osm-node-5202080143",
+          "name": "Петровско-Разумовская",
+          "lat": 55.8347074,
+          "lon": 37.5746737
+        },
+        {
+          "source_stop_id": "osm-node-1270512427",
+          "name": "Владыкино",
+          "lat": 55.8471642,
+          "lon": 37.5900167
+        },
+        {
+          "source_stop_id": "osm-node-6937152851",
+          "name": "Отрадное",
+          "lat": 55.8631559,
+          "lon": 37.6047409
+        },
+        {
+          "source_stop_id": "osm-node-6937152849",
+          "name": "Бибирево",
+          "lat": 55.8839166,
+          "lon": 37.6036241
+        },
+        {
+          "source_stop_id": "osm-node-6937152847",
+          "name": "Алтуфьево",
+          "lat": 55.8979152,
+          "lon": 37.5874668
+        }
+      ]
+    }
+  ]
+}
