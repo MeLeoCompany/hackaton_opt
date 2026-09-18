@@ -13,13 +13,16 @@ from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
 from src.models import AppUser
 from src.schemas.plans import (
+    DaySyncReport,
+    DaySyncRequest,
+    DaySyncState,
     PlanBuildRequest,
     PlanDayCheck,
     PlanDetail,
     PlanningDayOption,
     PlanSummary,
 )
-from src.services.planner import planning_service
+from src.services.planner import day_sync_service, planning_service
 
 router = APIRouter()
 
@@ -73,6 +76,63 @@ async def check_planning_day(
     office_id: int = Depends(current_office_id),
 ):
     return await planning_service.check_planning_day(session, plan_date, office_id=office_id)
+
+
+@router.get(
+    "/day-sync",
+    response_model=DaySyncState,
+    summary="До какого времени статусы заявок дня синхронизированы с планом",
+)
+async def get_day_sync(
+    plan_date: date,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await day_sync_service.get_day_sync_state(session, plan_date, office_id=office_id)
+
+
+@router.post(
+    "/day-sync/preview",
+    response_model=DaySyncReport,
+    summary="Что сделает синхронизация дня с планом на это время — без сохранения",
+)
+async def preview_day_sync(
+    payload: DaySyncRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    return await day_sync_service.sync_day(
+        session,
+        payload.plan_date,
+        payload.sync_time,
+        office_id=office_id,
+        user_id=user.id,
+        apply=False,
+    )
+
+
+@router.post(
+    "/day-sync",
+    response_model=DaySyncReport,
+    summary="Синхронизировать статусы заявок дня с утверждённым планом на это время",
+)
+async def run_day_sync(
+    payload: DaySyncRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    """Выполненные по плану — «Выполнена», к которым бригада выехала — «В работе», «Новые»
+    с прошедшим окном вне плана — «Отменена». Все или ничего; время назад не откатывается."""
+    return await day_sync_service.sync_day(
+        session,
+        payload.plan_date,
+        payload.sync_time,
+        office_id=office_id,
+        user_id=user.id,
+        apply=True,
+    )
 
 
 @router.post("/{plan_id}/approval", response_model=PlanSummary, summary="Утвердить план дня")

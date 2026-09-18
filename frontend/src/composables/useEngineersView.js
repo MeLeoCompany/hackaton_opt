@@ -18,7 +18,8 @@ export const ENGINEER_COLUMNS = [
   { key: 'shift', label: 'Смена (МСК)', sortKey: 'shift_start', width: '130px' },
   // откуда выезжает: значок офиса или своей точки; в правке по значку открывается карта
   { key: 'start', label: 'Старт', sortKey: null, width: '72px' },
-  { key: 'actions', label: '', sortKey: null, width: '130px' },
+  // кнопки правки и удаления не сужаются — как у заявок
+  { key: 'actions', label: '', sortKey: null, width: '130px', fixed: true },
 ]
 
 // '' — сортировка не выбрана: строки идут в порядке бэкенда

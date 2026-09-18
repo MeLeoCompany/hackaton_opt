@@ -34,7 +34,8 @@ export const REQUEST_COLUMNS = [
   { key: 'window', label: 'Окно (МСК)', sortKey: 'window_start', width: '130px' },
   { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '120px', floor: 105 },
   { key: 'transport', label: 'Транспорт', sortKey: 'transport', grow: 1, minWidth: 125 },
-  { key: 'actions', label: '', sortKey: null, width: '130px', floor: 100 },
+  // кнопки правки и удаления не сужаются: той же ширины, что выгрузка и синхронизация над ними
+  { key: 'actions', label: '', sortKey: null, width: '130px', fixed: true },
 ]
 
 // по фильтру на каждую колонку таблицы

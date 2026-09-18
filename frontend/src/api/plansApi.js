@@ -35,3 +35,18 @@ export function cancelPlanApproval(planId) {
 export function checkPlanningDay(planDate) {
   return apiRequest('GET', `/plans/day-check?plan_date=${encodeURIComponent(planDate)}`)
 }
+
+// до какого времени статусы заявок дня синхронизированы с планом: { synced_to, synced_at, user_name }
+export function getDaySync(planDate) {
+  return apiRequest('GET', `/plans/day-sync?plan_date=${encodeURIComponent(planDate)}`)
+}
+
+// что сделает синхронизация дня на это время — ничего не меняя; syncTime — ISO с поясом
+export function previewDaySync(planDate, syncTime) {
+  return apiRequest('POST', '/plans/day-sync/preview', { json: { plan_date: planDate, sync_time: syncTime } })
+}
+
+// синхронизировать: статусы заявок дня приводятся к утверждённому плану на это время
+export function runDaySync(planDate, syncTime) {
+  return apiRequest('POST', '/plans/day-sync', { json: { plan_date: planDate, sync_time: syncTime } })
+}

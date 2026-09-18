@@ -50,3 +50,12 @@ test('пока ширина неизвестна — удобная раскла
   assert.equal(widths.address, 180)
   assert.equal(widths.coordinates, 140)
 })
+
+test('совсем узкое окно: колонка с кнопками (fixed) своей ширины, ужимаются остальные', () => {
+  const columns = COLUMNS.map((column) => (column.key === 'actions' ? { ...column, fixed: true } : column))
+  const widths = columnWidths(columns, 400)
+
+  assert.equal(widths.actions, 130)
+  assert.ok(widths.id < 100)
+  assert.ok(total(widths) <= 400)
+})

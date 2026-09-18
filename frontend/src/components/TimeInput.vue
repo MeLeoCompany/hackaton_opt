@@ -43,6 +43,9 @@ function onInput(event) {
   text.value = maskTimeInput(event.target.value)
   event.target.value = text.value
   open.value = true
+  // время набрано целиком — отдаём сразу, не дожидаясь ухода из поля: фильтр и предпросмотр
+  // синхронизации обновляются по ходу набора
+  if (/^\d\d:\d\d$/.test(text.value)) emit('update:modelValue', text.value)
 }
 
 async function openDropdown() {

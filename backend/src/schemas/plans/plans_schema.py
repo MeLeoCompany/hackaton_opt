@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
@@ -144,3 +144,54 @@ class PlanDetail(PlanSummary):
     total_distance_km: float
     routes: list[EngineerRoute]
     unassigned: list[UnassignedRequest]
+
+
+class DaySyncRequest(BaseModel):
+    """Синхронизировать день офиса с утверждённым планом на это время."""
+
+    plan_date: date
+    sync_time: datetime
+
+    @model_validator(mode="after")
+    def check_time_zone(self) -> "DaySyncRequest":
+        if self.sync_time.tzinfo is None:
+            raise ValueError(
+                "время синхронизации — с часовым поясом, например 2026-08-17T14:30:00+03:00"
+            )
+        return self
+
+
+class DaySyncTransition(BaseModel):
+    """Какой статус заявка получит при синхронизации и почему."""
+
+    request_id: int
+    address: str
+    from_status_id: int
+    to_status_id: int
+    reason: str
+    warning: bool = False  # «Новая» уходит в «Отменена»: окно прошло, а в плане её нет
+
+
+class DaySyncState(BaseModel):
+    """До какого времени день офиса синхронизирован; synced_to None — ещё ни разу."""
+
+    plan_date: date
+    synced_to: datetime | None = None
+    synced_at: datetime | None = None
+    user_name: str | None = None
+
+
+class DaySyncReport(BaseModel):
+    """Переходы синхронизации: в предпросмотре — что будет, после выполнения — что сделано.
+
+    problems — почему синхронизировать нельзя (например, разрыв в маршруте бригады):
+    тогда не меняется ничего.
+    """
+
+    plan_date: date
+    sync_time: datetime
+    approved_plan_id: int | None = None
+    last_synced_to: datetime | None = None
+    transitions: list[DaySyncTransition] = []
+    problems: list[str] = []
+    applied: bool = False

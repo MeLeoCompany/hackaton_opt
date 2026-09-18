@@ -1,7 +1,9 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
+import DaySyncDialog from '../components/DaySyncDialog.vue'
 import ErrorMessage from '../components/ErrorMessage.vue'
+import IconButton from '../components/IconButton.vue'
 import DayPanel from '../components/DayPanel.vue'
 import RequestDetailsCard from '../components/RequestDetailsCard.vue'
 import RequestHistoryDialog from '../components/RequestHistoryDialog.vue'
@@ -9,10 +11,13 @@ import RequestsFilters from '../components/RequestsFilters.vue'
 import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
 import RequestsTable from '../components/RequestsTable.vue'
+import { getDaySync } from '../api/plansApi.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
 import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
-import { manualTransitions, orderedStatuses } from '../utils/requestStatuses.js'
+import { useSelectedDay } from '../composables/useSelectedDay.js'
+import { formatSyncMoment, syncSummary } from '../utils/daySync.js'
+import { statusCode } from '../utils/requestStatuses.js'
 
 // данные и их изменение
 const {
@@ -80,23 +85,12 @@ const selectedRequest = computed(
 // сколько заявок пойдёт в расчёт плана: статусы Новая и В плане
 const activeTotal = computed(() => requests.value.filter((request) => request.is_active).length)
 
-// Перевести разом показанные заявки. В списке — статусы, куда оператор может перевести
-// хоть одну из показанных; переводятся только те, для кого такой переход есть.
-const bulkStatusId = ref('')
-const bulkTargets = computed(() =>
-  orderedStatuses(references.value)
-    .map((status) => ({
-      ...status,
-      requestIds: filteredRequests.value
-        .filter((request) =>
-          manualTransitions(references.value, request.status_id, request.approved_plan_id ?? null).some(
-            (transition) => transition.to_status_id === status.id,
-          ),
-        )
-        .map((request) => request.id),
-    }))
-    .filter((target) => target.requestIds.length),
-)
+// подсказка к отметке синхронизации: когда и кто её сделал
+const syncTitle = computed(() => {
+  if (!daySync.value?.synced_at) return ''
+  const who = daySync.value.user_name ? `, ${daySync.value.user_name}` : ''
+  return `Синхронизацию выполнили ${formatSyncMoment(daySync.value.synced_at, selectedDay.value)}${who}`
+})
 
 // заявка, чья история открыта в окне
 const historyRequestId = ref(null)
@@ -121,15 +115,6 @@ function changeStatus(request, statusId) {
   setStatus([request.id], statusId)
 }
 
-function setStatusForShown() {
-  const target = bulkTargets.value.find((item) => item.id === bulkStatusId.value)
-  bulkStatusId.value = ''
-  if (!target) return
-  const count = target.requestIds.length
-  if (count > 1 && !window.confirm(`Перевести в «${target.name}» показанные заявки: ${count} шт.?`)) return
-  setStatus(target.requestIds, target.id)
-}
-
 // заявка из плана может быть скрыта фильтрами прошлой работы — тогда фильтры снимаем,
 // иначе выделение тут же слетит и диспетчер решит, что заявки нет
 function focusRequest(requestId) {
@@ -142,8 +127,38 @@ function focusRequest(requestId) {
   selectRequest(requestId)
 }
 
+// ---- синхронизация дня с утверждённым планом ----
+
+const { selectedDay } = useSelectedDay()
+// до какого времени день синхронизирован: { synced_to, synced_at, user_name }
+const daySync = ref(null)
+// открытое окно синхронизации: 'now' — на текущее время, 'custom' — на заданное; null — закрыто
+const syncMode = ref(null)
+
+async function loadDaySync() {
+  const day = selectedDay.value
+  try {
+    const state = await getDaySync(day)
+    if (day === selectedDay.value) daySync.value = state
+  } catch {
+    // без отметки о синхронизации страница работает, кнопки тоже
+    daySync.value = null
+  }
+}
+
+async function onSynced(report) {
+  syncMode.value = null
+  await Promise.all([load(), loadDaySync()])
+  showNotice(
+    `Синхронизировано на ${formatSyncMoment(report.sync_time, report.plan_date)}: ` +
+      syncSummary(report.transitions, (statusId) => statusCode(references.value, statusId)),
+  )
+}
+
+watch(selectedDay, loadDaySync)
+
 onMounted(async () => {
-  await load()
+  await Promise.all([load(), loadDaySync()])
   const requestId = takeRequestId()
   if (requestId !== null) focusRequest(requestId)
 })
@@ -199,19 +214,26 @@ onMounted(async () => {
           </button>
         </div>
 
-        <div class="list-bar-group">
-          <select
-            v-model="bulkStatusId"
-            class="bulk-status"
-            aria-label="перевести показанные заявки в статус"
-            :disabled="editingId !== null || !bulkTargets.length"
-            @change="setStatusForShown"
-          >
-            <option value="">Перевести показанные…</option>
-            <option v-for="target in bulkTargets" :key="target.id" :value="target.id">
-              в «{{ target.name }}» — {{ target.requestIds.length }}
-            </option>
-          </select>
+        <!-- синхронизация дня с утверждённым планом: на текущее время или на заданное.
+             Значки справа, под выгрузкой и загрузкой дня — тем же блоком того же размера -->
+        <span v-if="daySync?.synced_to" class="list-bar-note sync-note" :title="syncTitle">
+          Синхронизировано на {{ formatSyncMoment(daySync.synced_to, selectedDay) }}
+        </span>
+        <div :class="['sync-buttons', { 'after-note': daySync?.synced_to }]">
+          <IconButton
+            icon="sync"
+            class="sync-now"
+            label="Синхронизировать с планом на текущее время"
+            :disabled="editingId !== null"
+            @click="syncMode = 'now'"
+          />
+          <IconButton
+            icon="clock"
+            class="sync-at"
+            label="Синхронизировать с планом на заданное время"
+            :disabled="editingId !== null"
+            @click="syncMode = 'custom'"
+          />
         </div>
       </div>
 
@@ -279,6 +301,16 @@ onMounted(async () => {
       </div>
     </template>
 
+    <DaySyncDialog
+      v-if="syncMode"
+      :plan-date="selectedDay"
+      :mode="syncMode"
+      :references="references"
+      :last-synced-to="daySync?.synced_to ?? null"
+      @close="syncMode = null"
+      @done="onSynced"
+    />
+
     <RequestHistoryDialog
       v-if="historyRequestId !== null"
       :request-id="historyRequestId"
@@ -293,8 +325,32 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.bulk-status {
+/* как блок выгрузки и загрузки в полосе дня над ним: у правого края, та же ширина, те же
+   кнопки — значки стоят ровно под теми */
+.sync-note {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.sync-buttons {
+  display: flex;
+  flex-shrink: 0; /* на узком экране (раскрыто меню) полоса не сжимает значки */
+  align-items: center;
+  gap: 6px;
+  width: 125px;
+  margin-left: auto;
+  /* у полосы дня внутренний отступ справа — отступаем так же, чтобы значки стояли под теми */
+  margin-right: 7px;
+  padding-left: 6px;
+  border-left: 1px solid #e2e8f0;
+}
+
+.sync-buttons.after-note {
+  margin-left: 0;
+}
+
+.sync-buttons :deep(.icon-button) {
+  flex: 1;
   width: auto;
-  min-width: 210px;
 }
 </style>
