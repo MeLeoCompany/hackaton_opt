@@ -1,4 +1,4 @@
-// Планы на выбранный день: пара baseline/cuOpt и выбранный оптимизированный план с маршрутами.
+// Планы на выбранный день и выбранный план с маршрутами.
 
 import { ref, watch } from 'vue'
 
@@ -109,7 +109,7 @@ export function usePlans() {
 
   async function removePlan(summary) {
     if (building.value) return
-    if (!window.confirm(`Удалить план №${summary.id} и связанный baseline? Их назначения будут удалены.`)) return
+    if (!window.confirm(`Удалить план №${summary.id}? Его назначения будут удалены.`)) return
     const day = selectedDay.value
     building.value = true
     clearMessages()

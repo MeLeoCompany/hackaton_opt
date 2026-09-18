@@ -8,11 +8,12 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates
-from src.models import Assignment, Plan, PlanRunType
+from src.models import Assignment, Plan, PlanRunType, Request
 from src.repositories.plans import plans_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
@@ -221,16 +222,38 @@ async def approve_plan(session: AsyncSession, plan_id: int) -> PlanSummary:
     plan = await find_plan(session, plan_id)
     if plan.approved_at is not None:
         return (await summarize_plans(session, [plan]))[0]
+    if plan.plan_date is None:
+        raise PlanDataError(
+            [f"План №{plan_id} создан до поддержки дней планирования и не может быть утверждён"]
+        )
+    plan_date = plan.plan_date
 
-    approved = await plans_repository.get_approved_plan(session, plan.plan_date)
+    approved = await plans_repository.get_approved_plan(session, plan_date)
     if approved is not None:
         raise PlanInUseError(
-            f"На {plan.plan_date:%d.%m.%Y} уже утверждён план №{approved.id}: "
+            f"На {plan_date:%d.%m.%Y} уже утверждён план №{approved.id}: "
             "снимите утверждение с него, чтобы утвердить другой"
         )
 
-    await plans_repository.hold_plan_requests(session, plan, datetime.now(UTC))
-    await session.commit()
+    held_count, assigned_count = await plans_repository.hold_plan_requests(
+        session, plan, datetime.now(UTC)
+    )
+    if held_count != assigned_count:
+        await session.rollback()
+        raise PlanInUseError(
+            f"План №{plan_id} устарел: часть его заявок уже закреплена за другим "
+            "утверждённым планом. Пересчитайте план на актуальных данных"
+        )
+    try:
+        await session.commit()
+    except IntegrityError as error:
+        # Частичный уникальный индекс окончательно разрешает гонку двух одновременных
+        # утверждений одного дня. Превращаем техническую ошибку БД в понятный конфликт.
+        await session.rollback()
+        raise PlanInUseError(
+            f"На {plan_date:%d.%m.%Y} одновременно был утверждён другой план; "
+            "обновите список планов"
+        ) from error
     return (await summarize_plans(session, [plan]))[0]
 
 
@@ -258,17 +281,21 @@ async def check_planning_day(session: AsyncSession, plan_date: date) -> PlanDayC
         plan_date=plan_date,
         active_requests=len(requests),
         approved_plan_id=approved.id if approved else None,
-        held_requests=[
-            HeldRequest(
-                request_id=request.id,
-                address=request.address,
-                window_start=request.window_start,
-                window_end=request.window_end,
-                plan_id=plan.id,
-                plan_date=plan.plan_date,
-            )
-            for request, plan in held
-        ],
+        held_requests=[to_held_request(request, plan) for request, plan in held],
+    )
+
+
+def to_held_request(request: Request, plan: Plan) -> HeldRequest:
+    """Исторический план без даты не должен попадать сюда, но не отдаём битый ответ API."""
+    if plan.plan_date is None:
+        raise PlanDataError([f"Утверждённый план №{plan.id} не содержит дату планирования"])
+    return HeldRequest(
+        request_id=request.id,
+        address=request.address,
+        window_start=request.window_start,
+        window_end=request.window_end,
+        plan_id=plan.id,
+        plan_date=plan.plan_date,
     )
 
 

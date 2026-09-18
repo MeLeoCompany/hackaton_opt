@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -62,22 +62,42 @@ async def get_approved_plan(session: AsyncSession, plan_date: date) -> Plan | No
     return result.scalar_one_or_none()
 
 
-async def hold_plan_requests(session: AsyncSession, plan: Plan, approved_at: datetime) -> int:
+async def hold_plan_requests(
+    session: AsyncSession, plan: Plan, approved_at: datetime
+) -> tuple[int, int]:
     """Утверждает план и закрепляет за ним назначенные заявки.
 
     Закреплённую заявку не возьмут планы других дней: иначе заявка с окном через полночь
-    выполнялась бы дважды — в плане вчерашнего и в плане сегодняшнего дня.
+    выполнялась бы дважды — в плане вчерашнего и в плане сегодняшнего дня. Уже закреплённые
+    другим планом заявки не перезаписываются; вызывающий код сравнивает два счётчика и при
+    расхождении откатывает всю транзакцию.
     """
-    plan.approved_at = approved_at
     assigned = (
         select(Assignment.request_id)
         .where(Assignment.plan_id == plan.id, Assignment.engineer_id.is_not(None))
         .scalar_subquery()
     )
-    result = await session.execute(
-        update(Request).where(Request.id.in_(assigned)).values(approved_plan_id=plan.id)
+    assigned_count = int(
+        await session.scalar(
+            select(func.count()).select_from(Assignment).where(
+                Assignment.plan_id == plan.id,
+                Assignment.engineer_id.is_not(None),
+            )
+        )
+        or 0
     )
-    return result.rowcount or 0
+    result = await session.execute(
+        update(Request)
+        .where(
+            Request.id.in_(assigned),
+            or_(Request.approved_plan_id.is_(None), Request.approved_plan_id == plan.id),
+        )
+        .values(approved_plan_id=plan.id)
+    )
+    held_count = result.rowcount or 0
+    if held_count == assigned_count:
+        plan.approved_at = approved_at
+    return held_count, assigned_count
 
 
 async def release_plan_requests(session: AsyncSession, plan: Plan) -> int:
