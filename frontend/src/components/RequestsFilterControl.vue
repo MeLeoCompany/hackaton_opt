@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 
 import { EQUIPMENT_ANY, NO_TRANSPORT } from '../composables/useRequestsView.js'
+import { orderedStatuses } from '../utils/requestStatuses.js'
 
 import TimeInput from './TimeInput.vue'
 
@@ -40,10 +41,9 @@ const workTypeOrEquipment = computed({
     aria-label="фильтр по номеру заявки"
   />
 
-  <select v-else-if="column === 'is_active'" v-model="filters.activity" aria-label="фильтр по планированию">
-    <option value="">все</option>
-    <option value="active">активные</option>
-    <option value="inactive">выключенные</option>
+  <select v-else-if="column === 'status'" v-model="filters.statusId" aria-label="фильтр по статусу">
+    <option value="">любой</option>
+    <option v-for="status in orderedStatuses(references)" :key="status.id" :value="status.id">{{ status.name }}</option>
   </select>
 
   <input

@@ -5,6 +5,8 @@ import DayTimeRange from './DayTimeRange.vue'
 import EquipmentPicker from './EquipmentPicker.vue'
 import IconButton from './IconButton.vue'
 import PointPickerButton from './PointPickerButton.vue'
+import RequestStatusMenu from './RequestStatusMenu.vue'
+import { statusIdByCode } from '../utils/requestStatuses.js'
 
 const props = defineProps({
   form: { type: Object, required: true },
@@ -23,11 +25,13 @@ function applyPickedPoint(latitude, longitude) {
 
 <template>
   <td>
-    <!-- тот же переключатель, что в обычной строке: при переходе в правку он не должен пропадать -->
-    <label class="switch" :title="form.is_active ? 'Учитывается при планировании' : 'Не учитывается при планировании'">
-      <input v-model="form.is_active" type="checkbox" />
-      <span class="slider"></span>
-    </label>
+    <!-- статус правкой не меняется — только переходами (плашка в строке таблицы) и
+         утверждением плана; новая заявка появляется «Новой» -->
+    <RequestStatusMenu
+      :status-id="form.status_id ?? statusIdByCode(references, 'new')"
+      :references="references"
+      readonly
+    />
   </td>
   <td>
     <input v-model="form.address" class="wide-input" placeholder="Город Москва, ул. …" />

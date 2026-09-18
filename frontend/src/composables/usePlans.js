@@ -191,6 +191,20 @@ export function usePlans() {
   // сменили день — показываем планы нового дня
   watch(selectedDay, loadPlans)
 
+  // оператор сменил статус заявки в маршруте — показываем его у визита без перезагрузки плана.
+  // «Новая» бэкенд отвязывает от плана, возврат «В план» — закрепляет за этим планом снова
+  function markVisitStatus(requestId, statusId) {
+    const code = references.value.request_statuses?.find((status) => status.id === statusId)?.code
+    for (const route of plan.value?.routes ?? []) {
+      for (const visit of route.visits) {
+        if (visit.request_id !== requestId) continue
+        visit.status_id = statusId
+        if (code === 'new') visit.approved_plan_id = null
+        if (code === 'planned') visit.approved_plan_id = plan.value.id
+      }
+    }
+  }
+
   // повторный клик по тому же исполнителю снимает подсветку
   function selectEngineer(engineerId) {
     selectedEngineerId.value = selectedEngineerId.value === engineerId ? null : engineerId
@@ -219,5 +233,6 @@ export function usePlans() {
     approve,
     cancelApproval,
     selectEngineer,
+    markVisitStatus,
   }
 }

@@ -132,3 +132,27 @@ test('назад к списку: поздний ответ открывавше
   assert.equal(plans.plan.value, null)
   assert.equal(plans.loadingPlan.value, false)
 })
+
+test('сменённый в маршруте статус виден у визита без перезагрузки плана', async () => {
+  const { plans, details } = harness()
+  const opening = plans.selectPlan(22)
+  details[22]({ id: 22, routes: [{ visits: [{ request_id: 1, status_id: 2 }, { request_id: 2, status_id: 2 }] }] })
+  await opening
+
+  plans.markVisitStatus(1, 5)
+
+  assert.deepEqual(plans.plan.value.routes[0].visits.map((visit) => visit.status_id), [5, 2])
+})
+
+test('возвращённая в «Новая» заявка снимается с плана, возврат «В план» закрепляет снова', async () => {
+  const { plans, details } = harness()
+  plans.references.value = { request_statuses: [{ id: 1, code: 'new' }, { id: 2, code: 'planned' }] }
+  const opening = plans.selectPlan(22)
+  details[22]({ id: 22, routes: [{ visits: [{ request_id: 1, status_id: 4, approved_plan_id: 22 }] }] })
+  await opening
+
+  plans.markVisitStatus(1, 1)
+  assert.equal(plans.plan.value.routes[0].visits[0].approved_plan_id, null)
+  plans.markVisitStatus(1, 2)
+  assert.equal(plans.plan.value.routes[0].visits[0].approved_plan_id, 22)
+})

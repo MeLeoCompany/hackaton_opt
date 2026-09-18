@@ -14,8 +14,10 @@ import { routeColor } from '../utils/routeColors.js'
 const props = defineProps({
   plan: { type: Object, required: true },
   selectedEngineerId: { type: Number, default: null },
+  // заявка, к которой перешли из «Заявок»: её точка крупнее, с обводкой и подписью
+  focusedRequestId: { type: Number, default: null },
 })
-const emit = defineEmits(['select-engineer'])
+const emit = defineEmits(['select-engineer', 'focus-request'])
 
 const UNASSIGNED_COLOR = '#94a3b8'
 
@@ -30,16 +32,18 @@ function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>"']/g, (symbol) => `&#${symbol.charCodeAt(0)};`)
 }
 
-function visitIcon(visitOrder, color) {
+function visitIcon(visitOrder, color, focused = false) {
+  const size = focused ? 32 : 22
+  const ring = focused ? '0 0 0 4px #0f172a, 0 0 0 9px rgb(250 204 21 / 70%)' : '0 1px 3px rgb(0 0 0 / 40%)'
   return L.divIcon({
     className: '',
     html:
-      `<span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;` +
-      `border-radius:50%;background:${color};color:#fff;font:600 11px/1 system-ui,sans-serif;` +
-      `border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0 / 40%)">` +
+      `<span style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;` +
+      `border-radius:50%;background:${color};color:#fff;font:600 ${focused ? 14 : 11}px/1 system-ui,sans-serif;` +
+      `border:2px solid #fff;box-shadow:${ring}">` +
       `${visitOrder}</span>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   })
 }
 
@@ -47,8 +51,12 @@ function routePoints(route) {
   return [[route.start_latitude, route.start_longitude], ...route.visits.map((visit) => [visit.latitude, visit.longitude])]
 }
 
+// маркер выделенной заявки: после подгонки масштаба у него открывается подпись
+let focusedMarker = null
+
 function drawPlan() {
   planLayer.clearLayers()
+  focusedMarker = null
 
   // выбран исполнитель — рисуем только его маршрут: с десятком маршрутов карта иначе тормозит
   props.plan.routes.forEach((route, routeIndex) => {
@@ -79,15 +87,27 @@ function drawPlan() {
       .addTo(planLayer)
 
     for (const visit of route.visits) {
-      L.marker([visit.latitude, visit.longitude], { icon: visitIcon(visit.visit_order, color) })
+      const focused = visit.request_id === props.focusedRequestId
+      // заявку сняли с утверждённого плана — точка серая: бригада к ней больше не едет
+      const removed = Boolean(props.plan.approved_at) && visit.approved_plan_id !== props.plan.id
+      const marker = L.marker([visit.latitude, visit.longitude], {
+        icon: visitIcon(visit.visit_order, removed ? UNASSIGNED_COLOR : color, focused),
+        zIndexOffset: focused ? 1000 : 0,
+      })
+      marker
         .bindTooltip(
           `<b>${visit.visit_order}. ${moscowTimeOf(visit.planned_arrival_time)}</b> · заявка №${visit.request_id}<br>` +
             `${escapeHtml(visit.address)}<br>` +
             `<span style="color:#64748b">${escapeHtml(route.engineer_name)}</span>`,
           { direction: 'top', offset: [0, -8] },
         )
-        .on('click', selectThisRoute)
+        // клик по точке — подсветка переходит на эту заявку; маршрут не снимается
+        .on('click', () => {
+          emit('focus-request', visit.request_id)
+          if (props.selectedEngineerId === null) selectThisRoute()
+        })
         .addTo(planLayer)
+      if (focused) focusedMarker = marker
     }
   })
 
@@ -110,11 +130,18 @@ function drawPlan() {
   // масштаб подгоняем только при смене плана — при выборе исполнителя карта не прыгает
   if (fittedPlanId !== props.plan.id) {
     fittedPlanId = props.plan.id
-    fitTo([
-      ...props.plan.routes.flatMap(routePoints),
-      ...props.plan.unassigned.map((request) => [request.latitude, request.longitude]),
-    ])
+    // открыли план сразу на маршруте бригады (переход из заявки) — масштаб по этому маршруту
+    const selectedRoute = props.plan.routes.find((route) => route.engineer_id === props.selectedEngineerId)
+    fitTo(
+      selectedRoute
+        ? routePoints(selectedRoute)
+        : [
+            ...props.plan.routes.flatMap(routePoints),
+            ...props.plan.unassigned.map((request) => [request.latitude, request.longitude]),
+          ],
+    )
   }
+  focusedMarker?.openTooltip()
 }
 
 function fitTo(points) {
@@ -143,6 +170,10 @@ onMounted(async () => {
     maxZoom: 19,
   }).addTo(map)
   planLayer = L.layerGroup().addTo(map)
+  // клик по пустому месту карты снимает подсветку заявки: точки её сами не пропускают к карте
+  map.on('click', () => {
+    if (props.focusedRequestId !== null) emit('focus-request', null)
+  })
 
   await nextTick()
   map.invalidateSize()
@@ -153,6 +184,13 @@ onBeforeUnmount(() => map?.remove())
 
 watch(() => props.plan, drawPlan)
 watch(() => props.selectedEngineerId, showSelectedRoute)
+// подсветку перенесли кликом в карточке маршрута — точка могла оказаться за краем карты
+function showFocused() {
+  drawPlan()
+  if (focusedMarker && !map.getBounds().contains(focusedMarker.getLatLng())) map.panTo(focusedMarker.getLatLng())
+}
+
+watch(() => props.focusedRequestId, showFocused)
 </script>
 
 <template>

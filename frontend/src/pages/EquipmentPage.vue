@@ -3,6 +3,7 @@
 // (колонка «Тип работ» на вкладке заявок). Тип, который требуют заявки, не удалить.
 import { onMounted } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import IconButton from '../components/IconButton.vue'
 import { useAuth } from '../composables/useAuth.js'
 import { NEW_EQUIPMENT, useEquipment } from '../composables/useEquipment.js'
@@ -37,12 +38,7 @@ onMounted(load)
       <p>Всего {{ equipment.length }} · что техник привозит на заявку</p>
     </header>
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю оборудование…</p>
 

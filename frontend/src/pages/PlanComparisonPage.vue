@@ -3,6 +3,7 @@
 // Клик по плану открывает его на вкладке «Планы» — подробности по заявкам и маршрутам там.
 import { onMounted } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import { usePlanComparison } from '../composables/usePlanComparison.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
@@ -53,12 +54,7 @@ onMounted(load)
 
     <DayPanel :summary="`планов на этот день ${plans.length}`" />
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю планы…</p>
     <p v-else-if="plans.length < 2" class="muted">

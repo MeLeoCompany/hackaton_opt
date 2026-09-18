@@ -2,10 +2,12 @@
 // Маршруты исполнителей: кто, куда и во сколько едет (ТЗ 2.4.2), и неназначенные заявки
 // с причинами. Характеристики плана (назначено, исполнителей, пробег) — в строке плана
 // в списке планов, здесь их не повторяем.
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
+import { statusCode } from '../utils/requestStatuses.js'
+import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { formatDuration } from '../utils/duration.js'
 import { routeColor } from '../utils/routeColors.js'
 
@@ -17,8 +19,40 @@ const props = defineProps({
   references: { type: Object, required: true },
   selectedEngineerId: { type: Number, default: null },
   besideMap: { type: Boolean, default: false }, // рядом с картой: карточки вместо таблицы
+  approved: { type: Boolean, default: false }, // план утверждён — статусы визитов можно менять
+  focusedRequestId: { type: Number, default: null }, // заявка, к которой перешли из «Заявок»
 })
-const emit = defineEmits(['select-engineer'])
+const emit = defineEmits(['select-engineer', 'visit-status-changed', 'focus-request'])
+
+// из подсвеченного визита — обратно к заявке на вкладке «Заявки»
+const { openRequest } = usePlanFocus()
+
+// у визита показываем статус, только когда бригада до него уже добралась или его отменили:
+// «В плане» у каждого визита утверждённого плана — шум
+const MARKED_STATUSES = ['in_progress', 'done', 'cancelled']
+
+// визит утверждённого плана, чья заявка за ним больше не закреплена: её вернули в «Новая»,
+// и она ждёт нового расчёта — в этом плане бригада к ней не едет
+function removedFromPlan(visit) {
+  return props.approved && visit.approved_plan_id !== props.plan.id
+}
+
+// '' — без плашки; иначе код для класса плашки и её подпись
+function visitMark(visit) {
+  if (removedFromPlan(visit)) return 'removed'
+  const code = statusCode(props.references, visit.status_id)
+  return MARKED_STATUSES.includes(code) ? code : ''
+}
+
+function visitMarkName(visit) {
+  if (removedFromPlan(visit)) return 'Снята с плана'
+  return referenceName(props.references, 'request_statuses', visit.status_id)
+}
+
+function onVisitStatusChanged(statusId) {
+  const { visit } = openedVisit.value
+  emit('visit-status-changed', visit.request_id, statusId)
+}
 
 // Поиск маршрутов. В таблице — по колонкам в её шапке, как в заявках и исполнителях;
 // в карточках рядом с картой шапки нет, там одно общее поле.
@@ -76,9 +110,23 @@ function resetRouteFilters() {
 // визит, открытый в окне «почему так»: { visit, route }
 const openedVisit = ref(null)
 
+// клик по визиту: он подсвечивается (и на карте) и открывается окно «почему так»
 function showVisit(route, visit) {
+  emit('focus-request', visit.request_id)
   openedVisit.value = { route, visit }
 }
+
+// перешли из «Заявок» — прокручиваем к подсвеченной заявке, даже если бригад много
+const panelRoot = ref(null)
+
+async function scrollToFocused() {
+  if (props.focusedRequestId === null) return
+  await nextTick()
+  panelRoot.value?.querySelector('.focused')?.scrollIntoView({ block: 'nearest' })
+}
+
+watch(() => [props.focusedRequestId, props.besideMap], scrollToFocused)
+onMounted(scrollToFocused)
 
 // открыли другой план — поиск от прошлого плана не переносим
 watch(() => props.plan.id, () => {
@@ -88,7 +136,7 @@ watch(() => props.plan.id, () => {
 </script>
 
 <template>
-  <section class="routes-panel">
+  <section ref="panelRoot" class="routes-panel">
 
     <section class="plan-block">
 
@@ -119,12 +167,28 @@ watch(() => props.plan.id, () => {
               <li
                 v-for="visit in route.visits"
                 :key="visit.request_id"
-                class="visit-main"
+                :class="['visit-main', { focused: visit.request_id === focusedRequestId }]"
                 title="Почему визит стоит здесь"
                 @click.stop="showVisit(route, visit)"
               >
                 <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
-                <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+                <span :class="['visit-address', { 'visit-closed': ['done', 'cancelled', 'removed'].includes(visitMark(visit)), 'visit-removed': visitMark(visit) === 'removed' }]">
+                  №{{ visit.request_id }} · {{ visit.address }}
+                </span>
+                <span v-if="visitMark(visit)" :class="['status-badge', `status-${visitMark(visit)}`]">
+                  {{ visitMarkName(visit) }}
+                </span>
+                <button
+                  type="button"
+                  :class="['back-to-request', { shown: visit.request_id === focusedRequestId }]"
+                  :tabindex="visit.request_id === focusedRequestId ? 0 : -1"
+                  :aria-hidden="visit.request_id !== focusedRequestId"
+                  title="К этой заявке на вкладке «Заявки»"
+                  aria-label="К этой заявке на вкладке «Заявки»"
+                  @click.stop="openRequest(visit.request_id)"
+                >
+                  ↩
+                </button>
               </li>
             </ol>
           </article>
@@ -223,13 +287,29 @@ watch(() => props.plan.id, () => {
                   <li
                     v-for="visit in route.visits"
                     :key="visit.request_id"
-                    class="visit-step"
+                    :class="['visit-step', { focused: visit.request_id === focusedRequestId }]"
                     title="Почему визит стоит здесь"
                     @click.stop="showVisit(route, visit)"
                   >
                     <span class="route-arrow" aria-hidden="true">↓</span>
                     <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
-                    <span>№{{ visit.request_id }} · {{ visit.address }}</span>
+                    <span :class="['visit-address', { 'visit-closed': ['done', 'cancelled', 'removed'].includes(visitMark(visit)), 'visit-removed': visitMark(visit) === 'removed' }]">
+                      №{{ visit.request_id }} · {{ visit.address }}
+                    </span>
+                    <span v-if="visitMark(visit)" :class="['status-badge', `status-${visitMark(visit)}`]">
+                      {{ visitMarkName(visit) }}
+                    </span>
+                    <button
+                      type="button"
+                      :class="['back-to-request', { shown: visit.request_id === focusedRequestId }]"
+                      :tabindex="visit.request_id === focusedRequestId ? 0 : -1"
+                      :aria-hidden="visit.request_id !== focusedRequestId"
+                      title="К этой заявке на вкладке «Заявки»"
+                      aria-label="К этой заявке на вкладке «Заявки»"
+                      @click.stop="openRequest(visit.request_id)"
+                    >
+                      ↩
+                    </button>
                   </li>
                 </ol>
               </td>
@@ -273,7 +353,10 @@ watch(() => props.plan.id, () => {
       :visit="openedVisit.visit"
       :route="openedVisit.route"
       :references="references"
+      :approved="approved"
+      :plan-id="plan.id"
       @close="openedVisit = null"
+      @status-changed="onVisitStatusChanged"
     />
   </section>
 </template>
@@ -386,6 +469,69 @@ watch(() => props.plan.id, () => {
   color: #1d4ed8;
 }
 
+/* заявка, к которой перешли из «Заявок», — подсвечена так же, как выбранная строка таблицы */
+.visit-step.focused,
+.visits li.focused {
+  background: #fef9c3;
+}
+
+/* мини-стрелка «обратно к заявке»: место под неё справа есть в каждом визите, поэтому она
+   не прыгает вслед за длиной адреса; видна только у подсвеченного визита */
+.back-to-request {
+  flex-shrink: 0;
+  align-self: center;
+  width: 22px;
+  min-width: 0;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  background: #fff;
+  color: #1d4ed8;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.back-to-request.shown {
+  visibility: visible;
+}
+
+.back-to-request:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.visit-address {
+  flex: 1;
+  min-width: 0;
+}
+
+/* визит закрыт — выполнен или отменён: бригаде туда больше не надо */
+.visit-closed {
+  color: #94a3b8;
+}
+
+/* заявку сняли с плана — зачёркнута: в этом маршруте её больше нет */
+.visit-removed {
+  text-decoration: line-through;
+}
+
+.status-badge.status-removed {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+}
+
+.visit-step .status-badge,
+.visits .status-badge {
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
 .filter-with-reset {
   display: flex;
   align-items: center;
@@ -408,6 +554,13 @@ watch(() => props.plan.id, () => {
 
 .route-steps li {
   display: block;
+}
+
+/* визит в таблице — строкой: адрес растягивается, стрелка «к заявке» — у правого края */
+.route-steps li.visit-step {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .route-start {

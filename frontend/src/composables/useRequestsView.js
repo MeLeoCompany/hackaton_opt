@@ -5,6 +5,7 @@ import { computed, reactive, ref, watch } from 'vue'
 
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
+import { statusRank } from '../utils/requestStatuses.js'
 
 // значение фильтра транспорта «транспорт не важен» (в заявке transport_id = null)
 export const NO_TRANSPORT = 'none'
@@ -23,7 +24,8 @@ const DEFAULT_SORT = ''
 // колонку можно сузить без обрезки (useColumnWidths.js). Колонки при этом не прыгают.
 export const REQUEST_COLUMNS = [
   { key: 'id', label: '№', sortKey: 'id', width: '100px' },
-  { key: 'is_active', label: 'Активна', sortKey: 'is_active', width: '100px' },
+  // плашка статуса одной ширины и значок истории рядом
+  { key: 'status', label: 'Статус', sortKey: 'status', width: '140px' },
   { key: 'address', label: 'Адрес', sortKey: 'address', grow: 3, minWidth: 180, floor: 125 },
   // «55.7065, 37.7395» на узком экране уходит в две строки по запятой
   { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px', floor: 95 },
@@ -39,7 +41,7 @@ export const REQUEST_COLUMNS = [
 function emptyFilters() {
   return {
     idText: '', // часть номера заявки
-    activity: '', // '' — все, 'active' — только активные, 'inactive' — только выключенные
+    statusId: '', // '' — любой статус, иначе номер статуса
     text: '', // часть адреса
     coordinates: '', // часть координат, как они показаны в таблице
     workTypeId: '', // '' — любой тип работ
@@ -68,8 +70,7 @@ export function useRequestsView(requests, references) {
   )
 
   function matchesFilters(request) {
-    if (filters.activity === 'active' && !request.is_active) return false
-    if (filters.activity === 'inactive' && request.is_active) return false
+    if (filters.statusId !== '' && request.status_id !== filters.statusId) return false
 
     if (filters.idText && !String(request.id).includes(filters.idText.trim())) return false
 
@@ -118,8 +119,8 @@ export function useRequestsView(requests, references) {
     switch (sortKey.value) {
       case 'id':
         return request.id
-      case 'is_active':
-        return request.is_active ? 0 : 1 // по возрастанию — сначала активные
+      case 'status':
+        return statusRank(references.value, request.status_id) // в порядке работы: новые первыми
       case 'address':
         return request.address
       case 'duration_minutes':

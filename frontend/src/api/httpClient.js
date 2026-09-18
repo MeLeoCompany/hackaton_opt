@@ -23,6 +23,7 @@ const FIELD_LABELS = {
   skill_id: 'Навык',
   transport_id: 'Транспорт',
   is_active: 'Активность',
+  status_id: 'Статус',
   request_ids: 'Заявки',
   name: 'Имя',
   start_latitude: 'Широта старта',

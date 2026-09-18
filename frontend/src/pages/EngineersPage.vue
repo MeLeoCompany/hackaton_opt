@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import EngineerDetailsCard from '../components/EngineerDetailsCard.vue'
 import EngineersFilters from '../components/EngineersFilters.vue'
@@ -103,12 +104,7 @@ onMounted(load)
       @import-day="importDay"
     />
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю исполнителей…</p>
 

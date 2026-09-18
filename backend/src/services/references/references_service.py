@@ -2,11 +2,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import NotFoundError
 from src.repositories.references import references_repository
+from src.repositories.request_statuses import request_statuses_repository
 from src.schemas.references import (
     EquipmentItem,
     OfficeItem,
     ReferenceItem,
     ReferencesRead,
+    RequestStatusItem,
+    RequestStatusTransitionItem,
     WorkTypeItem,
     WorkTypeNormsWrite,
 )
@@ -25,6 +28,8 @@ async def get_references(session: AsyncSession, office_id: int) -> ReferencesRea
         if office.id == office_id
     ]
     equipment = await references_repository.list_equipment(session)
+    statuses = await request_statuses_repository.list_statuses(session)
+    transitions = await request_statuses_repository.list_transitions(session)
     return ReferencesRead(
         skills=[ReferenceItem.model_validate(skill) for skill in skills],
         priorities=[ReferenceItem.model_validate(priority) for priority in priorities],
@@ -32,6 +37,10 @@ async def get_references(session: AsyncSession, office_id: int) -> ReferencesRea
         work_types=[WorkTypeItem.model_validate(work_type) for work_type in work_types],
         offices=[OfficeItem.model_validate(office) for office in offices],
         equipment=[EquipmentItem.model_validate(item) for item in equipment],
+        request_statuses=[RequestStatusItem.model_validate(status) for status in statuses],
+        request_status_transitions=[
+            RequestStatusTransitionItem.model_validate(transition) for transition in transitions
+        ],
     )
 
 

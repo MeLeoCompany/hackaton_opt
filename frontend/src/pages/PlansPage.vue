@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import PlanBuildDialog from '../components/PlanBuildDialog.vue'
 import PlanMap from '../components/PlanMap.vue'
@@ -33,10 +34,13 @@ const {
   approve,
   cancelApproval,
   selectEngineer,
+  markVisitStatus,
 } = usePlans()
 
-// пришли из сравнения планов: открываем нужный план
-const { takePlanId } = usePlanFocus()
+// пришли из сравнения планов: открываем нужный план; из заявки — ещё и её точку на карте
+const { takePlanId, takePlanRequestId } = usePlanFocus()
+// заявка, выделенная на карте плана; null — ничего не выделено
+const focusedRequestId = ref(null)
 
 // окно параметров расчёта: открывается по «Построить план», поля заполнены по умолчанию
 const buildDialogOpen = ref(false)
@@ -58,12 +62,34 @@ const openedSummary = computed(() => plans.value.find((summary) => summary.id ==
 
 function openPlan(planId) {
   viewMode.value = 'details'
+  focusedRequestId.value = null
   selectPlan(planId)
 }
 
 function backToPlans() {
   closePlan()
+  focusedRequestId.value = null
   viewMode.value = 'details'
+}
+
+function routeOfRequest(requestId) {
+  return plan.value?.routes.find((item) => item.visits.some((visit) => visit.request_id === requestId)) ?? null
+}
+
+// пришли из заявки: карта с маршрутом бригады, которая к ней едет, и выделенной точкой
+function focusRequest(requestId) {
+  focusedRequestId.value = requestId
+  selectedEngineerId.value = routeOfRequest(requestId)?.engineer_id ?? null
+  viewMode.value = 'map'
+}
+
+// кликнули по другому визиту — в карточке или точкой на карте: подсветка переходит на него.
+// Если на карте показан один маршрут, а визит из другого — показываем маршрут этого визита.
+// null — клик по пустому месту карты: подсветку снимаем, маршрут остаётся
+function focusVisit(requestId) {
+  focusedRequestId.value = requestId
+  if (requestId === null || selectedEngineerId.value === null) return
+  selectedEngineerId.value = routeOfRequest(requestId)?.engineer_id ?? null
 }
 
 // клик по маршруту в списке открывает карту с этим маршрутом
@@ -80,7 +106,11 @@ watch(selectedDay, () => {
 onMounted(async () => {
   await load()
   const planId = takePlanId()
-  if (planId) await selectPlan(planId)
+  const requestId = takePlanRequestId()
+  if (planId) {
+    await selectPlan(planId)
+    if (requestId !== null && plan.value) focusRequest(requestId)
+  }
 })
 </script>
 
@@ -118,12 +148,7 @@ onMounted(async () => {
         </button>
       </section>
 
-      <div v-if="errorMessage" class="message error">
-        <strong>{{ errorMessage }}</strong>
-        <ul v-if="errorDetails.length">
-          <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-        </ul>
-      </div>
+      <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
       <p v-if="loadingDays" class="muted">Загружаю планы…</p>
       <p v-else-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
@@ -151,12 +176,7 @@ onMounted(async () => {
         </button>
       </section>
 
-      <div v-if="errorMessage" class="message error">
-        <strong>{{ errorMessage }}</strong>
-        <ul v-if="errorDetails.length">
-          <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-        </ul>
-      </div>
+      <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 
@@ -184,7 +204,13 @@ onMounted(async () => {
 
         <div :class="['plan-view', { 'with-map': viewMode === 'map' }]">
           <div v-if="viewMode === 'map'" class="map-area">
-            <PlanMap :plan="plan" :selected-engineer-id="selectedEngineerId" @select-engineer="selectEngineer" />
+            <PlanMap
+              :plan="plan"
+              :selected-engineer-id="selectedEngineerId"
+              :focused-request-id="focusedRequestId"
+              @select-engineer="selectEngineer"
+              @focus-request="focusVisit"
+            />
           </div>
           <div class="panel-area">
             <PlanRoutesPanel
@@ -192,6 +218,10 @@ onMounted(async () => {
               :references="references"
               :selected-engineer-id="selectedEngineerId"
               :beside-map="viewMode === 'map'"
+              :approved="Boolean(openedSummary?.approved_at)"
+              :focused-request-id="focusedRequestId"
+              @visit-status-changed="markVisitStatus"
+              @focus-request="focusVisit"
               @select-engineer="viewMode === 'details' ? showRouteOnMap($event) : selectEngineer($event)"
             />
           </div>

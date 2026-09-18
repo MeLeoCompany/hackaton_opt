@@ -42,6 +42,24 @@ class EquipmentItem(ReferenceItem):
     description: str
 
 
+class RequestStatusItem(ReferenceItem):
+    """Статус заявки: code — для кода интерфейса, plannable — идёт ли заявка в расчёт."""
+
+    code: str
+    plannable: bool
+
+
+class RequestStatusTransitionItem(BaseModel):
+    """Допустимый переход статуса; manual — делает оператор, иначе — система."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    from_status_id: int
+    to_status_id: int
+    manual: bool
+    description: str
+
+
 class ReferencesRead(BaseModel):
     """Все справочники, из которых диспетчер выбирает значения заявок и исполнителей."""
 
@@ -51,3 +69,5 @@ class ReferencesRead(BaseModel):
     work_types: list[WorkTypeItem]
     offices: list[OfficeItem] = []
     equipment: list[EquipmentItem] = []
+    request_statuses: list[RequestStatusItem] = []
+    request_status_transitions: list[RequestStatusTransitionItem] = []

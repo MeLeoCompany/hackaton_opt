@@ -9,6 +9,7 @@ import IconButton from './IconButton.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
 import RequestEditCells from './RequestEditCells.vue'
 import RequestsFilterControl from './RequestsFilterControl.vue'
+import RequestStatusMenu from './RequestStatusMenu.vue'
 
 const props = defineProps({
   requests: { type: Array, required: true }, // заявки текущей страницы, уже отсортированные
@@ -30,7 +31,9 @@ defineEmits([
   'remove',
   'sort',
   'select',
-  'toggle-active',
+  'change-status',
+  'history',
+  'open-plan',
   'work-type-picked',
   'reset-filters',
   'show-on-map',
@@ -148,20 +151,15 @@ onMounted(scrollToSelected)
 
           <template v-else>
             <td>
-              <label
-                class="switch"
-                :title="request.is_active ? 'Учитывается при планировании' : 'Не учитывается при планировании'"
-                @click.stop
-                @dblclick.stop
-              >
-                <input
-                  type="checkbox"
-                  :checked="request.is_active"
-                  :disabled="editingId !== null"
-                  @change="$emit('toggle-active', request)"
-                />
-                <span class="slider"></span>
-              </label>
+              <RequestStatusMenu
+                :status-id="request.status_id"
+                :references="references"
+                :disabled="editingId !== null"
+                :plan-id="request.approved_plan_id ?? null"
+                @change="$emit('change-status', request, $event)"
+                @history="$emit('history', request)"
+                @open-plan="$emit('open-plan', request)"
+              />
             </td>
             <td class="wide-cell">{{ request.address }}</td>
             <!-- на узком экране координаты уходят в две строки по запятой, а не обрезаются -->

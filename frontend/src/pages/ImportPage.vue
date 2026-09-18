@@ -1,5 +1,6 @@
 <script setup>
 // Вкладка загрузки заявок из CSV: файл, шаблон и разбор ошибок по строкам.
+import ErrorMessage from '../components/ErrorMessage.vue'
 import RequestsCsvImport from '../components/RequestsCsvImport.vue'
 import { useRequestsImport } from '../composables/useRequestsImport.js'
 
@@ -16,12 +17,7 @@ const { saving, lastReport, errorMessage, errorDetails, noticeMessage, importCsv
 
     <RequestsCsvImport :busy="saving" @import="importCsv" @download-template="downloadTemplate" />
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="lastReport" class="muted">
       Последняя загрузка: добавлено {{ lastReport.created }}, обновлено {{ lastReport.updated }}.

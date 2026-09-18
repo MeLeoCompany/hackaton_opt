@@ -9,14 +9,17 @@ from datetime import date
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import current_office_id
+from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
+from src.models import AppUser
 from src.schemas.requests import (
     RequestActivityReport,
     RequestActivityUpdate,
     RequestCreate,
     RequestImportReport,
     RequestRead,
+    RequestStatusHistoryItem,
+    RequestStatusUpdate,
     RequestWrite,
 )
 from src.services.requests import requests_csv, requests_service
@@ -67,12 +70,15 @@ async def import_requests(
     plan_date: date | None = None,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
     """plan_date — перенести файл в этот день копией: время суток то же, номера новые."""
     content = await file.read()
     if len(content) > MAX_CSV_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Файл больше 5 МБ")
-    return await requests_service.import_requests_csv(session, content, office_id, plan_date)
+    return await requests_service.import_requests_csv(
+        session, content, office_id, plan_date, user_id=user.id
+    )
 
 
 @router.patch(
@@ -84,10 +90,40 @@ async def set_requests_active(
     payload: RequestActivityUpdate,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
     return await requests_service.set_requests_active(
-        session, payload.request_ids, payload.is_active, office_id
+        session, payload.request_ids, payload.is_active, office_id, user.id
     )
+
+
+@router.patch(
+    "/status",
+    response_model=RequestActivityReport,
+    summary="Перевести заявки в статус (только ручные переходы из таблицы переходов)",
+)
+async def set_requests_status(
+    payload: RequestStatusUpdate,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    return await requests_service.set_requests_status(
+        session, payload.request_ids, payload.status_id, office_id, user.id
+    )
+
+
+@router.get(
+    "/{request_id}/history",
+    response_model=list[RequestStatusHistoryItem],
+    summary="История статусов заявки: кто, когда и как их менял",
+)
+async def get_request_history(
+    request_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await requests_service.get_request_history(session, request_id, office_id)
 
 
 @router.get("/{request_id}", response_model=RequestRead, summary="Одна заявка")
@@ -106,8 +142,9 @@ async def create_request(
     payload: RequestCreate,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
-    return await requests_service.create_request(session, payload, office_id)
+    return await requests_service.create_request(session, payload, office_id, user.id)
 
 
 @router.put("/{request_id}", response_model=RequestRead, summary="Изменить заявку")

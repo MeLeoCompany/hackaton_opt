@@ -5,7 +5,8 @@ from datetime import date, datetime
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Assignment, Event, Plan, Request, RequestEquipment
+from src.models import Assignment, Event, Plan, Request, RequestEquipment, RequestStatus
+from src.repositories.request_statuses.request_statuses_repository import plannable_status_ids
 
 # Shared by request creation and CSV import; independent from engineer ID allocation.
 REQUEST_ID_LOCK_KEY = 7419821
@@ -24,7 +25,7 @@ async def list_requests(session: AsyncSession, *, office_id: int) -> list[Reques
 async def list_requests_in_period(
     session: AsyncSession, period_start: datetime, period_end: datetime, *, office_id: int
 ) -> list[Request]:
-    """Заявки офиса (и выключенные тоже), окно которых пересекается с [period_start, period_end)."""
+    """Заявки офиса (в любом статусе), окно которых пересекается с [period_start, period_end)."""
     result = await session.execute(
         select(Request)
         .where(
@@ -40,7 +41,7 @@ async def list_requests_in_period(
 async def list_active_requests(session: AsyncSession, *, office_id: int) -> list[Request]:
     result = await session.execute(
         select(Request)
-        .where(Request.office_id == office_id, Request.is_active.is_(True))
+        .where(Request.office_id == office_id, Request.status_id.in_(plannable_status_ids()))
         .order_by(Request.window_start, Request.id)
     )
     return list(result.scalars().all())
@@ -54,7 +55,7 @@ async def list_active_requests_in_period(
     *,
     office_id: int,
 ) -> list[Request]:
-    """Активные заявки офиса, окно которых пересекается с периодом [period_start, period_end).
+    """Заявки офиса, идущие в планирование (по статусу), окно которых пересекается с периодом.
 
     Если указан plan_date, заявки, закреплённые за утверждённым планом другого дня,
     не возвращаются: они уже распределены и второй раз выполняться не должны.
@@ -63,7 +64,7 @@ async def list_active_requests_in_period(
         select(Request)
         .where(
             Request.office_id == office_id,
-            Request.is_active.is_(True),
+            Request.status_id.in_(plannable_status_ids()),
             Request.window_start < period_end,
             Request.window_end > period_start,
         )
@@ -94,7 +95,7 @@ async def list_requests_held_by_other_days(
         .join(Plan, Plan.id == Request.approved_plan_id)
         .where(
             Request.office_id == office_id,
-            Request.is_active.is_(True),
+            Request.status_id.in_(plannable_status_ids()),
             Request.window_start < period_end,
             Request.window_end > period_start,
             Plan.plan_date != plan_date,
@@ -117,9 +118,16 @@ async def get_requests_by_ids(session: AsyncSession, request_ids: list[int]) -> 
 
 
 def add_request(
-    session: AsyncSession, fields: dict, quantities: dict[int, int] | None = None
+    session: AsyncSession,
+    fields: dict,
+    quantities: dict[int, int] | None = None,
+    status: RequestStatus | None = None,
 ) -> Request:
+    """Новая заявка; status — её начальный статус (объект, чтобы ответ API сразу его знал)."""
     request = Request(**fields)
+    if status is not None:
+        request.status_id = status.id
+        request.status = status
     request.equipment = [
         RequestEquipment(equipment_id=equipment_id, quantity=quantity)
         for equipment_id, quantity in (quantities or {}).items()

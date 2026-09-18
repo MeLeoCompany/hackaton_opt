@@ -21,6 +21,18 @@ def plan(plan_id, approved_at=None, plan_date=date(2026, 8, 17)):
     )
 
 
+@pytest.fixture(autouse=True)
+def transitions_allowed():
+    # таблица переходов и история в этих тестах не проверяются: для них отдельные тесты статусов
+    with (
+        patch.object(
+            planning_service.request_status_service, "require_transition", AsyncMock()
+        ) as require,
+        patch.object(planning_service.request_statuses_repository, "add_history"),
+    ):
+        yield require
+
+
 def summary(plan_id):
     return PlanSummary(
         id=plan_id,
@@ -43,7 +55,7 @@ async def test_approval_holds_plan_requests():
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=target)),
         patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
-        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3))) as hold,
+        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3, []))) as hold,
         patch.object(planning_service, "summarize_plans", AsyncMock(return_value=[summary(9)])),
     ):
         await planning_service.approve_plan(session, 9, office_id=OFFICE)
@@ -61,7 +73,7 @@ async def test_stale_plan_cannot_steal_requests_held_by_another_plan():
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=target)),
         patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
-        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(2, 3))),
+        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(2, 3, []))),
         pytest.raises(PlanInUseError, match="устарел"),
     ):
         await planning_service.approve_plan(session, 9, office_id=OFFICE)
@@ -82,7 +94,7 @@ async def test_concurrent_approval_is_reported_as_conflict():
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=target)),
         patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
-        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3))),
+        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3, []))),
         pytest.raises(PlanInUseError, match="одновременно"),
     ):
         await planning_service.approve_plan(session, 9, office_id=OFFICE)
@@ -132,7 +144,7 @@ async def test_cancelling_approval_releases_requests():
 
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=target)),
-        patch.object(repository, "release_plan_requests", AsyncMock(return_value=3)) as release,
+        patch.object(repository, "release_plan_requests", AsyncMock(return_value=[])) as release,
         patch.object(planning_service, "summarize_plans", AsyncMock(return_value=[summary(9)])),
     ):
         await planning_service.cancel_plan_approval(session, 9, office_id=OFFICE)

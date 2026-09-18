@@ -20,8 +20,7 @@ async function harness(requests) {
   const source = fs
     .readFileSync(moduleUrl, 'utf8')
     .replace("import { computed, reactive, ref, watch } from 'vue'", 'const { computed, reactive, ref, watch } = globalThis.__vueStub')
-    .replace("from '../utils/", `from '${new URL('../src/utils/', import.meta.url).href}`)
-    .replace("from '../utils/", `from '${new URL('../src/utils/', import.meta.url).href}`)
+    .replaceAll("from '../utils/", `from '${new URL('../src/utils/', import.meta.url).href}`)
   const dataUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
   const { useRequestsView } = await import(dataUrl)
   return useRequestsView({ value: requests }, { value: { priorities: [], transports: [], work_types: [] } })

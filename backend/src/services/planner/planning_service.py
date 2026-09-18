@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates
-from src.models import Assignment, Engineer, Plan, PlanRunType, Request
+from src.models import Assignment, Engineer, Plan, PlanRunType, Request, RequestStatusId
 from src.repositories.plans import plans_repository
+from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
     EngineerRoute,
@@ -35,6 +36,7 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_loader import LoadedDay
+from src.services.requests import request_status_service
 from src.services.travel import build_route
 
 SOLVER_NAME = "cuopt"
@@ -216,7 +218,9 @@ async def find_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> P
     return plan
 
 
-async def approve_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> PlanSummary:
+async def approve_plan(
+    session: AsyncSession, plan_id: int, *, office_id: int, user_id: int | None = None
+) -> PlanSummary:
     """Утверждает план дня и закрепляет за ним назначенные заявки.
 
     Заявка с окном через полночь попадает в оба дня, и планы обоих дней вправе её взять.
@@ -238,15 +242,30 @@ async def approve_plan(session: AsyncSession, plan_id: int, *, office_id: int) -
             "снимите утверждение с него, чтобы утвердить другой"
         )
 
-    held_count, assigned_count = await plans_repository.hold_plan_requests(
+    # заявки плана переходят «Новая» -> «В плане»: переход системный, он должен быть в таблице
+    await request_status_service.require_transition(
+        session, RequestStatusId.NEW, RequestStatusId.PLANNED, manual=False
+    )
+    held_count, assigned_count, planned_ids = await plans_repository.hold_plan_requests(
         session, plan, datetime.now(UTC)
     )
     if held_count != assigned_count:
         await session.rollback()
         raise PlanInUseError(
             f"План №{plan_id} устарел: часть его заявок уже закреплена за другим "
-            "утверждённым планом. Пересчитайте план на актуальных данных"
+            "утверждённым планом, выполнена, отменена или уже в работе. Пересчитайте план "
+            "на актуальных данных"
         )
+    request_statuses_repository.add_history(
+        session,
+        planned_ids,
+        RequestStatusId.NEW,
+        RequestStatusId.PLANNED,
+        manual=False,
+        user_id=user_id,
+        plan_id=plan.id,
+        comment=f"План №{plan.id} утверждён",
+    )
     try:
         await session.commit()
     except IntegrityError as error:
@@ -261,12 +280,26 @@ async def approve_plan(session: AsyncSession, plan_id: int, *, office_id: int) -
 
 
 async def cancel_plan_approval(
-    session: AsyncSession, plan_id: int, *, office_id: int
+    session: AsyncSession, plan_id: int, *, office_id: int, user_id: int | None = None
 ) -> PlanSummary:
     """Снимает утверждение: заявки плана снова доступны любому дню."""
     plan = await find_plan(session, plan_id, office_id=office_id)
     if plan.approved_at is not None:
-        await plans_repository.release_plan_requests(session, plan)
+        # заявки «В плане» возвращаются в «Новые»: переход системный, он должен быть в таблице
+        await request_status_service.require_transition(
+            session, RequestStatusId.PLANNED, RequestStatusId.NEW, manual=False
+        )
+        released_ids = await plans_repository.release_plan_requests(session, plan)
+        request_statuses_repository.add_history(
+            session,
+            released_ids,
+            RequestStatusId.PLANNED,
+            RequestStatusId.NEW,
+            manual=False,
+            user_id=user_id,
+            plan_id=plan.id,
+            comment=f"Утверждение плана №{plan.id} снято",
+        )
         await session.commit()
     return (await summarize_plans(session, [plan]))[0]
 
@@ -659,6 +692,8 @@ def to_plan_visit(
         window_end=request.window_end,
         duration_minutes=request.duration_minutes,
         priority_id=request.priority_id,
+        status_id=request.status_id,
+        approved_plan_id=request.approved_plan_id,
         available_from=available_from,
         window_slack_minutes=round((request.window_end - work_start).total_seconds() / 60),
         shift_slack_minutes=round((shift_end - work_end).total_seconds() / 60),
@@ -729,6 +764,9 @@ def snapshot_assignment(assignment: Assignment, snapshot: dict) -> Assignment | 
     request = dict(snapshot["requests"][str(assignment.request_id)])
     for key in ("window_start", "window_end"):
         request[key] = datetime.fromisoformat(request[key])
+    # статус и закрепление за планом — не данные расчёта, а то, что с заявкой сейчас: берём живыми
+    request["status_id"] = assignment.request.status_id
+    request["approved_plan_id"] = assignment.request.approved_plan_id
 
     # в снимке время лежит строками; смена нужна временем — по ней считается запас визита
     engineer = snapshot["engineers"].get(str(assignment.engineer_id))

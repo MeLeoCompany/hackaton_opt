@@ -2,6 +2,7 @@
 // Учётки администраторов и диспетчеров. Диспетчер привязан к офису и работает только с ним.
 import { onMounted } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import IconButton from '../components/IconButton.vue'
 import { useAuth } from '../composables/useAuth.js'
 import { NEW_USER, ROLES, useUsers } from '../composables/useUsers.js'
@@ -41,12 +42,7 @@ onMounted(load)
       <p>Всего {{ users.length }} · диспетчер видит только свой офис</p>
     </header>
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю учётки…</p>
 

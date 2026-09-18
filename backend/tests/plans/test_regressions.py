@@ -67,7 +67,10 @@ def test_snapshot_survives_edits_to_live_data():
     request.address = "edited"
     request.duration_minutes = 999
     engineer.transport_id = 2
+    request.status_id = 3  # заявку уже выполнили после расчёта
+    request.approved_plan_id = 22
     assignment = SimpleNamespace(
+        request=request,
         request_id=10,
         engineer_id=1,
         visit_order=1,
@@ -79,6 +82,8 @@ def test_snapshot_survives_edits_to_live_data():
     assert restored.request.duration_minutes == 60
     assert restored.engineer.transport_id == 1
     assert restored.request.window_start == now
+    assert restored.request.status_id == 3
+    assert restored.request.approved_plan_id == 22
     assert request.address == "edited"
 
 
@@ -95,10 +100,15 @@ async def test_import_gives_rows_without_id_the_smallest_free_numbers():
     ]
     insertion_order = []
 
-    session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock())
+    session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), add=lambda item: None)
     with (
         patch.object(repository, "lock_request_ids", AsyncMock()),
         patch.object(service.references_repository, "list_equipment", AsyncMock(return_value=[])),
+        patch.object(
+            service.request_statuses_repository,
+            "list_statuses",
+            AsyncMock(return_value=[SimpleNamespace(id=1), SimpleNamespace(id=4)]),
+        ),
         patch.object(service, "load_reference_lookup", AsyncMock()),
         patch.object(
             service, "parse_requests_csv", return_value=SimpleNamespace(rows=rows, errors=[])
@@ -108,7 +118,7 @@ async def test_import_gives_rows_without_id_the_smallest_free_numbers():
         patch.object(
             repository,
             "add_request",
-            side_effect=lambda s, f, e=None: insertion_order.append(f["id"]),
+            side_effect=lambda s, f, e=None, st=None: insertion_order.append(f["id"]),
         ),
     ):
         report = await service.import_requests_csv(session, b"csv", office_id=1)

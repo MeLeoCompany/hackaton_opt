@@ -886,18 +886,49 @@ button.link:disabled {
   flex: 1;
 }
 
-.status {
+/* статус заявки: у каждого свой цвет — одинаково в таблице, карточке, плане и истории */
+.status-badge {
   display: inline-block;
   padding: 2px 8px;
+  overflow: hidden;
   border-radius: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-.status.on {
+/* в таблице, меню и окне визита статусы одной ширины — колонка читается ровно */
+.status-badge.status-fixed {
+  box-sizing: border-box;
+  width: 92px;
+  text-align: center;
+}
+
+.status-badge.status-new {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-badge.status-planned {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.status-badge.status-in_progress {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-badge.status-done {
   background: #dcfce7;
   color: #166534;
 }
 
-.status.off {
+.status-badge.status-cancelled {
   background: #f1f5f9;
   color: #64748b;
 }

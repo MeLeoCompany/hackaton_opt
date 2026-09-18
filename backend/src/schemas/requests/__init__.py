@@ -5,6 +5,8 @@ from src.schemas.requests.requests_schema import (
     RequestEquipmentItem,
     RequestImportReport,
     RequestRead,
+    RequestStatusHistoryItem,
+    RequestStatusUpdate,
     RequestWrite,
 )
 
@@ -15,5 +17,7 @@ __all__ = [
     "RequestEquipmentItem",
     "RequestImportReport",
     "RequestRead",
+    "RequestStatusHistoryItem",
+    "RequestStatusUpdate",
     "RequestWrite",
 ]

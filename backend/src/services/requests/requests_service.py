@@ -7,15 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.free_id import smallest_free_id
 from src.core.local_day import day_bounds, local_timezone
-from src.models import Request
+from src.models import Request, RequestStatus, RequestStatusId
 from src.repositories.references import references_repository
+from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.requests import (
     RequestActivityReport,
     RequestCreate,
     RequestImportReport,
+    RequestStatusHistoryItem,
     RequestWrite,
 )
+from src.services.requests import request_status_service
 from src.services.requests.requests_csv import (
     ReferenceLookup,
     WorkTypeNorm,
@@ -58,7 +61,9 @@ async def get_request(session: AsyncSession, request_id: int, office_id: int) ->
     return request
 
 
-async def create_request(session: AsyncSession, payload: RequestCreate, office_id: int) -> Request:
+async def create_request(
+    session: AsyncSession, payload: RequestCreate, office_id: int, user_id: int | None = None
+) -> Request:
     await requests_repository.lock_request_ids(session)
     await check_references_exist(session, payload)
     await apply_work_type_norms(session, payload)
@@ -75,7 +80,21 @@ async def create_request(session: AsyncSession, payload: RequestCreate, office_i
     if fields["id"] is None:
         fields["id"] = smallest_free_id(await requests_repository.list_request_ids(session))
 
-    request = requests_repository.add_request(session, fields, equipment_quantities(payload))
+    new_status = await session.get(RequestStatus, RequestStatusId.NEW)
+    request = requests_repository.add_request(
+        session, fields, equipment_quantities(payload), new_status
+    )
+    # заявка должна появиться в БД раньше записи истории, которая на неё ссылается
+    await session.flush()
+    request_statuses_repository.add_history(
+        session,
+        [request.id],
+        None,
+        RequestStatusId.NEW,
+        manual=True,
+        user_id=user_id,
+        comment="Заявка создана",
+    )
     await session.flush()
     await session.commit()
     return request
@@ -109,9 +128,33 @@ async def delete_request(session: AsyncSession, request_id: int, office_id: int)
 
 
 async def set_requests_active(
-    session: AsyncSession, request_ids: list[int], is_active: bool, office_id: int
+    session: AsyncSession,
+    request_ids: list[int],
+    is_active: bool,
+    office_id: int,
+    user_id: int | None = None,
 ) -> RequestActivityReport:
-    """Включает или выключает заявки офиса. Если хоть одной нет — не меняет ничего."""
+    """Прежний переключатель «активна»: включить — «Новая», выключить — «Отменена»."""
+    return await set_requests_status(
+        session,
+        request_ids,
+        RequestStatusId.NEW if is_active else RequestStatusId.CANCELLED,
+        office_id,
+        user_id,
+    )
+
+
+async def set_requests_status(
+    session: AsyncSession,
+    request_ids: list[int],
+    status_id: int,
+    office_id: int,
+    user_id: int | None = None,
+) -> RequestActivityReport:
+    """Оператор переводит заявки офиса в статус — только ручными переходами из таблицы.
+
+    Если хоть одной заявки нет или хоть одной переход запрещён — не меняется ничего.
+    """
     unique_ids = list(dict.fromkeys(request_ids))
     existing_by_id = {
         request_id: request
@@ -126,10 +169,31 @@ async def set_requests_active(
         listed = ", ".join(f"№{request_id}" for request_id in missing_ids)
         raise RequestNotFoundError(f"Не найдены заявки: {listed}")
 
-    for request in existing_by_id.values():
-        requests_repository.apply_changes(request, {"is_active": is_active})
+    await request_status_service.change_status(
+        session, list(existing_by_id.values()), status_id, manual=True, user_id=user_id
+    )
     await session.commit()
     return RequestActivityReport(updated=len(unique_ids))
+
+
+async def get_request_history(
+    session: AsyncSession, request_id: int, office_id: int
+) -> list[RequestStatusHistoryItem]:
+    """История статусов заявки офиса: что с ней происходило, кто и когда менял статус."""
+    await get_request(session, request_id, office_id)
+    return [
+        RequestStatusHistoryItem(
+            id=entry.id,
+            changed_at=entry.changed_at,
+            from_status_id=entry.from_status_id,
+            to_status_id=entry.to_status_id,
+            manual=entry.manual,
+            user_name=user_name,
+            plan_id=entry.plan_id,
+            comment=entry.comment,
+        )
+        for entry, user_name in await request_statuses_repository.list_history(session, request_id)
+    ]
 
 
 async def export_requests_csv(
@@ -222,7 +286,11 @@ def copy_rows_to_day(rows: list[dict], plan_date: date) -> None:
 
 
 async def import_requests_csv(
-    session: AsyncSession, content: bytes, office_id: int, plan_date: date | None = None
+    session: AsyncSession,
+    content: bytes,
+    office_id: int,
+    plan_date: date | None = None,
+    user_id: int | None = None,
 ) -> RequestImportReport:
     """Загружает заявки из CSV одной транзакцией.
 
@@ -263,6 +331,11 @@ async def import_requests_csv(
     taken_ids = await requests_repository.list_request_ids(session)
     taken_ids.update(ids_in_file)
 
+    status_by_id = {
+        status.id: status for status in await request_statuses_repository.list_statuses(session)
+    }
+    status_changes: list[tuple[Request, bool]] = []
+    created_statuses: list[tuple[int, int]] = []  # (номер новой заявки, её начальный статус)
     created = 0
     updated = 0
     for fields in parsed.rows:
@@ -271,25 +344,55 @@ async def import_requests_csv(
         # оборудование — отдельно; нет колонки в файле — у заявки его не трогаем
         equipment = fields_without_id.pop("equipment", None)
 
+        # «активна» в файле — прежний флаг: «да» — «Новая», «нет» — «Отменена»
+        is_active = fields_without_id.pop("is_active")
+
         if existing_request is not None:
-            # «активна» в файле не указана — не трогаем: иначе повторная загрузка файла
-            # молча включила бы обратно заявки, которые диспетчер выключил
-            if fields_without_id["is_active"] is None:
-                del fields_without_id["is_active"]
             requests_repository.apply_changes(existing_request, fields_without_id, equipment)
+            # не указана — статус не трогаем: иначе повторная загрузка файла молча вернула
+            # бы в работу заявки, которые оператор отменил
+            if is_active is not None:
+                status_changes.append((existing_request, is_active))
             updated += 1
             continue
 
-        # новая заявка без указанной активности — активна
-        if fields_without_id["is_active"] is None:
-            fields_without_id["is_active"] = True
         fields_without_id["office_id"] = office_id
         identifier = fields["id"] if fields["id"] is not None else smallest_free_id(taken_ids)
         taken_ids.add(identifier)
         fields_without_id["id"] = identifier
-        requests_repository.add_request(session, fields_without_id, equipment)
+        # новая заявка без указанной активности — «Новая»
+        initial_status = RequestStatusId.CANCELLED if is_active is False else RequestStatusId.NEW
+        requests_repository.add_request(
+            session, fields_without_id, equipment, status_by_id[initial_status]
+        )
+        created_statuses.append((identifier, initial_status))
         created += 1
 
+    # смена статуса существующих — по таблице переходов; запрещённый переход отменяет загрузку
+    for is_active in (True, False):
+        requests = [request for request, active in status_changes if active is is_active]
+        if requests:
+            await request_status_service.change_status(
+                session,
+                requests,
+                RequestStatusId.NEW if is_active else RequestStatusId.CANCELLED,
+                manual=True,
+                user_id=user_id,
+                comment="Загрузка CSV",
+            )
+
+    # новые заявки должны появиться в БД раньше записей истории, которые на них ссылаются
+    await session.flush()
+    for status_id in {status_id for _, status_id in created_statuses}:
+        request_statuses_repository.add_history(
+            session,
+            [identifier for identifier, initial in created_statuses if initial == status_id],
+            None,
+            status_id,
+            manual=True,
+            user_id=user_id,
+            comment="Заявка загружена из CSV",
+        )
     await session.flush()
     await session.commit()
     return RequestImportReport(created=created, updated=updated)

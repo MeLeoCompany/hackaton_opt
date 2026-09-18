@@ -17,6 +17,9 @@ function harness() {
     .replace('export function', 'function')
   const lists = {}
   const selectedDay = { value: '2026-08-17' }
+  // что ушло в PATCH /requests/status; statusReply подменяют тесты — ответ или ошибка
+  const statusCalls = [], notices = [], errors = []
+  const statusReply = { respond: async () => ({ updated: 1 }) }
   const make = new Function(
     'ref',
     'watch',
@@ -25,19 +28,30 @@ function harness() {
     'toMoscowInputValue',
     'fetchReferences',
     'listRequests',
+    'setRequestsStatus',
+    'referenceName',
     source + '; return useRequestsTable()',
   )
   const table = make(
     (value) => ({ value }),
     () => {},
-    () => ({ showError() {}, showNotice() {}, clearMessages() {} }),
-    () => ({ selectedDay }),
+    () => ({
+      showError: (error) => errors.push(error.message),
+      showNotice: (notice) => notices.push(notice),
+      clearMessages() {},
+    }),
+    () => ({ selectedDay, refreshDaysWithRequests: async () => {} }),
     (value) => value,
     async () => ({ skills: [], priorities: [], transports: [], work_types: WORK_TYPES }),
     (day) => new Promise((resolve) => { lists[day] = resolve }),
+    (requestIds, statusId) => {
+      statusCalls.push([requestIds, statusId])
+      return statusReply.respond()
+    },
+    (references, listName, id) => references[listName].find((item) => item.id === id).name,
   )
   table.references.value = { skills: [], priorities: [{ id: 1 }], transports: [], work_types: WORK_TYPES }
-  return { table, lists, selectedDay }
+  return { table, lists, selectedDay, statusCalls, statusReply, notices, errors }
 }
 
 test('новая заявка заполняется нормативами первого типа работ', () => {
@@ -79,4 +93,52 @@ test('поздний ответ старого дня не заменяет за
 
   assert.deepEqual(table.requests.value, [{ id: 18 }])
   assert.equal(table.loading.value, false)
+})
+
+const STATUSES = [
+  { id: 1, code: 'new', name: 'Новая', plannable: true },
+  { id: 2, code: 'planned', name: 'В плане', plannable: true },
+  { id: 3, code: 'done', name: 'Выполнена', plannable: false },
+]
+
+test('смена статуса меняет заявку в списке и её участие в планировании', async () => {
+  const { table, statusCalls, notices } = harness()
+  table.references.value.request_statuses = STATUSES
+  table.requests.value = [
+    { id: 1, status_id: 2, is_active: true },
+    { id: 2, status_id: 2, is_active: true },
+  ]
+
+  await table.setStatus([1], 3)
+
+  assert.deepEqual(statusCalls, [[[1], 3]])
+  assert.deepEqual(table.requests.value, [
+    { id: 1, status_id: 3, is_active: false, approved_plan_id: undefined },
+    { id: 2, status_id: 2, is_active: true },
+  ])
+  assert.deepEqual(notices, ['Заявка №1: «Выполнена»'])
+})
+
+test('запрет смены статуса (разрыв в маршруте) показывается, заявки не меняются', async () => {
+  const { table, statusReply, errors } = harness()
+  table.references.value.request_statuses = STATUSES
+  table.requests.value = [{ id: 2, status_id: 2, is_active: true }]
+  statusReply.respond = async () => {
+    throw new Error('Проверьте данные')
+  }
+
+  await table.setStatus([2], 3)
+
+  assert.deepEqual(table.requests.value, [{ id: 2, status_id: 2, is_active: true }])
+  assert.deepEqual(errors, ['Проверьте данные'])
+})
+
+test('возвращённая в «Новая» заявка отвязывается от плана', async () => {
+  const { table } = harness()
+  table.references.value.request_statuses = STATUSES
+  table.requests.value = [{ id: 7, status_id: 4, is_active: false, approved_plan_id: 22 }]
+
+  await table.setStatus([7], 1)
+
+  assert.deepEqual(table.requests.value, [{ id: 7, status_id: 1, is_active: true, approved_plan_id: null }])
 })

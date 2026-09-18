@@ -4,6 +4,7 @@
 // Название и навык типа работ заданы ТЗ и не правятся. Диспетчер таблицу только смотрит.
 import { computed, onMounted } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import IconButton from '../components/IconButton.vue'
 import { useAuth } from '../composables/useAuth.js'
 import { useNorms } from '../composables/useNorms.js'
@@ -46,12 +47,7 @@ onMounted(load)
       </p>
     </header>
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю нормативы…</p>
 

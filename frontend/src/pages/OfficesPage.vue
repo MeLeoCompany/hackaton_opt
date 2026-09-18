@@ -3,6 +3,7 @@
 // День здесь не нужен: справочники общие на все дни, поэтому полосы дня на странице нет.
 import { computed, onMounted } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import IconButton from '../components/IconButton.vue'
 import PointPickerButton from '../components/PointPickerButton.vue'
 import { NEW_OFFICE, useOffices } from '../composables/useOffices.js'
@@ -50,12 +51,7 @@ onMounted(load)
       <p>Всего {{ offices.length }} · откуда бригады выезжают на смену</p>
     </header>
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю справочники…</p>
 

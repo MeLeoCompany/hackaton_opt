@@ -17,9 +17,14 @@ export function deleteRequest(requestId) {
   return apiRequest('DELETE', `/requests/${requestId}`)
 }
 
-// включить или выключить заявки для планирования
-export function setRequestsActive(requestIds, isActive) {
-  return apiRequest('PATCH', '/requests/active', { json: { request_ids: requestIds, is_active: isActive } })
+// перевести заявки в статус — только ручным переходом из таблицы переходов; все или ни одной
+export function setRequestsStatus(requestIds, statusId) {
+  return apiRequest('PATCH', '/requests/status', { json: { request_ids: requestIds, status_id: statusId } })
+}
+
+// история смен статуса заявки по порядку
+export function getRequestHistory(requestId) {
+  return apiRequest('GET', `/requests/${requestId}/history`)
 }
 
 // слепок дня: выгрузка заявок выбранного дня

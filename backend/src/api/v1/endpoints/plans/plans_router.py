@@ -9,8 +9,9 @@ from datetime import date
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import current_office_id
+from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
+from src.models import AppUser
 from src.schemas.plans import (
     PlanBuildRequest,
     PlanDayCheck,
@@ -79,9 +80,12 @@ async def approve_plan(
     plan_id: int,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
     """Заявки утверждённого плана закрепляются за ним: другие дни их не берут."""
-    return await planning_service.approve_plan(session, plan_id, office_id=office_id)
+    return await planning_service.approve_plan(
+        session, plan_id, office_id=office_id, user_id=user.id
+    )
 
 
 @router.delete("/{plan_id}/approval", response_model=PlanSummary, summary="Снять утверждение плана")
@@ -89,8 +93,11 @@ async def cancel_plan_approval(
     plan_id: int,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
-    return await planning_service.cancel_plan_approval(session, plan_id, office_id=office_id)
+    return await planning_service.cancel_plan_approval(
+        session, plan_id, office_id=office_id, user_id=user.id
+    )
 
 
 @router.get("/{plan_id}", response_model=PlanDetail, summary="План с маршрутами исполнителей")

@@ -6,6 +6,12 @@ from src.models.office import Office
 from src.models.plan import Plan, PlanRunType
 from src.models.reference import Priority, Skill, Transport, WorkType
 from src.models.request import Request, RequestEquipment
+from src.models.request_status import (
+    RequestStatus,
+    RequestStatusHistory,
+    RequestStatusId,
+    RequestStatusTransition,
+)
 from src.models.user import AppUser, UserRole
 
 __all__ = [
@@ -22,6 +28,10 @@ __all__ = [
     "Priority",
     "Request",
     "RequestEquipment",
+    "RequestStatus",
+    "RequestStatusHistory",
+    "RequestStatusId",
+    "RequestStatusTransition",
     "Skill",
     "Transport",
     "UserRole",

@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import RequestDetailsCard from '../components/RequestDetailsCard.vue'
+import RequestHistoryDialog from '../components/RequestHistoryDialog.vue'
 import RequestsFilters from '../components/RequestsFilters.vue'
 import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
@@ -10,6 +12,7 @@ import RequestsTable from '../components/RequestsTable.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
 import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
+import { manualTransitions, orderedStatuses } from '../utils/requestStatuses.js'
 
 // данные и их изменение
 const {
@@ -31,7 +34,7 @@ const {
   cancelEdit,
   saveForm,
   remove,
-  setActive,
+  setStatus,
   showNotice,
 } = useRequestsTable()
 
@@ -53,8 +56,8 @@ const {
   selectRequest,
 } = useRequestsView(requests, references)
 
-// пришли из маршрута плана — показываем ту самую заявку
-const { takeRequestId } = usePlanFocus()
+// пришли из маршрута плана — показываем ту самую заявку; обратно — «Открыть в плане»
+const { takeRequestId, openPlan } = usePlanFocus()
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
@@ -74,9 +77,29 @@ const selectedRequest = computed(
   () => filteredRequests.value.find((request) => request.id === selectedId.value) ?? null,
 )
 
+// сколько заявок пойдёт в расчёт плана: статусы Новая и В плане
 const activeTotal = computed(() => requests.value.filter((request) => request.is_active).length)
-const activeShown = computed(() => filteredRequests.value.filter((request) => request.is_active).length)
-const inactiveShown = computed(() => filteredRequests.value.length - activeShown.value)
+
+// Перевести разом показанные заявки. В списке — статусы, куда оператор может перевести
+// хоть одну из показанных; переводятся только те, для кого такой переход есть.
+const bulkStatusId = ref('')
+const bulkTargets = computed(() =>
+  orderedStatuses(references.value)
+    .map((status) => ({
+      ...status,
+      requestIds: filteredRequests.value
+        .filter((request) =>
+          manualTransitions(references.value, request.status_id, request.approved_plan_id ?? null).some(
+            (transition) => transition.to_status_id === status.id,
+          ),
+        )
+        .map((request) => request.id),
+    }))
+    .filter((target) => target.requestIds.length),
+)
+
+// заявка, чья история открыта в окне
+const historyRequestId = ref(null)
 
 function addRequest() {
   viewMode.value = 'table'
@@ -94,20 +117,17 @@ function showOnMap(requestId) {
   viewMode.value = 'map'
 }
 
-function toggleActive(request) {
-  setActive([request.id], !request.is_active)
+function changeStatus(request, statusId) {
+  setStatus([request.id], statusId)
 }
 
-// включить или выключить разом все заявки, которые сейчас показаны по фильтрам
-function setActiveForShown(isActive) {
-  const targetIds = filteredRequests.value
-    .filter((request) => request.is_active !== isActive)
-    .map((request) => request.id)
-  if (targetIds.length === 0) return
-
-  const action = isActive ? 'Включить' : 'Выключить'
-  if (targetIds.length > 1 && !window.confirm(`${action} показанные заявки: ${targetIds.length} шт.?`)) return
-  setActive(targetIds, isActive)
+function setStatusForShown() {
+  const target = bulkTargets.value.find((item) => item.id === bulkStatusId.value)
+  bulkStatusId.value = ''
+  if (!target) return
+  const count = target.requestIds.length
+  if (count > 1 && !window.confirm(`Перевести в «${target.name}» показанные заявки: ${count} шт.?`)) return
+  setStatus(target.requestIds, target.id)
 }
 
 // заявка из плана может быть скрыта фильтрами прошлой работы — тогда фильтры снимаем,
@@ -134,7 +154,7 @@ onMounted(async () => {
     <header class="workspace-title">
       <h1>Заявки</h1>
       <p>
-        Всего {{ requests.length }} · активных {{ activeTotal }}<template v-if="activeFilterCount">
+        Всего {{ requests.length }} · к планированию {{ activeTotal }}<template v-if="activeFilterCount">
           · по фильтрам {{ filteredRequests.length }}</template
         >
         · время московское
@@ -142,7 +162,7 @@ onMounted(async () => {
     </header>
 
     <DayPanel
-      :summary="`заявок на этот день ${requests.length}, активных ${activeTotal}`"
+      :summary="`заявок на этот день ${requests.length}, к планированию ${activeTotal}`"
       transfer="заявки"
       :disabled="saving"
       @export-day="exportDay"
@@ -150,12 +170,7 @@ onMounted(async () => {
     />
 
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю заявки…</p>
 
@@ -185,13 +200,18 @@ onMounted(async () => {
         </div>
 
         <div class="list-bar-group">
-          <span class="list-bar-note">Активных {{ activeShown }} из {{ filteredRequests.length }} показанных</span>
-          <button :disabled="editingId !== null || activeShown === 0" @click="setActiveForShown(false)">
-            Выключить показанные
-          </button>
-          <button :disabled="editingId !== null || inactiveShown === 0" @click="setActiveForShown(true)">
-            Включить показанные
-          </button>
+          <select
+            v-model="bulkStatusId"
+            class="bulk-status"
+            aria-label="перевести показанные заявки в статус"
+            :disabled="editingId !== null || !bulkTargets.length"
+            @change="setStatusForShown"
+          >
+            <option value="">Перевести показанные…</option>
+            <option v-for="target in bulkTargets" :key="target.id" :value="target.id">
+              в «{{ target.name }}» — {{ target.requestIds.length }}
+            </option>
+          </select>
         </div>
       </div>
 
@@ -210,7 +230,9 @@ onMounted(async () => {
           :active-filter-count="activeFilterCount"
           @sort="toggleSort"
           @select="selectRequest"
-          @toggle-active="toggleActive"
+          @change-status="changeStatus"
+          @history="historyRequestId = $event.id"
+          @open-plan="openPlan($event.approved_plan_id, $event.id)"
           @edit="startEdit"
           @cancel="cancelEdit"
           @save="saveForm"
@@ -249,14 +271,30 @@ onMounted(async () => {
           :request="selectedRequest"
           :references="references"
           @show-in-table="showInTable(selectedRequest.id)"
-          @toggle-active="toggleActive(selectedRequest)"
+          @change-status="changeStatus(selectedRequest, $event)"
+          @history="historyRequestId = selectedRequest.id"
+          @open-plan="openPlan(selectedRequest.approved_plan_id, selectedRequest.id)"
           @close="selectedId = null"
         />
       </div>
     </template>
+
+    <RequestHistoryDialog
+      v-if="historyRequestId !== null"
+      :request-id="historyRequestId"
+      :references="references"
+      @close="historyRequestId = null"
+    />
 
     <Transition name="toast">
       <div v-if="noticeMessage" class="toast" role="status">{{ noticeMessage }}</div>
     </Transition>
   </div>
 </template>
+
+<style scoped>
+.bulk-status {
+  width: auto;
+  min-width: 210px;
+}
+</style>
