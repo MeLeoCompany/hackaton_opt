@@ -1,0 +1,20 @@
+{
+  "created_at": "2026-09-18T13:56:04.558464+00:00",
+  "requested": 2,
+  "successful": 2,
+  "failed": 0,
+  "results": [
+    {
+      "route_id": 1054,
+      "service_date": "2026-09-19",
+      "status": "ok",
+      "output": "transit/data/bus/route-1054-2026-09-19.json"
+    },
+    {
+      "route_id": 1054,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/route-1054-2026-09-20.json"
+    }
+  ]
+}

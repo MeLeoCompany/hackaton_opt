@@ -73,20 +73,24 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
         "attributions.txt": [],
     }
     stop_seen: set[str] = set()
+    route_seen: set[str] = set()
+    shape_seen: set[str] = set()
 
     for dataset in datasets:
         route = dataset["route"]
         route_id = route["source_route_id"]
-        tables["routes.txt"].append(
-            [
-                route_id,
-                AGENCY_ID,
-                route["short_name"],
-                route.get("long_name", ""),
-                route["route_type"],
-                route.get("color", ""),
-            ]
-        )
+        if route_id not in route_seen:
+            tables["routes.txt"].append(
+                [
+                    route_id,
+                    AGENCY_ID,
+                    route["short_name"],
+                    route.get("long_name", ""),
+                    route["route_type"],
+                    route.get("color", ""),
+                ]
+            )
+            route_seen.add(route_id)
         if dataset["kind"] == "bus_exact":
             service_id = f"bus-{route_id}-{dataset['source']['service_date']}"
             tables["calendar_dates.txt"].append(
@@ -94,8 +98,10 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
             )
             for pattern in dataset["patterns"]:
                 shape_id = f"{route_id}-{pattern['direction_id']}"
-                for sequence, (lon, lat) in enumerate(pattern["shape"], start=1):
-                    tables["shapes.txt"].append([shape_id, lat, lon, sequence])
+                if shape_id not in shape_seen:
+                    for sequence, (lon, lat) in enumerate(pattern["shape"], start=1):
+                        tables["shapes.txt"].append([shape_id, lat, lon, sequence])
+                    shape_seen.add(shape_id)
                 for stop in pattern["stops"]:
                     stop_id = f"bus-{stop['source_stop_id']}"
                     if stop_id not in stop_seen:
@@ -104,7 +110,8 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                         )
                         stop_seen.add(stop_id)
                 for trip_index in range(len(pattern["stops"][0]["departures"])):
-                    trip_id = f"{shape_id}-{trip_index + 1}"
+                    service_date = dataset["source"]["service_date"]
+                    trip_id = f"{shape_id}-{service_date}-{trip_index + 1}"
                     tables["trips.txt"].append(
                         [
                             route_id,
