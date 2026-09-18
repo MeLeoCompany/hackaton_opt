@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .common import gtfs_time, read_json
+from .metro_transfers import cluster_metro_stations, transfer_rows
 
 AGENCY_ID = "moscow-transport-pilot"
 
@@ -48,6 +49,12 @@ def _distributed_offsets(stops: list[dict[str, Any]], duration: int) -> list[int
 
 def build_gtfs(inputs: list[Path], output: Path) -> None:
     datasets = [read_json(path) for path in inputs]
+    metro_clusters = cluster_metro_stations(datasets)
+    parent_by_stop = {
+        stop_id: cluster.station_id
+        for cluster in metro_clusters
+        for stop_id in cluster.stop_ids
+    }
     service_starts = [
         dataset["source"]["service_date"]
         if dataset["kind"] == "bus_exact"
@@ -71,10 +78,17 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
         "shapes.txt": [],
         "feed_info.txt": [],
         "attributions.txt": [],
+        "transfers.txt": transfer_rows(metro_clusters),
     }
     stop_seen: set[str] = set()
     route_seen: set[str] = set()
     shape_seen: set[str] = set()
+
+    for cluster in metro_clusters:
+        tables["stops.txt"].append(
+            [cluster.station_id, cluster.name, cluster.lat, cluster.lon, 1, ""]
+        )
+        stop_seen.add(cluster.station_id)
 
     for dataset in datasets:
         route = dataset["route"]
@@ -106,7 +120,7 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                     stop_id = f"bus-{stop['source_stop_id']}"
                     if stop_id not in stop_seen:
                         tables["stops.txt"].append(
-                            [stop_id, stop["name"], stop["lat"], stop["lon"], 0]
+                            [stop_id, stop["name"], stop["lat"], stop["lon"], 0, ""]
                         )
                         stop_seen.add(stop_id)
                 for trip_index in range(len(pattern["stops"][0]["departures"])):
@@ -165,7 +179,14 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                     stop_id = stop["source_stop_id"]
                     if stop_id not in stop_seen:
                         tables["stops.txt"].append(
-                            [stop_id, stop["name"], stop["lat"], stop["lon"], 0]
+                            [
+                                stop_id,
+                                stop["name"],
+                                stop["lat"],
+                                stop["lon"],
+                                0,
+                                parent_by_stop[stop_id],
+                            ]
                         )
                         stop_seen.add(stop_id)
                     value = gtfs_time(start + offset)
@@ -186,7 +207,14 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
             raise ValueError(f"неподдерживаемый вид набора данных: {dataset['kind']}")
 
     headers = {
-        "stops.txt": ["stop_id", "stop_name", "stop_lat", "stop_lon", "location_type"],
+        "stops.txt": [
+            "stop_id",
+            "stop_name",
+            "stop_lat",
+            "stop_lon",
+            "location_type",
+            "parent_station",
+        ],
         "routes.txt": [
             "route_id",
             "agency_id",
@@ -240,6 +268,12 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
             "is_operator",
             "is_authority",
             "attribution_url",
+        ],
+        "transfers.txt": [
+            "from_stop_id",
+            "to_stop_id",
+            "transfer_type",
+            "min_transfer_time",
         ],
     }
     tables["feed_info.txt"].append(

@@ -7,6 +7,11 @@ from pathlib import Path
 
 import pytest
 from gtfs_pipeline.gtfs import build_gtfs
+from gtfs_pipeline.metro_transfers import (
+    TRANSFER_TIME_SECONDS,
+    cluster_metro_stations,
+    transfer_rows,
+)
 from gtfs_pipeline.osm_metro import MetroDataError, normalize_line
 from gtfs_pipeline.transport_mos import (
     ScheduleParseError,
@@ -183,6 +188,12 @@ def test_all_checked_in_metro_lines_build_valid_gtfs(tmp_path: Path) -> None:
     assert counts["routes.txt"] == 17
     assert counts["trips.txt"] == 34
     assert counts["frequencies.txt"] == 204
+    assert counts["transfers.txt"] > 0
+    with zipfile.ZipFile(output) as archive:
+        stops = archive.read("stops.txt").decode("utf-8-sig")
+        transfers = archive.read("transfers.txt").decode("utf-8-sig")
+        assert "parent_station" in stops
+        assert "min_transfer_time" in transfers
 
 
 def test_metro_normalizer_rejects_single_direction() -> None:
@@ -194,3 +205,28 @@ def test_metro_normalizer_rejects_single_direction() -> None:
 
     with pytest.raises(MetroDataError, match="два направления"):
         normalize_line(raw, relation_ids=[1])
+
+
+def test_nearby_stops_of_different_lines_form_timed_transfer() -> None:
+    def dataset(route_id: str, stop_id: str, name: str, lon: float) -> dict:
+        stop = {"source_stop_id": stop_id, "name": name, "lat": 55.75, "lon": lon}
+        return {
+            "kind": "metro_frequency",
+            "route": {"source_route_id": route_id},
+            "patterns": [{"stops": [stop]}],
+        }
+
+    clusters = cluster_metro_stations(
+        [
+            dataset("metro-1", "stop-a", "Первая", 37.61),
+            dataset("metro-2", "stop-b", "Вторая", 37.6145),
+            dataset("metro-1", "stop-c", "Следующая", 37.6055),
+        ]
+    )
+    transfer = next(cluster for cluster in clusters if cluster.is_transfer)
+
+    assert transfer.stop_ids == ("stop-a", "stop-b")
+    assert transfer_rows(clusters) == [
+        ["stop-a", "stop-b", 2, TRANSFER_TIME_SECONDS],
+        ["stop-b", "stop-a", 2, TRANSFER_TIME_SECONDS],
+    ]

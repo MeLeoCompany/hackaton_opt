@@ -31,6 +31,14 @@ def validate_gtfs(path: Path) -> dict[str, int]:
         referenced_stops = _column(archive, "stop_times.txt", "stop_id")
         if not referenced_stops <= stop_ids:
             raise ValueError("stop_times.txt ссылается на неизвестные остановки")
+        parent_stations = _column(archive, "stops.txt", "parent_station") - {""}
+        if not parent_stations <= stop_ids:
+            raise ValueError("stops.txt ссылается на неизвестные родительские станции")
+        if "transfers.txt" in names:
+            transfer_stops = _column(archive, "transfers.txt", "from_stop_id")
+            transfer_stops |= _column(archive, "transfers.txt", "to_stop_id")
+            if not transfer_stops <= stop_ids:
+                raise ValueError("transfers.txt ссылается на неизвестные остановки")
     return counts
 
 
