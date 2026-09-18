@@ -70,12 +70,10 @@ test('switching day ignores a completed build for the previous day', async () =>
 })
 
 test('plans load even if the day check fails', async () => {
-  const { plans, lists, details, dayCheck, errors } = harness()
+  const { plans, lists, dayCheck, errors } = harness()
   dayCheck.respond = async () => { throw new Error('day-check недоступен') }
   const load = plans.loadPlans()
   lists['2026-08-17']([{ id: 1 }])
-  await Promise.resolve()
-  details[1]({ id: 1 })
   await load
 
   assert.deepEqual(plans.plans.value.map(summary => summary.id), [1])
@@ -109,4 +107,28 @@ test('a late day check of the previous day is dropped', async () => {
   await Promise.resolve()
 
   assert.equal(plans.dayCheck.value, null)
+})
+
+test('список планов дня открывается без выбранного плана', async () => {
+  const { plans, lists } = harness()
+  const load = plans.loadPlans()
+  lists['2026-08-17']([{ id: 3 }, { id: 1 }])
+  await load
+
+  // сначала список: маршруты плана открываются только по клику
+  assert.equal(plans.selectedPlanId.value, null)
+  assert.equal(plans.plan.value, null)
+})
+
+test('назад к списку: поздний ответ открывавшегося плана не показывается', async () => {
+  const { plans, details } = harness()
+  const opening = plans.selectPlan(7)
+
+  plans.closePlan()
+  details[7]({ id: 7 })
+  await opening
+
+  assert.equal(plans.selectedPlanId.value, null)
+  assert.equal(plans.plan.value, null)
+  assert.equal(plans.loadingPlan.value, false)
 })

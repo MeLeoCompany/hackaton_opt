@@ -61,12 +61,12 @@ export function usePlans() {
       const summaries = await listPlans(day)
       if (request !== listRequest) return
       plans.value = summaries
-      if (plans.value.length) await selectPlan(plans.value[0].id)
     } catch (error) {
       if (request === listRequest) showError(error)
     }
   }
 
+  // Открыть план: страница переходит от списка планов к маршрутам этого плана.
   async function selectPlan(planId) {
     const request = ++detailRequest
     plan.value = null
@@ -84,6 +84,15 @@ export function usePlans() {
     }
   }
 
+  // Назад к списку планов дня. Поздний ответ открывавшегося плана уже ничего не покажет.
+  function closePlan() {
+    ++detailRequest
+    plan.value = null
+    selectedPlanId.value = null
+    selectedEngineerId.value = null
+    loadingPlan.value = false
+  }
+
   async function buildDayPlan(params = {}) {
     if (building.value) return
     const day = selectedDay.value
@@ -98,8 +107,8 @@ export function usePlans() {
       )
       const summaries = await listPlans(day)
       if (day !== selectedDay.value) return
+      // новый план сверху списка: его видно рядом с остальными и можно сразу сравнить
       plans.value = summaries
-      await selectPlan(summary.id)
     } catch (error) {
       showError(error)
     } finally {
@@ -119,9 +128,7 @@ export function usePlans() {
       const summaries = await listPlans(day)
       if (day !== selectedDay.value) return
       plans.value = summaries
-      plan.value = null
-      selectedPlanId.value = null
-      if (plans.value.length) await selectPlan(plans.value[0].id)
+      closePlan()
       showNotice(`План №${summary.id} удалён`)
     } catch (error) {
       showError(error)
@@ -205,6 +212,7 @@ export function usePlans() {
     load,
     loadPlans,
     selectPlan,
+    closePlan,
     buildDayPlan,
     removePlan,
     dayCheck,

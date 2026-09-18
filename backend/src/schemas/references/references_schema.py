@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ReferenceItem(BaseModel):
@@ -15,6 +15,17 @@ class WorkTypeItem(ReferenceItem):
     travel_minutes: int
     work_minutes: int
     baseline_minutes: int
+
+
+class WorkTypeNormsWrite(BaseModel):
+    """Нормативы типа работ, которые правит администратор.
+
+    Влияют только на подстановку по умолчанию: длительность новой заявки при выборе типа
+    работ и строки CSV без длительности. У существующих заявок длительность своя.
+    """
+
+    travel_minutes: int = Field(ge=0, le=1440)
+    work_minutes: int = Field(gt=0, le=1440)
 
 
 class OfficeItem(ReferenceItem):

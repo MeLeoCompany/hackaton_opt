@@ -26,6 +26,7 @@ const {
   load,
   loadPlans,
   selectPlan,
+  closePlan,
   buildDayPlan,
   removePlan,
   dayCheck,
@@ -48,12 +49,30 @@ async function startBuild(params) {
 // «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
 const viewMode = ref('details')
 
+// Страница в двух состояниях: список планов дня или маршруты одного плана.
+// Клик по плану в списке открывает его маршруты, стрелка «← Планы на …» возвращает к списку.
+const planOpened = computed(() => selectedPlanId.value !== null)
+
+// сводка открытого плана — та же строка, что в списке: чтобы было видно, что за план
+const openedSummary = computed(() => plans.value.find((summary) => summary.id === selectedPlanId.value) ?? null)
+
+function openPlan(planId) {
+  viewMode.value = 'details'
+  selectPlan(planId)
+}
+
+function backToPlans() {
+  closePlan()
+  viewMode.value = 'details'
+}
+
 // клик по маршруту в списке открывает карту с этим маршрутом
 function showRouteOnMap(engineerId) {
   selectEngineer(engineerId)
   if (selectedEngineerId.value !== null) viewMode.value = 'map'
 }
 
+// сменили день — снова список планов этого дня
 watch(selectedDay, () => {
   viewMode.value = 'details'
 })
@@ -67,39 +86,47 @@ onMounted(async () => {
 
 <template>
   <div class="workspace">
+    <!-- заголовок на одном месте: «Планы» в списке, «План №…» в открытом плане -->
     <header class="workspace-title">
-      <h1>Планы</h1>
-      <p>Маршруты исполнителей на день · время московское</p>
+      <template v-if="!planOpened">
+        <h1>Планы</h1>
+        <p>Маршруты исполнителей на день · время московское</p>
+      </template>
+      <template v-else>
+        <h1 class="plan-title">
+          План №{{ selectedPlanId }}
+          <span v-if="openedSummary?.approved_at" class="badge approved">утверждён</span>
+        </h1>
+        <p v-if="openedSummary">
+          {{ openedSummary.solver ?? '—' }} · назначено {{ openedSummary.assigned_count }} · не назначено
+          {{ openedSummary.unassigned_count }} · исполнителей {{ openedSummary.engineers_used }}<template
+            v-if="openedSummary.total_distance_km !== null"
+          >
+            · {{ openedSummary.total_distance_km.toFixed(1) }} км</template
+          >
+        </p>
+      </template>
     </header>
 
-    <DayPanel :disabled="building" :summary="`планов на этот день ${plans.length}`" />
+    <!-- список планов дня: отсюда строят, утверждают, удаляют и открывают план -->
+    <template v-if="!planOpened">
+      <DayPanel :disabled="building" :summary="`планов на этот день ${plans.length}`" />
 
-    <section class="plan-toolbar">
-      <button class="primary" :disabled="!selectedDay || building" @click="buildDialogOpen = true">
-        {{ building ? 'Считаю…' : 'Построить план' }}
-      </button>
-    </section>
+      <section class="plan-toolbar">
+        <button class="primary" :disabled="!selectedDay || building" @click="buildDialogOpen = true">
+          {{ building ? 'Считаю…' : 'Построить план' }}
+        </button>
+      </section>
 
-    <PlanBuildDialog
-      v-if="buildDialogOpen"
-      :plan-date="selectedDay"
-      :day-check="dayCheck"
-      :building="building"
-      @build="startBuild"
-      @close="buildDialogOpen = false"
-    />
+      <div v-if="errorMessage" class="message error">
+        <strong>{{ errorMessage }}</strong>
+        <ul v-if="errorDetails.length">
+          <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
+        </ul>
+      </div>
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
-
-    <p v-if="loadingDays" class="muted">Загружаю планы…</p>
-
-    <template v-else>
-      <p v-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
+      <p v-if="loadingDays" class="muted">Загружаю планы…</p>
+      <p v-else-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
 
       <section v-else class="plans-block">
         <h2>Планы на {{ formatDay(selectedDay) }} · {{ plans.length }}</h2>
@@ -108,17 +135,32 @@ onMounted(async () => {
           :selected-plan-id="selectedPlanId"
           :busy="building"
           :held-requests="dayCheck?.held_requests ?? []"
-          @select="selectPlan"
+          @select="openPlan"
           @remove="removePlan"
           @approve="approve"
           @cancel-approval="cancelApproval"
         />
       </section>
+    </template>
+
+    <!-- маршруты одного плана; стрелка возвращает к списку того же дня -->
+    <template v-else>
+      <section class="plan-day-bar">
+        <button class="back-button" :title="`Вернуться к списку планов на ${formatDay(selectedDay)}`" @click="backToPlans">
+          <span aria-hidden="true">←</span> Планы на {{ formatDay(selectedDay) }}
+        </button>
+      </section>
+
+      <div v-if="errorMessage" class="message error">
+        <strong>{{ errorMessage }}</strong>
+        <ul v-if="errorDetails.length">
+          <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
+        </ul>
+      </div>
 
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 
       <template v-if="plan">
-
         <div class="list-bar">
           <div class="view-switch" role="tablist">
             <button
@@ -127,7 +169,7 @@ onMounted(async () => {
               :class="{ active: viewMode === 'details' }"
               @click="viewMode = 'details'"
             >
-              Маршруты плана №{{ plan.id }}
+              Маршруты
             </button>
             <button
               role="tab"
@@ -135,7 +177,7 @@ onMounted(async () => {
               :class="{ active: viewMode === 'map' }"
               @click="viewMode = 'map'"
             >
-              Карта плана №{{ plan.id }} · маршрутов {{ plan.routes.length }}
+              Карта · маршрутов {{ plan.routes.length }}
             </button>
           </div>
         </div>
@@ -157,6 +199,15 @@ onMounted(async () => {
       </template>
     </template>
 
+    <PlanBuildDialog
+      v-if="buildDialogOpen"
+      :plan-date="selectedDay"
+      :day-check="dayCheck"
+      :building="building"
+      @build="startBuild"
+      @close="buildDialogOpen = false"
+    />
+
     <Transition name="toast">
       <div v-if="noticeMessage" class="toast" role="status">{{ noticeMessage }}</div>
     </Transition>
@@ -164,6 +215,48 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+
+.plan-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* полоса возврата — того же вида и на том же месте, что полоса дня в списке планов */
+.plan-day-bar {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+/* «← Планы на …» — заметная, но второстепенная кнопка: как ссылка, с рамкой при наведении */
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border-color: transparent;
+  background: none;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.back-button:hover:not(:disabled) {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.badge.approved {
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 600;
+}
 
 .plans-block {
   display: flex;
@@ -183,23 +276,41 @@ onMounted(async () => {
   align-items: start;
 }
 
+/* карта плана занимает всё место до низа окна: рабочая область — колонка во всю высоту,
+   вид карты забирает её остаток. Карта и панель маршрутов справа одной высоты, у панели
+   своя прокрутка. Меньше 480 пикселей карта не становится — тогда прокручивается страница. */
 .plan-view.with-map {
+  flex: 1;
   grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 480px;
+}
+
+.plan-view.with-map .map-area {
+  height: auto;
+  min-height: 0;
 }
 
 .plan-view.with-map .panel-area {
-  max-height: max(480px, calc(100vh - 380px));
+  min-height: 0;
   overflow: auto;
   padding-right: 4px;
 }
 
 @media (max-width: 1000px) {
   .plan-view.with-map {
+    flex: none;
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .plan-view.with-map .map-area {
+    height: 480px;
   }
 
   .plan-view.with-map .panel-area {
-    max-height: none;
+    overflow: visible;
   }
 }
 </style>

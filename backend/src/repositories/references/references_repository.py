@@ -26,6 +26,10 @@ async def list_work_types(session: AsyncSession) -> list[WorkType]:
     return list(result.scalars().all())
 
 
+async def get_work_type(session: AsyncSession, work_type_id: int) -> WorkType | None:
+    return await session.get(WorkType, work_type_id)
+
+
 async def list_offices(session: AsyncSession) -> list[Office]:
     result = await session.execute(select(Office).order_by(Office.id))
     return list(result.scalars().all())

@@ -4,7 +4,7 @@
 // в списке планов, здесь их не повторяем.
 import { computed, reactive, ref, watch } from 'vue'
 
-import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
+import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
 import { formatDuration } from '../utils/duration.js'
 import { routeColor } from '../utils/routeColors.js'
@@ -89,13 +89,8 @@ watch(() => props.plan.id, () => {
 
 <template>
   <section class="routes-panel">
-    <header v-if="!besideMap" class="plan-title">
-      <h2>План №{{ plan.id }} на {{ formatDay(plan.plan_date) }}</h2>
-    </header>
-
 
     <section class="plan-block">
-      <h3>Маршруты исполнителей</h3>
 
       <!-- рядом с картой места мало: маршруты карточками и одно поле поиска -->
       <template v-if="besideMap">
@@ -291,10 +286,6 @@ watch(() => props.plan.id, () => {
   font-size: 13px;
 }
 
-.plan-title h2 {
-  margin: 0;
-  font-size: 16px;
-}
 
 .plan-block {
   display: flex;
