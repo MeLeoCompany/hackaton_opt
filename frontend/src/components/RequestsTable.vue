@@ -170,12 +170,12 @@ onMounted(scrollToSelected)
               {{ referenceName(references, 'work_types', request.work_type_id) }}
               <!-- требуемое оборудование — под названием, каждое своей строкой -->
               <span
-                v-for="equipmentId in request.equipment_ids ?? []"
-                :key="equipmentId"
+                v-for="item in request.equipment ?? []"
+                :key="item.equipment_id"
                 class="equipment-badge"
                 title="Что техник должен привезти на заявку"
               >
-                ⚙ {{ referenceName(references, 'equipment', equipmentId) }}
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
               </span>
             </td>
             <td class="number-cell under-range-filter">{{ request.duration_minutes }}</td>
@@ -221,20 +221,4 @@ onMounted(scrollToSelected)
   font-variant-numeric: tabular-nums;
 }
 
-/* требуемое оборудование: каждое отдельной строкой под типом работ, мелко и заметно */
-.equipment-badge {
-  display: table;
-  margin-top: 4px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 12px;
-  line-height: 18px;
-  white-space: nowrap;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: top;
-}
 </style>

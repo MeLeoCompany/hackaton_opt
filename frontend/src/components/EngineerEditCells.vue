@@ -4,6 +4,7 @@
 import { computed, ref } from 'vue'
 
 import DayTimeRange from './DayTimeRange.vue'
+import EquipmentPicker from './EquipmentPicker.vue'
 import IconButton from './IconButton.vue'
 import { isAtOffice } from '../utils/officePoint.js'
 import PointPickerDialog from './PointPickerDialog.vue'
@@ -76,6 +77,10 @@ const officeLandmarks = computed(() =>
     </div>
   </td>
   <td>
+    <!-- что бригада везёт и сколько: список с галочками, под ним количество -->
+    <EquipmentPicker v-model="form.equipment" :options="references.equipment ?? []" empty-label="нет" />
+  </td>
+  <td>
     <DayTimeRange v-model:start="form.shift_start" v-model:end="form.shift_end" />
   </td>
   <td class="start-cell">
@@ -131,6 +136,10 @@ const officeLandmarks = computed(() =>
   outline: none;
   box-shadow: 0 0 0 2px #2563eb;
 }
+
+
+
+
 
 .skill-checkboxes {
   display: flex;

@@ -65,9 +65,9 @@ test('другая колонка всегда начинает с возрас�
 })
 
 const WITH_EQUIPMENT = [
-  { id: 1, address: 'А', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T07:00:00Z', is_active: true, equipment_ids: [1] },
-  { id: 2, address: 'Б', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T08:00:00Z', is_active: true, equipment_ids: [1, 2] },
-  { id: 3, address: 'В', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T09:00:00Z', is_active: true, equipment_ids: [] },
+  { id: 1, address: 'А', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T07:00:00Z', is_active: true, equipment: [{ equipment_id: 1, quantity: 2 }] },
+  { id: 2, address: 'Б', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T08:00:00Z', is_active: true, equipment: [{ equipment_id: 1, quantity: 1 }, { equipment_id: 2, quantity: 1 }] },
+  { id: 3, address: 'В', latitude: 55.7, longitude: 37.6, duration_minutes: 30, window_start: '2026-08-17T09:00:00Z', is_active: true, equipment: [] },
 ]
 
 test('фильтр «нужно любое оборудование» оставляет заявки с требованием', async () => {

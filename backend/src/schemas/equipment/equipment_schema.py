@@ -12,5 +12,7 @@ class EquipmentWrite(BaseModel):
 
 class EquipmentRead(EquipmentWrite):
     id: int
-    # сколько заявок требуют это оборудование: пока их больше нуля, тип не удалить
+    # сколько заявок требуют это оборудование и у скольких бригад оно есть:
+    # пока хоть одно больше нуля, тип не удалить
     request_count: int = 0
+    engineer_count: int = 0

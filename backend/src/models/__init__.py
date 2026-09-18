@@ -1,17 +1,18 @@
 from src.models.assignment import Assignment
-from src.models.engineer import Engineer, engineer_skill
+from src.models.engineer import Engineer, EngineerEquipment, engineer_skill
 from src.models.equipment import Equipment
 from src.models.event import Event, EventType
 from src.models.office import Office
 from src.models.plan import Plan, PlanRunType
 from src.models.reference import Priority, Skill, Transport, WorkType
-from src.models.request import Request, request_equipment
+from src.models.request import Request, RequestEquipment
 from src.models.user import AppUser, UserRole
 
 __all__ = [
     "AppUser",
     "Assignment",
     "Engineer",
+    "EngineerEquipment",
     "Equipment",
     "Event",
     "EventType",
@@ -20,10 +21,10 @@ __all__ = [
     "PlanRunType",
     "Priority",
     "Request",
+    "RequestEquipment",
     "Skill",
     "Transport",
     "UserRole",
     "WorkType",
     "engineer_skill",
-    "request_equipment",
 ]

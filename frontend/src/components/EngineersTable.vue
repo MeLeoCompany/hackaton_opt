@@ -148,6 +148,17 @@ onMounted(scrollToSelected)
                 </span>
               </div>
             </td>
+            <td>
+              <!-- что бригада везёт: тип и количество, каждое своей строкой -->
+              <span
+                v-for="item in engineer.equipment ?? []"
+                :key="item.equipment_id"
+                class="equipment-badge"
+                title="Что бригада везёт с собой"
+              >
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
+              </span>
+            </td>
             <td class="range-cell">
               <TimeRangeValue :start="engineer.shift_start" :end="engineer.shift_end" />
             </td>

@@ -10,7 +10,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models import Assignment, Engineer, Event, Skill
+from src.models import Assignment, Engineer, EngineerEquipment, Event, Skill
 
 ENGINEER_ID_LOCK_KEY = 7419822
 
@@ -65,6 +65,23 @@ def apply_changes(engineer: Engineer, fields: dict, skills: list[Skill]) -> None
     for field_name, value in fields.items():
         setattr(engineer, field_name, value)
     engineer.skills = skills
+
+
+def set_equipment(engineer: Engineer, quantities: dict[int, int]) -> None:
+    """Запас бригады -> {тип: количество}. Существующие строки меняются на месте:
+    удалить и тут же вставить строку с тем же ключом в одной транзакции нельзя."""
+    kept = []
+    for item in engineer.equipment_items:
+        if item.equipment_id in quantities:
+            item.quantity = quantities[item.equipment_id]
+            kept.append(item)
+    known = {item.equipment_id for item in kept}
+    kept += [
+        EngineerEquipment(equipment_id=equipment_id, quantity=quantity)
+        for equipment_id, quantity in quantities.items()
+        if equipment_id not in known
+    ]
+    engineer.equipment_items = kept
 
 
 async def delete_engineer(session: AsyncSession, engineer: Engineer) -> None:

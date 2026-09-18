@@ -3,6 +3,13 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class EngineerEquipmentItem(BaseModel):
+    """Сколько штук оборудования одного типа везёт бригада."""
+
+    equipment_id: int = Field(gt=0)
+    quantity: int = Field(gt=0, le=999)
+
+
 class EngineerWrite(BaseModel):
     """Поля исполнителя, которые диспетчер заполняет при создании и изменении."""
 
@@ -18,6 +25,8 @@ class EngineerWrite(BaseModel):
     start_at_office: bool = False
     # по ТЗ у исполнителя от 1 до 3 навыков
     skill_ids: list[int] = Field(min_length=1, max_length=3)
+    # оборудование, которое бригада везёт с собой; пусто — ничего
+    equipment: list[EngineerEquipmentItem] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_shift_and_skills(self) -> "EngineerWrite":
@@ -27,6 +36,9 @@ class EngineerWrite(BaseModel):
             )
         if self.shift_end <= self.shift_start:
             raise ValueError("конец смены должен быть позже начала")
+        equipment_ids = [item.equipment_id for item in self.equipment]
+        if len(set(equipment_ids)) != len(equipment_ids):
+            raise ValueError("оборудование не должно повторяться")
         if len(set(self.skill_ids)) != len(self.skill_ids):
             raise ValueError("навыки не должны повторяться")
         return self

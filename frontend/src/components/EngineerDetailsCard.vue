@@ -46,6 +46,17 @@ defineEmits(['show-in-table', 'close'])
           </dd>
         </div>
         <div>
+          <dt>Оборудование</dt>
+          <dd>
+            <template v-if="engineer.equipment?.length">
+              <span v-for="item in engineer.equipment" :key="item.equipment_id" class="equipment-badge">
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
+              </span>
+            </template>
+            <template v-else>нет</template>
+          </dd>
+        </div>
+        <div>
           <dt>Старт</dt>
           <dd>
             <template v-if="engineer.start_at_office">

@@ -15,9 +15,10 @@
   она будет обновлена;
 - приоритет, навык и транспорт — названием из справочника (регистр не важен) или номером;
   транспорт можно оставить пустым;
-- «оборудование» — что нужно привезти: названия или номера из справочника оборудования
-  через запятую («Роутер, ТВ-приставка»), пусто — ничего. Колонки нет в файле — у
-  существующей заявки требование не меняется;
+- «оборудование» — что и сколько нужно привезти: названия или номера из справочника
+  оборудования через запятую, с количеством через двоеточие («Роутер: 2, ТВ-приставка»;
+  без количества — одна штука), пусто — ничего. Колонки нет в файле — у существующей
+  заявки требование не меняется;
 - время — «17.08.2026 10:00» или «2026-08-17T10:00»; без часового пояса считается московским.
 """
 
@@ -108,7 +109,7 @@ def build_csv_template() -> str:
         ";".join(COLUMNS),
         # длительность и навык не заполнены: возьмутся из типа работ
         ";Город Москва, пер.Маяковского, д. 2;55.7400;37.6580;Подключение клиентов, базовая;;"
-        '17.08.2026 18:00;17.08.2026 20:00;Обычная;;;да;"Роутер, ТВ-приставка"',
+        '17.08.2026 18:00;17.08.2026 20:00;Обычная;;;да;"Роутер: 2, ТВ-приставка"',
         "400000001;Город Москва, ул.Саратовская, д. 16;55.7090;37.7368;Авария на ТКД;90;"
         "17.08.2026 20:00;17.08.2026 22:00;Срочная;Аварийные работы;Автомобиль;нет;",
     ]
@@ -279,26 +280,40 @@ def parse_row(
     # нет колонки — поле не трогаем, как с «активна»: повторная загрузка старого файла
     # не должна молча снимать требование оборудования у существующих заявок
     if "оборудование" in raw_row:
-        fields["equipment_ids"] = parse_equipment(
+        fields["equipment"] = parse_equipment(
             cell(raw_row, "оборудование"), references.equipment, errors
         )
     return fields
 
 
-def parse_equipment(raw_value: str, equipment: ReferenceOptions, errors: list[str]) -> list[int]:
-    """«Роутер, ТВ-приставка» -> [1, 2]: несколько типов через запятую, пусто — ничего."""
-    equipment_ids: list[int] = []
-    for name in (part.strip() for part in raw_value.split(",")):
-        if not name:
+def parse_equipment(
+    raw_value: str, equipment: ReferenceOptions, errors: list[str]
+) -> dict[int, int]:
+    """«Роутер: 2, ТВ-приставка» -> {1: 2, 2: 1}: без количества — одна штука.
+
+    Одинаково для требования заявки и запаса бригады.
+    """
+    quantities: dict[int, int] = {}
+    for part in (piece.strip() for piece in raw_value.split(",")):
+        if not part:
             continue
-        equipment_id = parse_reference(name, "оборудование", equipment, errors, required=True)
+        name, _, raw_quantity = part.partition(":")
+        equipment_id = parse_reference(
+            name.strip(), "оборудование", equipment, errors, required=True
+        )
+        quantity = 1
+        if raw_quantity.strip():
+            if not raw_quantity.strip().isdigit() or int(raw_quantity) < 1:
+                errors.append(f"«{part}» в поле «оборудование» — количество должно быть целым от 1")
+                continue
+            quantity = int(raw_quantity)
         if equipment_id is None:
             continue
-        if equipment_id in equipment_ids:
-            errors.append(f"оборудование «{name}» указано дважды")
+        if equipment_id in quantities:
+            errors.append(f"оборудование «{name.strip()}» указано дважды")
             continue
-        equipment_ids.append(equipment_id)
-    return equipment_ids
+        quantities[equipment_id] = quantity
+    return quantities
 
 
 def parse_active(raw_value: str, errors: list[str]) -> bool | None:

@@ -142,4 +142,4 @@ def test_csv_without_coordinates_starts_at_office():
 def test_template_shows_start_column():
     header, *_ = build_csv_template().splitlines()
 
-    assert header.endswith(";старт_из_офиса")
+    assert ";старт_из_офиса" in header

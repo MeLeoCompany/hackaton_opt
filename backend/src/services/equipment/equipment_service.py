@@ -20,19 +20,22 @@ class EquipmentInUseError(InUseError):
     """Тип оборудования нельзя удалить: его требуют заявки."""
 
 
-def to_equipment_read(equipment: Equipment, request_count: int) -> EquipmentRead:
+def to_equipment_read(
+    equipment: Equipment, request_count: int, engineer_count: int = 0
+) -> EquipmentRead:
     return EquipmentRead(
         id=equipment.id,
         name=equipment.name,
         description=equipment.description,
         request_count=request_count,
+        engineer_count=engineer_count,
     )
 
 
 async def list_equipment(session: AsyncSession) -> list[EquipmentRead]:
     return [
-        to_equipment_read(equipment, count)
-        for equipment, count in await equipment_repository.list_equipment(session)
+        to_equipment_read(equipment, requests, engineers)
+        for equipment, requests, engineers in await equipment_repository.list_equipment(session)
     ]
 
 
@@ -52,18 +55,26 @@ async def update_equipment(
     equipment_repository.apply_changes(equipment, payload.model_dump())
     await session.commit()
     return to_equipment_read(
-        equipment, await equipment_repository.count_requests(session, equipment_id)
+        equipment,
+        await equipment_repository.count_requests(session, equipment_id),
+        await equipment_repository.count_engineers(session, equipment_id),
     )
 
 
 async def delete_equipment(session: AsyncSession, equipment_id: int) -> None:
-    """Удаляет тип оборудования, если его не требует ни одна заявка."""
+    """Удаляет тип оборудования, если его не требуют заявки и нет ни у одной бригады."""
     equipment = await find_equipment(session, equipment_id)
-    used = await equipment_repository.count_requests(session, equipment_id)
-    if used:
+    requests = await equipment_repository.count_requests(session, equipment_id)
+    engineers = await equipment_repository.count_engineers(session, equipment_id)
+    if requests or engineers:
+        where = []
+        if requests:
+            where.append(f"требуется в заявках ({requests})")
+        if engineers:
+            where.append(f"есть у бригад ({engineers})")
         raise EquipmentInUseError(
-            f"«{equipment.name}» нельзя удалить: его требуют заявки ({used}). "
-            "Сначала снимите требование в заявках"
+            f"«{equipment.name}» нельзя удалить: {' и '.join(where)}. "
+            "Сначала уберите его из заявок и бригад"
         )
     await equipment_repository.delete_equipment(session, equipment)
     await session.commit()

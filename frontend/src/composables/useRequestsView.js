@@ -86,7 +86,7 @@ export function useRequestsView(requests, references) {
 
     if (filters.priorityId !== '' && request.priority_id !== filters.priorityId) return false
     if (filters.workTypeId !== '' && request.work_type_id !== filters.workTypeId) return false
-    const equipmentIds = request.equipment_ids ?? []
+    const equipmentIds = (request.equipment ?? []).map((item) => item.equipment_id)
     if (filters.equipmentId === EQUIPMENT_ANY) {
       if (equipmentIds.length === 0) return false
     } else if (filters.equipmentId !== '' && !equipmentIds.includes(filters.equipmentId)) {

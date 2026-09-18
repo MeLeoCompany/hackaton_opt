@@ -644,6 +644,27 @@ button.link:disabled {
   color: #b91c1c;
 }
 
+/* оборудование — жёлтая плашка «⚙ Роутер» (у бригады «⚙ Роутер × 3»): каждое отдельной
+   строкой, одинаково в заявках и у исполнителей */
+.equipment-badge {
+  display: table;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 0 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.equipment-badge:first-child {
+  margin-top: 0;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

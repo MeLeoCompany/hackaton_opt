@@ -3,6 +3,15 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class RequestEquipmentItem(BaseModel):
+    """Сколько штук оборудования одного типа нужно на заявку."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    equipment_id: int = Field(gt=0)
+    quantity: int = Field(default=1, gt=0, le=999)
+
+
 class RequestWrite(BaseModel):
     """Поля заявки, которые диспетчер заполняет при создании и изменении."""
 
@@ -19,8 +28,8 @@ class RequestWrite(BaseModel):
     skill_id: int | None = None
     transport_id: int | None = None  # пусто — транспорт не важен
     work_type_id: int | None = None  # тип работ из справочника нормативов
-    # какое оборудование нужно привезти: несколько типов сразу; пусто — ничего
-    equipment_ids: list[int] = Field(default_factory=list)
+    # какое оборудование и сколько нужно привезти; пусто — ничего
+    equipment: list[RequestEquipmentItem] = Field(default_factory=list)
     is_active: bool = True  # выключенная заявка не попадает в сборку задачи планирования
 
     @model_validator(mode="after")
@@ -31,7 +40,8 @@ class RequestWrite(BaseModel):
             )
         if self.window_end <= self.window_start:
             raise ValueError("конец окна должен быть позже начала")
-        if len(set(self.equipment_ids)) != len(self.equipment_ids):
+        equipment_ids = [item.equipment_id for item in self.equipment]
+        if len(set(equipment_ids)) != len(equipment_ids):
             raise ValueError("оборудование не должно повторяться")
         return self
 

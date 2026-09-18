@@ -17,6 +17,7 @@ import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js
 import { isAtOffice } from '../utils/officePoint.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
+import { equipmentPayload } from '../utils/equipment.js'
 
 export const NEW_ENGINEER = 'new'
 
@@ -65,6 +66,7 @@ export function useEngineersTable() {
       name: '',
       transport_id: references.value.transports[0]?.id ?? '',
       skill_ids: [],
+      equipment: {}, // { номер оборудования: сколько штук }
       shift_start: '',
       shift_end: '',
       start_latitude: office?.latitude ?? '',
@@ -80,6 +82,7 @@ export function useEngineersTable() {
       name: engineer.name,
       transport_id: engineer.transport_id,
       skill_ids: [...engineer.skill_ids],
+      equipment: Object.fromEntries((engineer.equipment ?? []).map((item) => [item.equipment_id, item.quantity])),
       shift_start: toMoscowInputValue(engineer.shift_start),
       shift_end: toMoscowInputValue(engineer.shift_end),
       start_latitude: engineer.start_latitude,
@@ -103,6 +106,7 @@ export function useEngineersTable() {
       name: values.name.trim(),
       transport_id: numberOrNull(values.transport_id),
       skill_ids: values.skill_ids.map(Number),
+      equipment: equipmentPayload(values.equipment),
       shift_start: values.shift_start ? fromMoscowInputValue(values.shift_start) : null,
       shift_end: values.shift_end ? fromMoscowInputValue(values.shift_end) : null,
       // координаты совпали с офисом — бригада выезжает из офиса и переедет вместе с ним

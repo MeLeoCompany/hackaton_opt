@@ -52,11 +52,12 @@ defineEmits(['show-in-table', 'close', 'toggle-active'])
         <div>
           <dt>Оборудование</dt>
           <dd>
-            {{
-              request.equipment_ids?.length
-                ? request.equipment_ids.map((equipmentId) => referenceName(references, 'equipment', equipmentId)).join(', ')
-                : 'не нужно'
-            }}
+            <template v-if="request.equipment?.length">
+              <span v-for="item in request.equipment" :key="item.equipment_id" class="equipment-badge">
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
+              </span>
+            </template>
+            <template v-else>не нужно</template>
           </dd>
         </div>
         <div>

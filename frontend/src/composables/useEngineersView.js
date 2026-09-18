@@ -5,6 +5,7 @@ import { computed, reactive, ref, watch } from 'vue'
 
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
+import { EQUIPMENT_ANY } from './useRequestsView.js'
 
 // sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
 // width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
@@ -13,6 +14,8 @@ export const ENGINEER_COLUMNS = [
   { key: 'name', label: 'Имя', sortKey: 'name', grow: 1, minWidth: 170, floor: 130 },
   { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '215px', floor: 170 },
   { key: 'skills', label: 'Навыки', sortKey: 'skills', grow: 2, minWidth: 230, floor: 170 },
+  // что бригада везёт с собой: тип и количество, отдельно от навыков
+  { key: 'equipment', label: 'Оборудование', sortKey: null, grow: 1, minWidth: 160, floor: 130 },
   { key: 'shift', label: 'Смена (МСК)', sortKey: 'shift_start', width: '130px' },
   // откуда выезжает: значок офиса или своей точки; в правке по значку открывается карта
   { key: 'start', label: 'Старт', sortKey: null, width: '72px' },
@@ -29,6 +32,7 @@ function emptyFilters() {
     text: '', // часть имени
     transportId: '', // '' — любой
     skillId: '', // '' — любой; иначе исполнитель должен уметь этот навык
+    equipmentId: '', // '' — неважно, EQUIPMENT_ANY — есть хоть что-то, иначе номер оборудования
     shiftFrom: '', // 'HH:MM' — смена начинается не раньше
     shiftTo: '', // 'HH:MM' — смена начинается не позже
     startKind: '', // '' — любой старт, 'office' — из офиса, 'own' — из своей точки
@@ -53,6 +57,12 @@ export function useEngineersView(engineers, references) {
 
     if (filters.transportId !== '' && engineer.transport_id !== filters.transportId) return false
     if (filters.skillId !== '' && !engineer.skill_ids.includes(filters.skillId)) return false
+
+    const carried = (engineer.equipment ?? []).map((item) => item.equipment_id)
+    if (filters.equipmentId === EQUIPMENT_ANY && carried.length === 0) return false
+    if (filters.equipmentId !== '' && filters.equipmentId !== EQUIPMENT_ANY && !carried.includes(filters.equipmentId)) {
+      return false
+    }
 
     if (filters.startKind === 'office' && !engineer.start_at_office) return false
     if (filters.startKind === 'own' && engineer.start_at_office) return false

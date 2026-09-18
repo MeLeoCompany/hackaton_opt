@@ -2,6 +2,7 @@
 // Ячейки строки таблицы заявок в режиме редактирования (всё, кроме номера заявки).
 // form — объект формы из useRequestsTable, поля ввода меняют его напрямую.
 import DayTimeRange from './DayTimeRange.vue'
+import EquipmentPicker from './EquipmentPicker.vue'
 import IconButton from './IconButton.vue'
 import PointPickerButton from './PointPickerButton.vue'
 
@@ -55,13 +56,8 @@ function applyPickedPoint(latitude, longitude) {
         <option value="">не указан</option>
         <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
       </select>
-      <!-- что техник должен привезти: можно отметить несколько -->
-      <div v-if="references.equipment?.length" class="equipment-checkboxes">
-        <label v-for="item in references.equipment" :key="item.id" :title="item.description">
-          <input v-model="form.equipment_ids" type="checkbox" :value="item.id" />
-          {{ item.name }}
-        </label>
-      </div>
+      <!-- что техник должен привезти и сколько: список с галочками, под ним количество -->
+      <EquipmentPicker v-model="form.equipment" :options="references.equipment ?? []" empty-label="без оборудования" />
     </div>
   </td>
   <td>
@@ -96,28 +92,8 @@ function applyPickedPoint(latitude, longitude) {
 </template>
 
 <style scoped>
-.equipment-checkboxes {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-}
 
-.equipment-checkboxes label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
 
-.equipment-checkboxes input {
-  flex-shrink: 0;
-  width: 14px;
-  min-width: 0;
-  height: 14px;
-  margin: 0;
-  padding: 0;
-}
 
 .work-type-cell {
   display: flex;

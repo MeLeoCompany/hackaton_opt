@@ -11,7 +11,13 @@ from src.models import Engineer, Skill
 from src.repositories.engineers import engineers_repository
 from src.repositories.offices import offices_repository
 from src.repositories.references import references_repository
-from src.schemas.engineers import EngineerCreate, EngineerImportReport, EngineerRead, EngineerWrite
+from src.schemas.engineers import (
+    EngineerCreate,
+    EngineerEquipmentItem,
+    EngineerImportReport,
+    EngineerRead,
+    EngineerWrite,
+)
 from src.services.engineers.engineers_csv import (
     EngineerReferenceLookup,
     build_engineers_csv,
@@ -46,6 +52,10 @@ def to_engineer_read(engineer: Engineer) -> EngineerRead:
         office_id=engineer.office_id,
         start_at_office=engineer.start_at_office,
         skill_ids=sorted(skill.id for skill in engineer.skills),
+        equipment=[
+            EngineerEquipmentItem(equipment_id=item.equipment_id, quantity=item.quantity)
+            for item in engineer.equipment_items
+        ],
     )
 
 
@@ -82,12 +92,14 @@ async def create_engineer(
         )
 
     fields = await with_office_start(
-        session, {**payload.model_dump(exclude={"skill_ids"}), "office_id": office_id}
+        session,
+        {**payload.model_dump(exclude={"skill_ids", "equipment"}), "office_id": office_id},
     )
     if fields["id"] is None:
         fields["id"] = smallest_free_id(await engineers_repository.list_engineer_ids(session))
 
     engineer = engineers_repository.add_engineer(session, fields, skills)
+    engineers_repository.set_equipment(engineer, equipment_quantities(payload))
     await session.flush()
     await session.commit()
     return to_engineer_read(engineer)
@@ -99,9 +111,11 @@ async def update_engineer(
     engineer = await find_engineer(session, engineer_id, office_id)
     skills = await check_references(session, payload)
     fields = await with_office_start(
-        session, {**payload.model_dump(exclude={"skill_ids"}), "office_id": office_id}
+        session,
+        {**payload.model_dump(exclude={"skill_ids", "equipment"}), "office_id": office_id},
     )
     engineers_repository.apply_changes(engineer, fields, skills)
+    engineers_repository.set_equipment(engineer, equipment_quantities(payload))
     await session.commit()
     return to_engineer_read(engineer)
 
@@ -142,8 +156,12 @@ async def with_office_start(session: AsyncSession, fields: dict) -> dict:
     return {**fields, "start_latitude": office.latitude, "start_longitude": office.longitude}
 
 
+def equipment_quantities(payload: EngineerWrite) -> dict[int, int]:
+    return {item.equipment_id: item.quantity for item in payload.equipment}
+
+
 async def check_references(session: AsyncSession, payload: EngineerWrite) -> list[Skill]:
-    """Проверяет, что транспорт и навыки есть в справочниках; возвращает найденные навыки."""
+    """Проверяет транспорт, навыки и оборудование по справочникам; возвращает навыки."""
     problems = []
 
     transports = await references_repository.list_transports(session)
@@ -155,6 +173,14 @@ async def check_references(session: AsyncSession, payload: EngineerWrite) -> lis
     if missing_skill_ids:
         listed = ", ".join(f"№{skill_id}" for skill_id in missing_skill_ids)
         problems.append(f"навыков {listed} нет в справочнике")
+
+    known_equipment = {item.id for item in await references_repository.list_equipment(session)}
+    missing_equipment = [
+        item.equipment_id for item in payload.equipment if item.equipment_id not in known_equipment
+    ]
+    if missing_equipment:
+        listed = ", ".join(f"№{equipment_id}" for equipment_id in missing_equipment)
+        problems.append(f"оборудования {listed} нет в справочнике")
 
     if problems:
         raise EngineerDataError(problems)
@@ -182,6 +208,10 @@ async def export_engineers_csv(
                 ),
                 "смена_начало": format_datetime(engineer.shift_start, timezone),
                 "смена_конец": format_datetime(engineer.shift_end, timezone),
+                "оборудование": ", ".join(
+                    f"{names['equipment'].get(item.equipment_id, item.equipment_id)}: {item.quantity}"
+                    for item in engineer.equipment
+                ),
             }
             for engineer in engineers
         ]
@@ -189,12 +219,14 @@ async def export_engineers_csv(
 
 
 async def reference_names(session: AsyncSession) -> dict[str, dict[int, str]]:
-    """Названия транспорта и навыков по номеру — для выгрузки в CSV."""
+    """Названия транспорта, навыков и оборудования по номеру — для выгрузки в CSV."""
     transports = await references_repository.list_transports(session)
     skills = await references_repository.list_skills(session)
+    equipment = await references_repository.list_equipment(session)
     return {
         "transports": {transport.id: transport.name for transport in transports},
         "skills": {skill.id: skill.name for skill in skills},
+        "equipment": {item.id: item.name for item in equipment},
     }
 
 
@@ -231,9 +263,11 @@ async def import_engineers_csv(
     await engineers_repository.lock_engineer_ids(session)
     transports = await references_repository.list_transports(session)
     skills = await references_repository.list_skills(session)
+    equipment = await references_repository.list_equipment(session)
     references = EngineerReferenceLookup(
         transports=reference_options([(transport.id, transport.name) for transport in transports]),
         skills=reference_options([(skill.id, skill.name) for skill in skills]),
+        equipment=reference_options([(item.id, item.name) for item in equipment]),
     )
     office = await offices_repository.get_office(session, office_id)
 
@@ -254,7 +288,13 @@ async def import_engineers_csv(
     updated = 0
     for fields in parsed.rows:
         row_skills = [skill_by_id[skill_id] for skill_id in fields["skill_ids"]]
-        values = {name: value for name, value in fields.items() if name not in {"id", "skill_ids"}}
+        values = {
+            name: value
+            for name, value in fields.items()
+            if name not in {"id", "skill_ids", "equipment"}
+        }
+        # колонки «оборудование» нет в файле — запас бригады не трогаем
+        quantities = fields.get("equipment")
         values["office_id"] = office_id
         # из офиса — старт в точке офиса, как и при правке в интерфейсе
         if values["start_at_office"]:
@@ -268,16 +308,23 @@ async def import_engineers_csv(
         )
         if existing is not None and existing.office_id != office_id:
             raise EngineerDataError(
-                [f"исполнитель №{fields['id']} есть в другом офисе — уберите номер или укажите другой"]
+                [
+                    f"исполнитель №{fields['id']} есть в другом офисе — уберите номер или укажите другой"
+                ]
             )
         if existing is not None:
             engineers_repository.apply_changes(existing, values, row_skills)
+            if quantities is not None:
+                engineers_repository.set_equipment(existing, quantities)
             updated += 1
             continue
 
         identifier = fields["id"] if fields["id"] is not None else smallest_free_id(taken_ids)
         taken_ids.add(identifier)
-        engineers_repository.add_engineer(session, {"id": identifier, **values}, row_skills)
+        engineer = engineers_repository.add_engineer(
+            session, {"id": identifier, **values}, row_skills
+        )
+        engineers_repository.set_equipment(engineer, quantities or {})
         created += 1
 
     await session.flush()

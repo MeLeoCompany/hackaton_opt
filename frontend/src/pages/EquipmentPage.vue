@@ -59,6 +59,7 @@ onMounted(load)
             <col />
             <col style="width: 110px" />
             <col style="width: 110px" />
+            <col style="width: 110px" />
           </colgroup>
           <thead>
             <tr>
@@ -66,6 +67,7 @@ onMounted(load)
               <th>Название</th>
               <th>Описание</th>
               <th>Заявок</th>
+              <th>У бригад</th>
               <th></th>
             </tr>
           </thead>
@@ -81,6 +83,7 @@ onMounted(load)
                   <input v-model="form.description" placeholder="для чего нужно" aria-label="описание оборудования" />
                 </td>
                 <td class="number-cell">{{ item?.request_count ?? 0 }}</td>
+                <td class="number-cell">{{ item?.engineer_count ?? 0 }}</td>
                 <td>
                   <div class="row-actions">
                     <IconButton
@@ -100,14 +103,15 @@ onMounted(load)
                 <td><strong>{{ item.name }}</strong></td>
                 <td class="muted">{{ item.description || '—' }}</td>
                 <td class="number-cell">{{ item.request_count }}</td>
+                <td class="number-cell">{{ item.engineer_count }}</td>
                 <td>
                   <div v-if="isAdmin" class="row-actions">
                     <IconButton icon="edit" label="Изменить" :disabled="editingId !== null" @click="startEdit(item)" />
                     <IconButton
                       icon="delete"
                       variant="danger"
-                      :label="item.request_count ? `Требуется в заявках (${item.request_count}) — не удалить` : 'Удалить'"
-                      :disabled="editingId !== null || saving || item.request_count > 0"
+                      :label="item.request_count || item.engineer_count ? `Есть в заявках (${item.request_count}) и у бригад (${item.engineer_count}) — не удалить` : 'Удалить'"
+                      :disabled="editingId !== null || saving || item.request_count > 0 || item.engineer_count > 0"
                       @click="remove(item)"
                     />
                   </div>
@@ -116,7 +120,7 @@ onMounted(load)
             </template>
 
             <tr v-if="!equipment.length && editingId !== NEW_EQUIPMENT">
-              <td colspan="5" class="empty">Оборудования в справочнике нет</td>
+              <td colspan="6" class="empty">Оборудования в справочнике нет</td>
             </tr>
           </tbody>
         </table>

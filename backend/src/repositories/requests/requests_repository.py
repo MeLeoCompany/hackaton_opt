@@ -5,7 +5,7 @@ from datetime import date, datetime
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Assignment, Equipment, Event, Plan, Request
+from src.models import Assignment, Event, Plan, Request, RequestEquipment
 
 # Shared by request creation and CSV import; independent from engineer ID allocation.
 REQUEST_ID_LOCK_KEY = 7419821
@@ -117,29 +117,40 @@ async def get_requests_by_ids(session: AsyncSession, request_ids: list[int]) -> 
 
 
 def add_request(
-    session: AsyncSession, fields: dict, equipment: list[Equipment] | None = None
+    session: AsyncSession, fields: dict, quantities: dict[int, int] | None = None
 ) -> Request:
     request = Request(**fields)
-    request.equipment = equipment or []
+    request.equipment = [
+        RequestEquipment(equipment_id=equipment_id, quantity=quantity)
+        for equipment_id, quantity in (quantities or {}).items()
+    ]
     session.add(request)
     return request
 
 
-def apply_changes(request: Request, fields: dict, equipment: list[Equipment] | None = None) -> None:
-    """Меняет поля заявки; equipment=None — список оборудования не трогаем."""
+def apply_changes(request: Request, fields: dict, quantities: dict[int, int] | None = None) -> None:
+    """Меняет поля заявки; quantities=None — требуемое оборудование не трогаем."""
     for field_name, value in fields.items():
         setattr(request, field_name, value)
-    if equipment is not None:
-        request.equipment = equipment
+    if quantities is not None:
+        set_equipment(request, quantities)
 
 
-async def get_equipment_by_ids(session: AsyncSession, equipment_ids: list[int]) -> list[Equipment]:
-    if not equipment_ids:
-        return []
-    result = await session.execute(
-        select(Equipment).where(Equipment.id.in_(equipment_ids)).order_by(Equipment.id)
-    )
-    return list(result.scalars().all())
+def set_equipment(request: Request, quantities: dict[int, int]) -> None:
+    """Требование заявки -> {тип: количество}. Существующие строки меняются на месте:
+    удалить и тут же вставить строку с тем же ключом в одной транзакции нельзя."""
+    kept = []
+    for item in request.equipment:
+        if item.equipment_id in quantities:
+            item.quantity = quantities[item.equipment_id]
+            kept.append(item)
+    known = {item.equipment_id for item in kept}
+    kept += [
+        RequestEquipment(equipment_id=equipment_id, quantity=quantity)
+        for equipment_id, quantity in quantities.items()
+        if equipment_id not in known
+    ]
+    request.equipment = kept
 
 
 async def delete_request(session: AsyncSession, request: Request) -> None:

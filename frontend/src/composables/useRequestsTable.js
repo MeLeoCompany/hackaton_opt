@@ -17,6 +17,7 @@ import { downloadBlob } from '../utils/downloadFile.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
+import { equipmentPayload } from '../utils/equipment.js'
 
 export const NEW_REQUEST = 'new'
 
@@ -70,7 +71,7 @@ export function useRequestsTable() {
       skill_id: references.value.work_types[0]?.skill_id ?? '',
       transport_id: '',
       work_type_id: references.value.work_types[0]?.id ?? '',
-      equipment_ids: [],
+      equipment: {}, // { номер оборудования: сколько штук }
       is_active: true,
     }
   }
@@ -99,7 +100,7 @@ export function useRequestsTable() {
       skill_id: request.skill_id,
       transport_id: request.transport_id ?? '',
       work_type_id: request.work_type_id ?? '',
-      equipment_ids: [...(request.equipment_ids ?? [])],
+      equipment: Object.fromEntries((request.equipment ?? []).map((item) => [item.equipment_id, item.quantity])),
       is_active: request.is_active,
     }
   }
@@ -127,7 +128,7 @@ export function useRequestsTable() {
       skill_id: numberOrNull(values.skill_id),
       transport_id: numberOrNull(values.transport_id),
       work_type_id: numberOrNull(values.work_type_id),
-      equipment_ids: values.equipment_ids.map(Number),
+      equipment: equipmentPayload(values.equipment),
       is_active: values.is_active,
     }
   }
