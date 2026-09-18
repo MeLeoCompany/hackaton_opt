@@ -734,16 +734,24 @@ button.link:disabled {
    задаёт суммой двух последних колонок таблицы (--details-width). Небольшой промежуток
    делится поровну по обе стороны линии колонки «Старт» («Транспорт» у заявок): карта не
    доходит до неё на половину промежутка, карточка отступает на ту же половину. */
+/* Вид карты забирает всё место до низа окна (рабочая область — колонка во всю высоту):
+   строка фильтров своей высоты, карта — остаток. Меньше 480 пикселей карта не становится —
+   тогда прокручивается страница. */
 .map-view {
   --map-card-gap: 12px;
   display: grid;
+  flex: 1;
   grid-template-columns: minmax(0, 1fr) var(--details-width, 300px);
+  grid-template-rows: auto minmax(480px, 1fr);
   column-gap: 0;
   row-gap: 14px;
   align-items: start;
 }
 
 .map-view > .map-area {
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
   margin-right: calc(var(--map-card-gap) / 2);
   border-radius: 8px;
   overflow: hidden;
@@ -767,7 +775,9 @@ button.link:disabled {
 
 @media (max-width: 900px) {
   .map-view {
+    flex: none;
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
   }
 
   .map-view > .map-area,
@@ -776,7 +786,8 @@ button.link:disabled {
     margin-right: 0;
   }
 
-  .map-area {
+  .map-area,
+  .map-view > .map-area {
     height: 420px;
   }
 }

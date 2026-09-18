@@ -203,3 +203,28 @@ async def assigned_request_ids_by_plan(
     for plan_id, request_id in rows:
         result.setdefault(plan_id, set()).add(request_id)
     return result
+
+
+async def list_withdrawn_requests(session: AsyncSession, plan_id: int) -> list[tuple[int, int]]:
+    """Заявки из маршрутов утверждённого плана, которых в нём больше нет: отменены или
+    возвращены в «Новая» (тогда за планом они уже не закреплены). [(номер, статус)]"""
+    result = await session.execute(
+        select(Assignment.request_id, Request.status_id)
+        .join(Request, Request.id == Assignment.request_id)
+        .where(
+            Assignment.plan_id == plan_id,
+            Assignment.engineer_id.is_not(None),
+            (Request.status_id == RequestStatusId.CANCELLED)
+            | Request.approved_plan_id.is_distinct_from(plan_id),
+        )
+        .order_by(Assignment.request_id)
+    )
+    return [(request_id, status_id) for request_id, status_id in result.all()]
+
+
+async def plan_request_ids(session: AsyncSession, plan_id: int) -> set[int]:
+    """Все заявки, которые видел расчёт плана: назначенные и неназначенные."""
+    result = await session.execute(
+        select(Assignment.request_id).where(Assignment.plan_id == plan_id)
+    )
+    return set(result.scalars().all())

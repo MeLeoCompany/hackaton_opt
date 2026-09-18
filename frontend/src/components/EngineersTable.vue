@@ -149,7 +149,9 @@ onMounted(scrollToSelected)
               </div>
             </td>
             <td>
-              <!-- что бригада везёт: тип и количество, каждое своей строкой -->
+              <!-- что бригада везёт: тип и количество, каждое своей строкой; пусто — «нет»,
+                   как в карточке бригады, чтобы было видно, что оборудования нет -->
+              <span v-if="!engineer.equipment?.length" class="muted" title="Бригада не везёт оборудования">нет</span>
               <span
                 v-for="item in engineer.equipment ?? []"
                 :key="item.equipment_id"

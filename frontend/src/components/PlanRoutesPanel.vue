@@ -494,13 +494,18 @@ watch(() => props.plan.id, () => {
   visibility: hidden;
 }
 
-.back-to-request.shown {
+/* стрелка загорается у подсвеченного визита и у визита под курсором — к любой заявке
+   маршрута можно перейти, не выбирая её сначала */
+.back-to-request.shown,
+.visit-step:hover .back-to-request,
+.visits li:hover .back-to-request {
   visibility: visible;
 }
 
-.back-to-request:hover {
-  border-color: #93c5fd;
-  background: #eff6ff;
+.back-to-request:hover:not(:disabled) {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
 }
 
 .visit-address {

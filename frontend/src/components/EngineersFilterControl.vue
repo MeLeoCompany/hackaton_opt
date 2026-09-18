@@ -1,8 +1,6 @@
 <script setup>
 // Фильтр одной колонки исполнителей. Один и тот же компонент стоит в шапке таблицы и в панели
 // над картой — поэтому фильтры в обоих видах выглядят и работают одинаково.
-import { EQUIPMENT_ANY } from '../composables/useRequestsView.js'
-
 import TimeInput from './TimeInput.vue'
 
 defineProps({
@@ -42,7 +40,6 @@ defineEmits(['reset'])
 
   <select v-else-if="column === 'equipment'" v-model="filters.equipmentId" aria-label="фильтр по оборудованию">
     <option value="">любое</option>
-    <option :value="EQUIPMENT_ANY">есть хоть что-то</option>
     <option v-for="item in references.equipment ?? []" :key="item.id" :value="item.id">{{ item.name }}</option>
   </select>
 

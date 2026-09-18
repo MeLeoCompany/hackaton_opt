@@ -24,7 +24,8 @@ const INACTIVE_COLOR = '#94a3b8'
 const LEGEND = [
   { label: 'Обычная', color: REGULAR_COLOR },
   { label: 'Срочная', color: URGENT_COLOR },
-  { label: 'Выключена', color: INACTIVE_COLOR },
+  // в работе, выполнена или отменена — в расчёт плана не идёт
+  { label: 'Вне планирования', color: INACTIVE_COLOR },
 ]
 
 const container = ref(null)
@@ -58,7 +59,9 @@ function escapeHtml(text) {
 function tooltipHtml(request) {
   const window = formatMoscowWindow(request.window_start, request.window_end)
   const workType = referenceName(props.references, 'work_types', request.work_type_id)
-  const status = request.is_active ? '' : '<br><span style="color:#94a3b8">выключена из планирования</span>'
+  // статус пишем всегда: по точке видно, что с заявкой (Новая, В плане, Выполнена…)
+  const statusName = referenceName(props.references, 'request_statuses', request.status_id)
+  const status = `<br><span style="color:#94a3b8">${escapeHtml(statusName)}</span>`
   return (
     `<b>№${request.id}</b> · ${window}<br>` +
     `${escapeHtml(request.address)}<br>` +

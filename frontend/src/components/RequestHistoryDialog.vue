@@ -54,14 +54,18 @@ function whoChanged(entry) {
             {{ formatDay(moscowDateOf(entry.changed_at)) }}
             <strong>{{ moscowTimeOf(entry.changed_at) }}</strong>
           </span>
+          <!-- переход — своя колонка с плашками одной ширины: «из» и «в» стоят ровно друг под
+               другом во всех строках; у появления заявки «из» пусто, место остаётся -->
           <span class="history-change">
-            <template v-if="entry.from_status_id !== null">
-              <span :class="['status-badge', `status-${statusCode(references, entry.from_status_id)}`]">
-                {{ referenceName(references, 'request_statuses', entry.from_status_id) }}
-              </span>
-              <span class="history-arrow" aria-hidden="true">→</span>
-            </template>
-            <span :class="['status-badge', `status-${statusCode(references, entry.to_status_id)}`]">
+            <span
+              v-if="entry.from_status_id !== null"
+              :class="['status-badge', 'status-fixed', `status-${statusCode(references, entry.from_status_id)}`]"
+            >
+              {{ referenceName(references, 'request_statuses', entry.from_status_id) }}
+            </span>
+            <span v-else class="history-appeared">появилась</span>
+            <span class="history-arrow" aria-hidden="true">→</span>
+            <span :class="['status-badge', 'status-fixed', `status-${statusCode(references, entry.to_status_id)}`]">
               {{ referenceName(references, 'request_statuses', entry.to_status_id) }}
             </span>
           </span>
@@ -90,7 +94,7 @@ function whoChanged(entry) {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(620px, 92vw);
+  width: min(760px, 94vw);
   max-height: 80vh;
   padding: 14px;
   border-radius: 10px;
@@ -126,13 +130,29 @@ function whoChanged(entry) {
   list-style: none;
 }
 
+/* три колонки одной ширины во всех строках: когда | переход | кто и почему;
+   между ними вертикальные черты */
 .history li {
   display: grid;
-  grid-template-columns: 130px auto 1fr;
+  grid-template-columns: 124px 236px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
   padding: 7px 0;
   border-top: 1px solid #e2e8f0;
+}
+
+.history li > * {
+  padding: 0 12px;
+}
+
+.history li > *:first-child {
+  padding-left: 0;
+}
+
+.history li > * + * {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid #e2e8f0;
 }
 
 .history li:first-child {
@@ -145,10 +165,16 @@ function whoChanged(entry) {
 }
 
 .history-change {
-  display: flex;
-  align-items: center;
   gap: 6px;
   white-space: nowrap;
+}
+
+.history-appeared {
+  box-sizing: border-box;
+  width: 92px;
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
 }
 
 .history-arrow {
@@ -159,4 +185,5 @@ function whoChanged(entry) {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
 </style>

@@ -1,6 +1,6 @@
 <script setup>
 // Ошибка на странице: заголовок и список причин. Крестиком её можно убрать, не дожидаясь
-// следующего действия.
+// следующего действия. Вместо простого списка можно передать своё содержимое (слот).
 defineProps({
   message: { type: String, required: true },
   details: { type: Array, default: () => [] },
@@ -17,6 +17,7 @@ defineEmits(['close'])
     <ul v-if="details.length">
       <li v-for="(detail, index) in details" :key="index">{{ detail }}</li>
     </ul>
+    <slot />
   </div>
 </template>
 

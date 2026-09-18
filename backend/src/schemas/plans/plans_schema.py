@@ -43,6 +43,13 @@ class PlanningDayOption(BaseModel):
     active_requests: int
 
 
+class WithdrawnRequest(BaseModel):
+    """Заявка, снятая с утверждённого плана: status_id говорит как — отменена или «Новая»."""
+
+    request_id: int
+    status_id: int
+
+
 class PlanSummary(BaseModel):
     id: int
     run_type: str  # optimized / replanned
@@ -58,6 +65,11 @@ class PlanSummary(BaseModel):
     solve_duration_ms: float | None = None
     approved_at: datetime | None = None  # план утверждён: его заявки закреплены за этим днём
     objective_order: list[ObjectiveCriterion] | None = None
+    # только у утверждённого плана: что изменилось с утверждения — повод его пересчитать.
+    # Сняты — заявки его маршрутов отменены или возвращены в «Новая» (со статусом: как сняли);
+    # новые — заявки дня офиса, которые ждут планирования, а расчёт плана их не видел
+    withdrawn_requests: list[WithdrawnRequest] = []
+    new_request_ids: list[int] = []
 
 
 class HeldRequest(BaseModel):

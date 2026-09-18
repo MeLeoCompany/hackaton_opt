@@ -5,7 +5,6 @@ import { computed, reactive, ref, watch } from 'vue'
 
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
-import { EQUIPMENT_ANY } from './useRequestsView.js'
 
 // sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
 // width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
@@ -32,7 +31,7 @@ function emptyFilters() {
     text: '', // часть имени
     transportId: '', // '' — любой
     skillId: '', // '' — любой; иначе исполнитель должен уметь этот навык
-    equipmentId: '', // '' — неважно, EQUIPMENT_ANY — есть хоть что-то, иначе номер оборудования
+    equipmentId: '', // '' — неважно, иначе номер оборудования, которое бригада везёт
     shiftFrom: '', // 'HH:MM' — смена начинается не раньше
     shiftTo: '', // 'HH:MM' — смена начинается не позже
     startKind: '', // '' — любой старт, 'office' — из офиса, 'own' — из своей точки
@@ -59,8 +58,7 @@ export function useEngineersView(engineers, references) {
     if (filters.skillId !== '' && !engineer.skill_ids.includes(filters.skillId)) return false
 
     const carried = (engineer.equipment ?? []).map((item) => item.equipment_id)
-    if (filters.equipmentId === EQUIPMENT_ANY && carried.length === 0) return false
-    if (filters.equipmentId !== '' && filters.equipmentId !== EQUIPMENT_ANY && !carried.includes(filters.equipmentId)) {
+    if (filters.equipmentId !== '' && !carried.includes(filters.equipmentId)) {
       return false
     }
 

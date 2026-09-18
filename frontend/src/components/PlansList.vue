@@ -5,6 +5,7 @@ import { computed } from 'vue'
 
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectivePolicyLabel } from '../utils/planningPriorities.js'
+import ReplanMark from './ReplanMark.vue'
 
 const props = defineProps({
   plans: { type: Array, required: true },
@@ -13,7 +14,7 @@ const props = defineProps({
   // заявки дня, занятые утверждённым планом другого дня — о них предупреждаем у каждой строки
   heldRequests: { type: Array, default: () => [] },
 })
-defineEmits(['select', 'remove', 'approve', 'cancel-approval'])
+defineEmits(['select', 'remove', 'approve', 'cancel-approval', 'replan-info'])
 
 // одно и то же предупреждение для всех планов дня: их считали без этих заявок
 const heldWarning = computed(() => {
@@ -72,6 +73,7 @@ function solveDuration(summary) {
         >
           <td class="number-cell nowrap">
             {{ summary.id }}
+            <ReplanMark :summary="summary" @show="$emit('replan-info', summary.id)" />
             <span v-if="heldWarning" class="held-warning" :title="heldWarning">!</span>
           </td>
           <td class="nowrap">{{ moscowTimeOf(summary.created_at) }}</td>

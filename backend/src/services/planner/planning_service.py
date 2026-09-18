@@ -27,6 +27,7 @@ from src.schemas.plans import (
     PlanVisit,
     SolverName,
     UnassignedRequest,
+    WithdrawnRequest,
 )
 from src.schemas.travel import Point, TransportKind, TravelProvider
 from src.services.planner import baseline_solver, cuopt_solver, planner_loader
@@ -488,9 +489,40 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 ),
                 approved_at=plan.approved_at,
                 objective_order=objective_order_from_plan(plan),
+                **(await replan_reasons(session, plan)),
             )
         )
     return summaries
+
+
+async def replan_reasons(session: AsyncSession, plan: Plan) -> dict[str, list]:
+    """Что изменилось у утверждённого плана с утверждения: снятые заявки и новые заявки дня.
+
+    Если есть и то, и другое — план стоит пересчитать. У неутверждённого плана считать нечего:
+    он и так пересчитывается свободно.
+    """
+    if plan.approved_at is None or plan.plan_date is None:
+        return {}
+    withdrawn = await plans_repository.list_withdrawn_requests(session, plan.id)
+    day = planner_loader.planning_day(plan.plan_date)
+    day_requests = await requests_repository.list_active_requests_in_period(
+        session, day.day_start, day.day_end, plan_date=plan.plan_date, office_id=plan.office_id
+    )
+    seen = await plans_repository.plan_request_ids(session, plan.id)
+    new_request_ids = [
+        request.id
+        for request in day_requests
+        if request.status_id == RequestStatusId.NEW
+        and request.approved_plan_id is None
+        and request.id not in seen
+    ]
+    return {
+        "withdrawn_requests": [
+            WithdrawnRequest(request_id=request_id, status_id=status_id)
+            for request_id, status_id in withdrawn
+        ],
+        "new_request_ids": new_request_ids,
+    }
 
 
 def objective_order_from_plan(plan: Plan) -> list[ObjectiveCriterion] | None:

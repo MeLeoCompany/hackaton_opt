@@ -7,6 +7,8 @@ import PlanBuildDialog from '../components/PlanBuildDialog.vue'
 import PlanMap from '../components/PlanMap.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
 import PlansList from '../components/PlansList.vue'
+import ReplanMark from '../components/ReplanMark.vue'
+import ReplanNotice from '../components/ReplanNotice.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay } from '../utils/moscowTime.js'
@@ -60,6 +62,10 @@ const planOpened = computed(() => selectedPlanId.value !== null)
 // сводка открытого плана — та же строка, что в списке: чтобы было видно, что за план
 const openedSummary = computed(() => plans.value.find((summary) => summary.id === selectedPlanId.value) ?? null)
 
+// «что не так» с утверждённым планом — открывается по клику на его «!»
+const replanPlanId = ref(null)
+const replanSummary = computed(() => plans.value.find((summary) => summary.id === replanPlanId.value) ?? null)
+
 function openPlan(planId) {
   viewMode.value = 'details'
   focusedRequestId.value = null
@@ -101,6 +107,7 @@ function showRouteOnMap(engineerId) {
 // сменили день — снова список планов этого дня
 watch(selectedDay, () => {
   viewMode.value = 'details'
+  replanPlanId.value = null
 })
 
 onMounted(async () => {
@@ -125,6 +132,7 @@ onMounted(async () => {
       <template v-else>
         <h1 class="plan-title">
           План №{{ selectedPlanId }}
+          <ReplanMark :summary="openedSummary" large @show="replanPlanId = selectedPlanId" />
           <span v-if="openedSummary?.approved_at" class="badge approved">утверждён</span>
         </h1>
         <p v-if="openedSummary">
@@ -149,6 +157,12 @@ onMounted(async () => {
       </section>
 
       <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
+      <ReplanNotice
+        v-if="replanSummary?.approved_at"
+        :summary="replanSummary"
+        :references="references"
+        @close="replanPlanId = null"
+      />
 
       <p v-if="loadingDays" class="muted">Загружаю планы…</p>
       <p v-else-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
@@ -164,6 +178,7 @@ onMounted(async () => {
           @remove="removePlan"
           @approve="approve"
           @cancel-approval="cancelApproval"
+          @replan-info="replanPlanId = $event"
         />
       </section>
     </template>
@@ -177,6 +192,12 @@ onMounted(async () => {
       </section>
 
       <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
+      <ReplanNotice
+        v-if="replanSummary?.approved_at"
+        :summary="replanSummary"
+        :references="references"
+        @close="replanPlanId = null"
+      />
 
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 

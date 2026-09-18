@@ -9,6 +9,7 @@ from src.schemas.plans.plans_schema import (
     PlanVisit,
     SolverName,
     UnassignedRequest,
+    WithdrawnRequest,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "PlanningDayOption",
     "SolverName",
     "UnassignedRequest",
+    "WithdrawnRequest",
 ]
