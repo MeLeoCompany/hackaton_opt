@@ -67,8 +67,6 @@ async function startBuild(params) {
 
 // «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
 const viewMode = ref('details')
-// карта утверждённого плана: «План» — как задумано, «Факт» — где бригады по их отметкам
-const showFact = ref(true)
 
 // Страница в двух состояниях: список планов дня или маршруты одного плана.
 // Клик по плану в списке открывает его маршруты, стрелка «← Планы на …» возвращает к списку.
@@ -255,22 +253,6 @@ onMounted(async () => {
           >
             Пересчитать с текущего момента
           </button>
-
-          <!-- утверждённый план: по нему ездят бригады — на карте можно смотреть факт по их отметкам -->
-          <div v-if="viewMode === 'map' && openedSummary?.approved_at" class="view-switch" role="tablist">
-            <button role="tab" :aria-selected="!showFact" :class="{ active: !showFact }" @click="showFact = false">
-              План
-            </button>
-            <button
-              role="tab"
-              :aria-selected="showFact"
-              :class="{ active: showFact }"
-              title="Где бригады сейчас: по их отметкам в мобильном приложении"
-              @click="showFact = true"
-            >
-              Факт
-            </button>
-          </div>
         </div>
 
         <div :class="['plan-view', { 'with-map': viewMode === 'map' }]">
@@ -280,7 +262,7 @@ onMounted(async () => {
               :selected-engineer-id="selectedEngineerId"
               :focused-request-id="focusedRequestId"
               :references="references"
-              :fact="showFact && Boolean(openedSummary?.approved_at)"
+              :approved="Boolean(openedSummary?.approved_at)"
               @select-engineer="selectEngineer"
               @focus-request="focusVisit"
             />
