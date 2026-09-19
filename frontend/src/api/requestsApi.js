@@ -14,8 +14,10 @@ export function updateRequest(requestId, fields) {
 }
 
 // копия отменённой заявки: новая заявка с теми же данными (отменённую в «Новая» не возвращают)
-export function duplicateRequest(requestId) {
-  return apiRequest('POST', `/requests/${requestId}/duplicate`)
+// planDate — перенести копию на другой день: время суток окна то же, дата новая
+export function duplicateRequest(requestId, planDate) {
+  const path = `/requests/${requestId}/duplicate${planDate ? `?plan_date=${encodeURIComponent(planDate)}` : ''}`
+  return apiRequest('POST', path)
 }
 
 export function deleteRequest(requestId) {
@@ -38,10 +40,14 @@ export function exportRequestsCsv(planDate) {
 }
 
 // planDate — перенести файл в этот день копией: время суток то же, номера новые
-export function importRequestsCsv(file, planDate) {
+export function importRequestsCsv(file, planDate, cancelled) {
   const formData = new FormData()
   formData.append('file', file)
-  const path = planDate ? `/requests/import?plan_date=${encodeURIComponent(planDate)}` : '/requests/import'
+  // cancelled — что делать с отменёнными заявками из файла при переносе дня
+  const query = planDate
+    ? `?plan_date=${encodeURIComponent(planDate)}&cancelled=${encodeURIComponent(cancelled ?? 'skip')}`
+    : ''
+  const path = `/requests/import${query}`
   return apiRequest('POST', path, { formData })
 }
 

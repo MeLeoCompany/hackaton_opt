@@ -1,4 +1,5 @@
 from src.schemas.requests.requests_schema import (
+    CancelledTransfer,
     RequestActivityReport,
     RequestActivityUpdate,
     RequestCreate,
@@ -11,6 +12,7 @@ from src.schemas.requests.requests_schema import (
 )
 
 __all__ = [
+    "CancelledTransfer",
     "RequestActivityReport",
     "RequestActivityUpdate",
     "RequestCreate",

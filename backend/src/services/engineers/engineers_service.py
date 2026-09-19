@@ -1,6 +1,6 @@
 """Исполнители: просмотр, создание, изменение, удаление."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,6 +84,7 @@ async def create_engineer(
 ) -> EngineerRead:
     await engineers_repository.lock_engineer_ids(session)
     skills = await check_references(session, payload)
+    await check_brigade_is_free(session, payload)
 
     if (
         payload.id is not None
@@ -116,6 +117,7 @@ async def update_engineer(
 ) -> EngineerRead:
     engineer = await find_engineer(session, engineer_id, office_id)
     skills = await check_references(session, payload)
+    await check_brigade_is_free(session, payload, engineer_id=engineer_id)
     # у уже заведённой смены бригада может быть выключена — смену всё равно можно поправить
     fields = await with_office_start(
         session,
@@ -160,6 +162,35 @@ async def brigade_name(
     if not brigade.is_active and not allow_inactive:
         raise EngineerDataError([f"бригада «{brigade.name}» выключена — включите её в справочнике"])
     return brigade.name
+
+
+async def check_brigade_is_free(
+    session: AsyncSession, payload: EngineerWrite, *, engineer_id: int | None = None
+) -> None:
+    """Одна бригада — одна смена за раз: пересечение с её же сменой не даём завести."""
+    busy = [
+        shift
+        for shift in await engineers_repository.list_brigade_shifts(
+            session, payload.brigade_id, payload.shift_start, payload.shift_end
+        )
+        if shift.id != engineer_id
+    ]
+    if busy:
+        shift = busy[0]
+        raise EngineerDataError(
+            [
+                f"у бригады «{shift.name}» уже есть смена {format_local_period(shift)} "
+                "— одна бригада не может работать в двух сменах сразу"
+            ]
+        )
+
+
+def format_local_period(engineer: Engineer) -> str:
+    """Смена по-московски: «17.08.2026 09:00–18:00»."""
+    start = engineer.shift_start.astimezone(local_timezone())
+    end = engineer.shift_end.astimezone(local_timezone())
+    tail = end.strftime("%H:%M") if end.date() == start.date() else end.strftime("%d.%m.%Y %H:%M")
+    return f"{start.strftime('%d.%m.%Y %H:%M')}–{tail}"
 
 
 async def find_engineer(session: AsyncSession, engineer_id: int, office_id: int) -> Engineer:
@@ -279,6 +310,39 @@ def copy_rows_to_day(rows: list[dict], plan_date: date) -> None:
         fields["id"] = None
 
 
+async def brigade_shift_problems(
+    session: AsyncSession,
+    values: dict,
+    file_shifts: dict[int, list[tuple[datetime, datetime]]],
+    *,
+    engineer_id: int | None,
+) -> list[str]:
+    """Смена бригады из строки CSV не должна пересекаться ни с файлом, ни с базой."""
+    brigade_id, start, end = values["brigade_id"], values["shift_start"], values["shift_end"]
+    period = f"{values['name']} {start.astimezone(local_timezone()).strftime('%d.%m.%Y %H:%M')}"
+    problems = []
+    if any(
+        start < other_end and end > other_start
+        for other_start, other_end in file_shifts.get(brigade_id, [])
+    ):
+        problems.append(f"{period}: в файле у бригады две смены сразу — оставьте одну")
+    else:
+        busy = [
+            shift
+            for shift in await engineers_repository.list_brigade_shifts(
+                session, brigade_id, start, end
+            )
+            if shift.id != engineer_id
+        ]
+        if busy:
+            problems.append(
+                f"{period}: у бригады уже есть смена {format_local_period(busy[0])} "
+                "— одна бригада не может работать в двух сменах сразу"
+            )
+    file_shifts.setdefault(brigade_id, []).append((start, end))
+    return problems
+
+
 async def import_engineers_csv(
     session: AsyncSession, content: bytes, office_id: int, plan_date: date | None = None
 ) -> EngineerImportReport:
@@ -329,6 +393,9 @@ async def import_engineers_csv(
 
     created = 0
     updated = 0
+    # одна бригада — одна смена за раз: проверяем и по файлу, и по уже заведённым сменам
+    shift_errors: list[str] = []
+    file_shifts: dict[int, list[tuple[datetime, datetime]]] = {}
     for fields in parsed.rows:
         row_skills = [skill_by_id[skill_id] for skill_id in fields["skill_ids"]]
         values = {
@@ -349,6 +416,9 @@ async def import_engineers_csv(
             await engineers_repository.get_engineer(session, fields["id"])
             if fields["id"] is not None
             else None
+        )
+        shift_errors += await brigade_shift_problems(
+            session, values, file_shifts, engineer_id=existing.id if existing is not None else None
         )
         if existing is not None and existing.office_id != office_id:
             raise EngineerDataError(
@@ -372,5 +442,7 @@ async def import_engineers_csv(
         created += 1
 
     await session.flush()
+    if shift_errors:
+        raise EngineerDataError(shift_errors)
     await session.commit()
     return EngineerImportReport(created=created, updated=updated)

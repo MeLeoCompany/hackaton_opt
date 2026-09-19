@@ -13,6 +13,7 @@ from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
 from src.models import AppUser
 from src.schemas.requests import (
+    CancelledTransfer,
     RequestActivityReport,
     RequestActivityUpdate,
     RequestCreate,
@@ -68,16 +69,20 @@ async def export_requests(
 async def import_requests(
     file: UploadFile = File(...),
     plan_date: date | None = None,
+    cancelled: CancelledTransfer = CancelledTransfer.AS_NEW,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
     user: AppUser = Depends(current_user),
 ):
-    """plan_date — перенести файл в этот день копией: время суток то же, номера новые."""
+    """plan_date — перенести файл в этот день копией: время суток то же, номера новые.
+
+    cancelled — что делать с отменёнными заявками из файла при таком переносе.
+    """
     content = await file.read()
     if len(content) > MAX_CSV_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Файл больше 5 МБ")
     return await requests_service.import_requests_csv(
-        session, content, office_id, plan_date, user_id=user.id
+        session, content, office_id, plan_date, user_id=user.id, cancelled=cancelled
     )
 
 
@@ -165,11 +170,15 @@ async def update_request(
 )
 async def duplicate_request(
     request_id: int,
+    # перенести копию на другой день: время суток окна то же, дата новая
+    plan_date: date | None = None,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
     user: AppUser = Depends(current_user),
 ):
-    return await requests_service.duplicate_request(session, request_id, office_id, user.id)
+    return await requests_service.duplicate_request(
+        session, request_id, office_id, user.id, plan_date=plan_date
+    )
 
 
 @router.delete("/{request_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить заявку")

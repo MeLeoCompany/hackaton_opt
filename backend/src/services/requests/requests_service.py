@@ -12,6 +12,7 @@ from src.repositories.references import references_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.requests import (
+    CancelledTransfer,
     RequestActivityReport,
     RequestCreate,
     RequestImportReport,
@@ -138,25 +139,38 @@ async def update_request(
 
 
 async def duplicate_request(
-    session: AsyncSession, request_id: int, office_id: int, user_id: int | None = None
+    session: AsyncSession,
+    request_id: int,
+    office_id: int,
+    user_id: int | None = None,
+    plan_date: date | None = None,
 ) -> Request:
     """Копия отменённой заявки: новая заявка с теми же адресом, окном и работами.
 
     Отмена окончательна — в «Новая» отменённую не возвращают. Если работу всё же нужно
     сделать, оператор копирует заявку: копия «Новая», её можно поправить и спланировать.
+    plan_date — перенести копию на другой день: время суток окна то же, дата новая.
     """
     source = await get_request(session, request_id, office_id)
     if source.status_id != RequestStatusId.CANCELLED:
         raise RequestDataError(
             [f"копировать можно только отменённую заявку, а №{request_id} — «{source.status.name}»"]
         )
+    window_start, window_end = source.window_start, source.window_end
+    if plan_date is not None:
+        timezone = local_timezone()
+        day_offset = (
+            window_end.astimezone(timezone).date() - window_start.astimezone(timezone).date()
+        ).days
+        window_start = moved_to_day(window_start, plan_date, 0)
+        window_end = moved_to_day(window_end, plan_date, day_offset)
     payload = RequestCreate(
         address=source.address,
         latitude=float(source.latitude),
         longitude=float(source.longitude),
         duration_minutes=source.duration_minutes,
-        window_start=source.window_start,
-        window_end=source.window_end,
+        window_start=window_start,
+        window_end=window_end,
         priority_id=source.priority_id,
         skill_id=source.skill_id,
         transport_id=source.transport_id,
@@ -166,13 +180,29 @@ async def duplicate_request(
             for item in source.equipment
         ],
     )
+    moved = f" с переносом на {plan_date.strftime('%d.%m.%Y')}" if plan_date is not None else ""
     return await create_request(
-        session, payload, office_id, user_id, comment=f"Копия отменённой заявки №{request_id}"
+        session,
+        payload,
+        office_id,
+        user_id,
+        comment=f"Копия отменённой заявки №{request_id}{moved}",
     )
 
 
 async def delete_request(session: AsyncSession, request_id: int, office_id: int) -> None:
+    """Удалить можно только «Новую» заявку.
+
+    Всё остальное — след работы: заявка в плане стоит в маршруте бригады, начатую и
+    выполненную нельзя терять, отменённая объясняет, почему работу не сделали. Такие заявки
+    отменяют, а не удаляют.
+    """
     request = await get_request(session, request_id, office_id)
+    if request.status_id != RequestStatusId.NEW:
+        raise RequestInUseError(
+            f"Заявку №{request_id} нельзя удалить: она «{request.status.name}». "
+            "Удалять можно только «Новые»; ненужную работу отмените"
+        )
 
     assignments, events = await requests_repository.count_request_usages(session, request_id)
     if assignments or events:
@@ -328,6 +358,22 @@ def moved_to_day(moment: datetime, plan_date: date, day_offset: int) -> datetime
     )
 
 
+def transfer_cancelled_rows(
+    rows: list[dict], cancelled: CancelledTransfer
+) -> tuple[list[dict], int]:
+    """Отменённые заявки при переносе дня: «активна: нет» — их отменили в том дне, не в этом.
+
+    Возвращает строки для загрузки и сколько отменённых пропущено.
+    """
+    if cancelled is CancelledTransfer.SKIP:
+        kept = [row for row in rows if row["is_active"] is not False]
+        return kept, len(rows) - len(kept)
+    for row in rows:
+        if row["is_active"] is False:
+            row["is_active"] = True
+    return rows, 0
+
+
 def copy_rows_to_day(rows: list[dict], plan_date: date) -> None:
     """Переносит разобранные строки в выбранный день: время суток то же, номера новые.
 
@@ -349,6 +395,7 @@ async def import_requests_csv(
     office_id: int,
     plan_date: date | None = None,
     user_id: int | None = None,
+    cancelled: CancelledTransfer = CancelledTransfer.AS_NEW,
 ) -> RequestImportReport:
     """Загружает заявки из CSV одной транзакцией.
 
@@ -357,7 +404,8 @@ async def import_requests_csv(
     или с новым номером — добавляется.
 
     Если указан plan_date, файл переносится в этот день копией: время суток сохраняется,
-    даты заменяются, номера выдаются новые.
+    даты заменяются, номера выдаются новые. cancelled — что делать с отменёнными заявками
+    из файла: перенести «Новыми» или не переносить вовсе (в новом дне их никто не отменял).
     """
     await requests_repository.lock_request_ids(session)
     references = await load_reference_lookup(session)
@@ -367,8 +415,10 @@ async def import_requests_csv(
     if not parsed.rows:
         raise RequestDataError(["в файле нет ни одной заявки"])
 
+    skipped_cancelled = 0
     if plan_date is not None:
         copy_rows_to_day(parsed.rows, plan_date)
+        parsed.rows, skipped_cancelled = transfer_cancelled_rows(parsed.rows, cancelled)
 
     ids_in_file = [row["id"] for row in parsed.rows if row["id"] is not None]
     existing_by_id = await requests_repository.get_requests_by_ids(session, ids_in_file)
@@ -463,7 +513,9 @@ async def import_requests_csv(
         )
     await session.flush()
     await session.commit()
-    return RequestImportReport(created=created, updated=updated)
+    return RequestImportReport(
+        created=created, updated=updated, skipped_cancelled=skipped_cancelled
+    )
 
 
 async def load_reference_lookup(session: AsyncSession) -> ReferenceLookup:

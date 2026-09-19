@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -95,8 +96,17 @@ class RequestActivityReport(BaseModel):
     updated: int
 
 
+class CancelledTransfer(str, Enum):
+    """Что делать с отменёнными заявками при переносе дня копией."""
+
+    SKIP = "skip"  # не переносить: в новом дне их никто не отменял
+    AS_NEW = "as_new"  # перенести как «Новые»
+
+
 class RequestImportReport(BaseModel):
-    """Итог загрузки CSV: сколько заявок добавлено и сколько обновлено."""
+    """Итог загрузки CSV: сколько заявок добавлено, обновлено и пропущено."""
 
     created: int
     updated: int
+    # отменённые заявки, которые при переносе дня решили не переносить
+    skipped_cancelled: int = 0

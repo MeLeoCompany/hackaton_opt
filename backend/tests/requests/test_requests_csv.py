@@ -2,6 +2,10 @@
 
 from datetime import UTC, timedelta, timezone
 
+import pytest
+
+from src.schemas.requests import CancelledTransfer
+from src.services.requests import requests_service
 from src.services.requests.requests_csv import (
     ReferenceLookup,
     WorkTypeNorm,
@@ -256,3 +260,25 @@ def test_day_copy_moves_dates_and_drops_numbers():
     assert row["id"] is None
     assert row["window_start"].astimezone(moscow).strftime("%d.%m.%Y %H:%M") == "20.09.2026 20:00"
     assert row["window_end"].astimezone(moscow).strftime("%d.%m.%Y %H:%M") == "21.09.2026 02:00"
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_ids", "expected_skipped"),
+    [
+        (CancelledTransfer.SKIP, [1, 3], 1),
+        (CancelledTransfer.AS_NEW, [1, 2, 3], 0),
+    ],
+)
+def test_cancelled_rows_on_day_transfer(mode, expected_ids, expected_skipped):
+    # в слепке дня заявка 2 отменена: в новом дне её либо не заводим, либо заводим «Новой»
+    rows = [
+        {"id": 1, "is_active": True},
+        {"id": 2, "is_active": False},
+        {"id": 3, "is_active": None},
+    ]
+
+    kept, skipped = requests_service.transfer_cancelled_rows(rows, mode)
+
+    assert [row["id"] for row in kept] == expected_ids
+    assert skipped == expected_skipped
+    assert all(row["is_active"] is not False for row in kept)

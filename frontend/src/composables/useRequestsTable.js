@@ -15,7 +15,7 @@ import {
   updateRequest,
 } from '../api/requestsApi.js'
 import { downloadBlob } from '../utils/downloadFile.js'
-import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
+import { formatDay, fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
 import { equipmentPayload } from '../utils/equipment.js'
@@ -202,15 +202,19 @@ export function useRequestsTable() {
     }
   }
 
-  // копия отменённой заявки: создаём, перезагружаем список и сразу открываем копию на правку
-  async function duplicate(request) {
+  // копия отменённой заявки: создаём, перезагружаем список и сразу открываем копию на правку.
+  // planDate — копия переезжает на другой день
+  async function duplicate(request, planDate = null) {
     clearMessages()
     try {
-      const copy = await duplicateRequest(request.id)
+      const copy = await duplicateRequest(request.id, planDate)
       await Promise.all([load(), refreshDaysWithRequests()])
       const loaded = requests.value.find((item) => item.id === copy.id)
       if (loaded) startEdit(loaded)
-      showNotice(`Создана заявка №${copy.id} — копия отменённой №${request.id}. Поправьте её и сохраните`)
+      const moved = planDate ? ` с переносом на ${formatDay(planDate)}` : ''
+      showNotice(
+        `Создана заявка №${copy.id} — копия отменённой №${request.id}${moved}. Поправьте её и сохраните`,
+      )
       return copy.id
     } catch (error) {
       showError(error)
@@ -232,22 +236,17 @@ export function useRequestsTable() {
   // Файл кладётся в выбранный день копией: время суток то же, номера новые.
   // Существующие заявки дня не трогаем: они могут быть в планах, и их удаление
   // либо сломало бы план, либо упёрлось в запрет удаления. Поэтому только предупреждаем.
-  async function importDay(file) {
-    if (requests.value.length) {
-      const confirmed = window.confirm(
-        `На этот день уже есть заявок: ${requests.value.length}. ` +
-          `Из файла «${file.name}» они добавятся копиями, существующие останутся. Продолжить?`,
-      )
-      if (!confirmed) return
-    }
+  // cancelled: 'skip' — отменённые из файла не переносим, 'as_new' — переносим «Новыми»
+  async function importDay(file, cancelled = 'skip') {
     saving.value = true
     clearMessages()
     try {
-      const report = await importRequestsCsv(file, selectedDay.value)
+      const report = await importRequestsCsv(file, selectedDay.value, cancelled)
       await load()
       showNotice(
-        `В день ${selectedDay.value} добавлено заявок: ${report.created}` +
-          (report.updated ? `, обновлено ${report.updated}` : ''),
+        `В день ${formatDay(selectedDay.value)} добавлено заявок: ${report.created}` +
+          (report.updated ? `, обновлено ${report.updated}` : '') +
+          (report.skipped_cancelled ? `, отменённые не переносились: ${report.skipped_cancelled}` : ''),
       )
     } catch (error) {
       showError(error)

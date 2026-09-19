@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
+import DayTransferDialog from '../components/DayTransferDialog.vue'
+import RequestCopyDialog from '../components/RequestCopyDialog.vue'
 import RequestDetailsCard from '../components/RequestDetailsCard.vue'
 import RequestHistoryDialog from '../components/RequestHistoryDialog.vue'
 import RequestsFilters from '../components/RequestsFilters.vue'
@@ -10,6 +12,7 @@ import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
 import RequestsTable from '../components/RequestsTable.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
+import { useSelectedDay } from '../composables/useSelectedDay.js'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
 import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
 
@@ -99,9 +102,24 @@ function showOnMap(requestId) {
   viewMode.value = 'map'
 }
 
+const { selectedDay } = useSelectedDay()
+
+// файл, который переносят в выбранный день: ждёт ответа про отменённые заявки
+const transferFile = ref(null)
+
+async function transferDay(cancelled) {
+  const file = transferFile.value
+  transferFile.value = null
+  await importDay(file, cancelled)
+}
+
+// копия отменённой: сначала спрашиваем день копии — работу могли перенести на другой день
+const copySource = ref(null)
+
 // копия отменённой — сразу строкой правки; фильтры могут её скрыть, тогда снимаем их
-async function duplicateAndShow(request) {
-  const copyId = await duplicate(request)
+async function duplicateAndShow(request, planDate) {
+  copySource.value = null
+  const copyId = await duplicate(request, planDate === selectedDay.value ? null : planDate)
   if (copyId === null) return
   if (!filteredRequests.value.some((item) => item.id === copyId)) resetFilters()
   selectRequest(copyId)
@@ -147,7 +165,7 @@ onMounted(async () => {
       transfer="заявки"
       :disabled="saving"
       @export-day="exportDay"
-      @import-day="importDay"
+      @import-day="transferFile = $event"
     />
 
 
@@ -204,7 +222,7 @@ onMounted(async () => {
           @cancel="cancelEdit"
           @save="saveForm"
           @remove="remove"
-          @duplicate="duplicateAndShow"
+          @duplicate="copySource = $event"
           @work-type-picked="applyWorkTypeNorms"
           @reset-filters="resetFilters"
           @show-on-map="showOnMap"
@@ -246,6 +264,23 @@ onMounted(async () => {
         />
       </div>
     </template>
+
+    <RequestCopyDialog
+      v-if="copySource"
+      :request="copySource"
+      @copy="duplicateAndShow(copySource, $event)"
+      @close="copySource = null"
+    />
+
+    <!-- перенос слепка дня: отдельно спрашиваем, что делать с отменёнными из файла -->
+    <DayTransferDialog
+      v-if="transferFile"
+      :file-name="transferFile.name"
+      :day="selectedDay"
+      :existing="requests.length"
+      @transfer="transferDay"
+      @close="transferFile = null"
+    />
 
     <RequestHistoryDialog
       v-if="historyRequestId !== null"

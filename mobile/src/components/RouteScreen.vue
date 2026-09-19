@@ -47,8 +47,11 @@ onBeforeUnmount(() => clearInterval(timer))
     </header>
 
     <div class="day-bar">
+      <!-- дней с маршрутом может не быть: тогда показываем сам день, чтобы было видно, за какой
+           день пусто -->
+      <span v-if="!days.length" class="day-name">{{ formatDay(day) }}</span>
       <select
-        v-if="days.length"
+        v-else
         :value="day"
         aria-label="день маршрута"
         @change="selectDay($event.target.value)"
@@ -74,10 +77,10 @@ onBeforeUnmount(() => clearInterval(timer))
         <button class="close" aria-label="закрыть" @click="errorMessage = ''">×</button>
       </p>
 
-      <p v-if="!days.length" class="empty">
-        Маршрутов пока нет: диспетчер ещё не утвердил план с вашей бригадой.
+      <p v-if="loading && !route" class="empty">Загружаю маршрут…</p>
+      <p v-else-if="route && !route.plan_id" class="empty">
+        Плана на этот день пока нет: диспетчер ещё не утвердил его.
       </p>
-      <p v-else-if="loading && !route" class="empty">Загружаю маршрут…</p>
       <p v-else-if="route && !route.visits.length" class="empty">На этот день в плане заявок нет.</p>
 
       <template v-else-if="route">
@@ -154,6 +157,11 @@ onBeforeUnmount(() => clearInterval(timer))
   background: #111827;
   color: #d1d5db;
   font-size: 13px;
+}
+
+.day-name {
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .day-bar select {

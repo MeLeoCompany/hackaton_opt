@@ -41,13 +41,17 @@ def now() -> datetime:
 
 
 async def route_days(session: AsyncSession, user: AppUser) -> BrigadeDays:
-    """Дни с маршрутом; открываем сегодняшний, если его нет — ближайший будущий, иначе последний."""
+    """Дни с маршрутом; открываем сегодняшний, если его нет — ближайший будущий, иначе последний.
+
+    Маршрутов нет вовсе (план ещё не утвердили) — открываем сегодня: в приложении всё равно
+    видно, какой день показан.
+    """
     days = await brigade_repository.list_route_days(session, user.office_id, user.brigade_id)
     today = now().astimezone(local_timezone()).date()
     if today in days:
         default_day = today
     else:
-        default_day = next((day for day in days if day > today), days[-1] if days else None)
+        default_day = next((day for day in days if day > today), days[-1] if days else today)
     return BrigadeDays(days=days, default_day=default_day)
 
 

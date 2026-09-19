@@ -1,12 +1,13 @@
-"""Править можно только «Новую» заявку; отменённую не возвращают, а копируют."""
+"""Править и удалять можно только «Новую» заявку; отменённую не возвращают, а копируют."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from src.core.local_day import local_timezone
 from src.models import RequestStatusId
 from src.schemas.requests import RequestWrite
 from src.services.requests import requests_service
@@ -80,3 +81,54 @@ async def test_only_cancelled_request_is_copied():
         pytest.raises(requests_service.RequestDataError, match="только отменённую"),
     ):
         await requests_service.duplicate_request(object(), 5, office_id=1)
+
+
+@pytest.mark.asyncio
+async def test_copy_can_be_moved_to_another_day():
+    # окно 10:00–12:00 по Москве переезжает на другой день тем же временем суток
+    create = AsyncMock(return_value=SimpleNamespace(id=7))
+    with (
+        patch.object(requests_service, "get_request", AsyncMock(return_value=stored(CANCELLED))),
+        patch.object(requests_service, "create_request", create),
+    ):
+        await requests_service.duplicate_request(
+            object(), 5, office_id=1, user_id=3, plan_date=date(2026, 9, 21)
+        )
+
+    payload = create.call_args.args[1]
+    moscow = local_timezone()
+    assert payload.window_start.astimezone(moscow).strftime("%d.%m.%Y %H:%M") == "21.09.2026 10:00"
+    assert payload.window_end.astimezone(moscow).strftime("%d.%m.%Y %H:%M") == "21.09.2026 12:00"
+    assert (
+        create.call_args.kwargs["comment"] == "Копия отменённой заявки №5 с переносом на 21.09.2026"
+    )
+
+
+@pytest.mark.asyncio
+async def test_only_new_request_can_be_deleted():
+    for status_id in (PLANNED, CANCELLED):
+        with (
+            patch.object(
+                requests_service, "get_request", AsyncMock(return_value=stored(status_id))
+            ),
+            pytest.raises(requests_service.RequestInUseError, match="Удалять можно только «Новые»"),
+        ):
+            await requests_service.delete_request(object(), 5, office_id=1)
+
+
+@pytest.mark.asyncio
+async def test_new_request_without_plans_is_deleted():
+    session = SimpleNamespace(commit=AsyncMock())
+    delete = AsyncMock()
+    with (
+        patch.object(requests_service, "get_request", AsyncMock(return_value=stored(NEW))),
+        patch.object(
+            requests_service.requests_repository,
+            "count_request_usages",
+            AsyncMock(return_value=(0, 0)),
+        ),
+        patch.object(requests_service.requests_repository, "delete_request", delete),
+    ):
+        await requests_service.delete_request(session, 5, office_id=1)
+
+    assert delete.await_count == 1

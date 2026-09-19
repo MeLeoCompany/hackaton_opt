@@ -68,7 +68,7 @@ export async function apiDownload(path) {
 
 // Ответ с ошибкой бывает трёх видов: наш список причин (errors), ошибки проверки полей
 // от FastAPI (detail — массив) или просто текст (detail — строка).
-function toApiError(status, body) {
+export function toApiError(status, body) {
   if (Array.isArray(body?.errors)) {
     return new ApiError(body.detail || 'Проверьте данные', body.errors)
   }
@@ -107,6 +107,11 @@ function explain(problem) {
       return `должно быть не меньше ${problem.ctx?.ge}`
     case 'less_than_equal':
       return `должно быть не больше ${problem.ctx?.le}`
+    // списки: навыки исполнителя, оборудование заявки
+    case 'too_short':
+      return `выберите хотя бы ${problem.ctx?.min_length ?? 1}`
+    case 'too_long':
+      return `не больше ${problem.ctx?.max_length}`
     case 'value_error':
       return problem.msg.replace(/^Value error, /, '')
     default:

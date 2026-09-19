@@ -42,6 +42,22 @@ async def list_engineers_in_period(
     return list(result.scalars().all())
 
 
+async def list_brigade_shifts(
+    session: AsyncSession, brigade_id: int, period_start: datetime, period_end: datetime
+) -> list[Engineer]:
+    """Смены бригады, пересекающиеся с периодом [period_start, period_end)."""
+    result = await session.execute(
+        select(Engineer)
+        .where(
+            Engineer.brigade_id == brigade_id,
+            Engineer.shift_start < period_end,
+            Engineer.shift_end > period_start,
+        )
+        .order_by(Engineer.shift_start)
+    )
+    return list(result.scalars().all())
+
+
 async def get_engineer(session: AsyncSession, engineer_id: int) -> Engineer | None:
     result = await session.execute(
         select(Engineer).options(selectinload(Engineer.skills)).where(Engineer.id == engineer_id)

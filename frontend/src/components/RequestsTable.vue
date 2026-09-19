@@ -210,11 +210,16 @@ onMounted(scrollToSelected)
                   :disabled="editingId !== null || statusCode(references, request.status_id) !== 'new'"
                   @click.stop="$emit('edit', request)"
                 />
+                <!-- удалять можно только новую: остальные — след работы, их отменяют -->
                 <IconButton
                   icon="delete"
-                  label="Удалить"
+                  :label="
+                    statusCode(references, request.status_id) === 'new'
+                      ? 'Удалить'
+                      : 'Удалить нельзя: заявка в плане, в работе, выполнена или отменена — такие отменяют, а не удаляют'
+                  "
                   variant="danger"
-                  :disabled="editingId !== null"
+                  :disabled="editingId !== null || statusCode(references, request.status_id) !== 'new'"
                   @click.stop="$emit('remove', request)"
                 />
               </div>
