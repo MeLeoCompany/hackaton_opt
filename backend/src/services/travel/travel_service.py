@@ -15,6 +15,7 @@ from src.schemas.travel import (
 )
 from src.services.travel import (
     haversine_provider,
+    r5_access,
     r5_provider,
     transit_provider,
     valhalla_provider,
@@ -155,7 +156,7 @@ async def _r5_route(
     for index, (origin, destination) in enumerate(pairwise(points)):
         if leg_departure_times is not None:
             current_departure = leg_departure_times[index]
-        result = await r5_provider.build_route(origin, destination, current_departure)
+        result = await r5_access.route(origin, destination, current_departure)
         results.append(result)
         current_departure += timedelta(minutes=result.total_duration_min)
 
