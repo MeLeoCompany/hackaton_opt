@@ -66,6 +66,7 @@ async def _public_transport_matrix(
 
     try:
         durations = await r5_provider.build_duration_matrix(points, departure_time)
+        durations = await r5_access.repair_duration_matrix(points, departure_time, durations)
     except (httpx.HTTPError, KeyError, ValueError):
         if not allow_fallback:
             raise

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Подход ограничен несколькими минутами ходьбы, чтобы не скрыть отсутствие маршрута.
 ACCESS_RADII_METERS = (100, 200)
 MAX_ACCESS_DISTANCE_KM = 0.5
+MAX_MATRIX_REPAIR_POINTS = 8
 
 
 def _nearby_points(point: Point):
@@ -96,3 +97,62 @@ async def route(
         )
 
     raise original_error
+
+
+async def repair_duration_matrix(
+    points: list[Point],
+    departure: datetime,
+    durations: list[list[float | None]],
+) -> list[list[float | None]]:
+    """Восстановить строки и столбцы точек, изолированных при привязке R5.
+
+    Один запрос матрицы для соседней точки восстанавливает сразу все доступные
+    направления. Обычные и действительно недоступные пары остаются без изменений.
+    """
+    repaired = [row.copy() for row in durations]
+    attempted = 0
+    for index, point in enumerate(points):
+        if any(
+            repaired[index][other] is not None or repaired[other][index] is not None
+            for other in range(len(points))
+            if other != index
+        ):
+            continue
+        if attempted >= MAX_MATRIX_REPAIR_POINTS:
+            logger.warning("R5: достигнут предел проверки изолированных точек матрицы")
+            break
+        attempted += 1
+
+        for candidate in _nearby_points(point):
+            outward = await _walk(point, candidate)
+            inward = await _walk(candidate, point)
+            if outward is None and inward is None:
+                continue
+            try:
+                candidate_points = points.copy()
+                candidate_points[index] = candidate
+                candidate_matrix = await r5_provider.build_duration_matrix(
+                    candidate_points, departure
+                )
+            except (httpx.HTTPError, KeyError, ValueError):
+                logger.warning("R5: не удалось проверить соседнюю точку матрицы", exc_info=True)
+                break
+
+            restored = False
+            for other in range(len(points)):
+                if other == index:
+                    continue
+                if outward is not None and repaired[index][other] is None:
+                    duration = candidate_matrix[index][other]
+                    if duration is not None:
+                        repaired[index][other] = duration + outward.duration_min
+                        restored = True
+                if inward is not None and repaired[other][index] is None:
+                    duration = candidate_matrix[other][index]
+                    if duration is not None:
+                        repaired[other][index] = duration + inward.duration_min
+                        restored = True
+            if restored:
+                logger.info("R5: восстановлены направления матрицы через пеший подход")
+                break
+    return repaired

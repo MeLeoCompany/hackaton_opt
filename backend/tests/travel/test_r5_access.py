@@ -59,3 +59,35 @@ async def test_no_access_keeps_r5_not_found():
 
     assert error.value.response.status_code == 404
     build.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_matrix_repairs_isolated_point_in_both_directions():
+    candidate = ORIGIN.model_copy(update={"latitude": 55.699})
+    walk = TravelLeg(distance_km=0.15, duration_min=2, geometry="shape", mode=TravelMode.WALK)
+    with (
+        patch.object(r5_access, "_nearby_points", return_value=iter([candidate])),
+        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(
+            r5_provider,
+            "build_duration_matrix",
+            AsyncMock(return_value=[[0, 18], [19, 0]]),
+        ) as build,
+    ):
+        repaired = await r5_access.repair_duration_matrix(
+            [ORIGIN, DESTINATION], DEPARTURE, [[0, None], [None, 0]]
+        )
+
+    assert repaired == [[0, 20], [21, 0]]
+    build.assert_awaited_once_with([candidate, DESTINATION], DEPARTURE)
+
+
+@pytest.mark.asyncio
+async def test_matrix_preserves_existing_connections():
+    with patch.object(r5_provider, "build_duration_matrix", AsyncMock()) as build:
+        repaired = await r5_access.repair_duration_matrix(
+            [ORIGIN, DESTINATION], DEPARTURE, [[0, 10], [None, 0]]
+        )
+
+    assert repaired == [[0, 10], [None, 0]]
+    build.assert_not_awaited()
