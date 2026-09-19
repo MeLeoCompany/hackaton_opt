@@ -24,7 +24,8 @@ class RequestWrite(BaseModel):
     duration_minutes: int | None = Field(default=None, gt=0)
     window_start: datetime
     window_end: datetime
-    priority_id: int
+    # не указан — подставится приоритет типа работ (справочник нормативов), его можно сменить
+    priority_id: int | None = None
     skill_id: int | None = None
     transport_id: int | None = None  # пусто — транспорт не важен
     work_type_id: int | None = None  # тип работ из справочника нормативов

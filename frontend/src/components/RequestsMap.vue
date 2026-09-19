@@ -1,14 +1,15 @@
 <script setup>
 // Карта заявок: точка на каждую заявку, прошедшую фильтры (со всех страниц списка).
-// Срочные — красные, обычные — синие, выключенные — серые, выбранная — крупнее с тёмной обводкой.
+// Цвет — по уровню приоритета: аварийные красные, высокие оранжевые, обычные синие;
+// вне планирования — серые, выбранная — крупнее с тёмной обводкой.
 // Клик по точке сообщает наверх, какую заявку выбрали.
 
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { formatMoscowWindow } from '../utils/moscowTime.js'
-import { isUrgent, referenceName } from '../utils/referenceNames.js'
+import { priorityLevel, referenceName } from '../utils/referenceNames.js'
 
 const props = defineProps({
   requests: { type: Array, required: true },
@@ -17,16 +18,16 @@ const props = defineProps({
 })
 const emit = defineEmits(['select'])
 
-const REGULAR_COLOR = '#2563eb'
-const URGENT_COLOR = '#dc2626'
+// цвет уровня приоритета: 1 аварийный, 2 высокий, 3 обычный
+const LEVEL_COLORS = { 1: '#dc2626', 2: '#f97316', 3: '#2563eb' }
 const INACTIVE_COLOR = '#94a3b8'
 
-const LEGEND = [
-  { label: 'Обычная', color: REGULAR_COLOR },
-  { label: 'Срочная', color: URGENT_COLOR },
+// легенда — из справочника: названия уровней правятся там
+const legend = computed(() => [
+  ...props.references.priorities.map((item) => ({ label: item.name, color: LEVEL_COLORS[item.level] })),
   // в работе, выполнена или отменена — в расчёт плана не идёт
   { label: 'Вне планирования', color: INACTIVE_COLOR },
-]
+])
 
 const container = ref(null)
 let map = null
@@ -37,7 +38,7 @@ let fittedRequestIds = ''
 
 function markerColor(request) {
   if (!request.is_active) return INACTIVE_COLOR
-  return isUrgent(props.references, request) ? URGENT_COLOR : REGULAR_COLOR
+  return LEVEL_COLORS[priorityLevel(props.references, request.priority_id)] ?? LEVEL_COLORS[3]
 }
 
 function markerStyle(request) {
@@ -132,7 +133,7 @@ watch(() => props.selectedId, highlightSelected)
   <div class="map-frame">
     <div ref="container" class="map"></div>
     <div class="map-legend">
-      <span v-for="item in LEGEND" :key="item.label">
+      <span v-for="item in legend" :key="item.label">
         <i class="legend-dot" :style="{ background: item.color }"></i>{{ item.label }}
       </span>
       <span class="muted">на карте: {{ requests.length }}</span>

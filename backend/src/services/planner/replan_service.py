@@ -4,7 +4,7 @@
 и выполнение. Если кто-то выбился из графика, появились новые заявки или часть сняли,
 диспетчер пересчитывает остаток дня:
 
-- выполненные, отменённые и начатые («В работе») заявки остаются за своими бригадами — в новом
+- выполненные, отменённые и начатые («В пути», «В работе») заявки остаются за бригадами — в новом
   плане они первыми в маршруте с прежним временем, решатель их не двигает;
 - бригада стартует оттуда, где она сейчас: с заявки, на которой работает (свободна, когда
   закончит), или с последней закрытой; если ещё не выезжала — с утреннего старта, но не
@@ -49,7 +49,14 @@ from src.services.requests import request_status_service
 from src.services.travel import build_route
 
 # заявки, которые бригада уже закрыла или начала: в пересчёте они остаются на месте
-KEPT_STATUSES = (RequestStatusId.DONE, RequestStatusId.CANCELLED, RequestStatusId.IN_PROGRESS)
+KEPT_STATUSES = (
+    RequestStatusId.DONE,
+    RequestStatusId.CANCELLED,
+    RequestStatusId.EN_ROUTE,
+    RequestStatusId.IN_PROGRESS,
+)
+# бригада занялась заявкой: едет к ней или работает на месте
+STARTED_STATUSES = (RequestStatusId.EN_ROUTE, RequestStatusId.IN_PROGRESS)
 
 
 async def replan(
@@ -275,12 +282,10 @@ async def brigade_positions(
             fixed[engineer_id] = kept
 
         engineer = route[0].engineer
-        in_progress = next(
-            (a for a in kept if a.request.status_id == RequestStatusId.IN_PROGRESS), None
-        )
+        in_progress = next((a for a in kept if a.request.status_id in STARTED_STATUSES), None)
         done = [a for a in kept if a.request.status_id == RequestStatusId.DONE]
         if in_progress is not None:
-            # работает на заявке (или едет к ней): свободна, когда закончит
+            # работает на заявке или едет к ней: свободна, когда закончит
             request = in_progress.request
             fact = facts.get(request.id)
             work_start = (

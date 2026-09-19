@@ -4,7 +4,7 @@
 import { referenceName } from './referenceNames.js'
 
 // порядок, в котором заявка проходит статусы, — для сортировки и списков
-const STATUS_FLOW = ['new', 'planned', 'in_progress', 'done', 'cancelled']
+const STATUS_FLOW = ['new', 'planned', 'en_route', 'in_progress', 'done', 'cancelled']
 
 export function statusCode(references, statusId) {
   return references.request_statuses?.find((status) => status.id === statusId)?.code ?? ''

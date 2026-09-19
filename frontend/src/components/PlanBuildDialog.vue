@@ -8,6 +8,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { previewReplan } from '../api/plansApi.js'
 import { formatDay, fromMoscowInputValue, moscowDateOf, moscowTimeOf, nextDay } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
+import InfoHint from './InfoHint.vue'
 import TimeInput from './TimeInput.vue'
 
 const props = defineProps({
@@ -24,7 +25,7 @@ const SOLVERS = [
   {
     value: 'cuopt',
     label: 'cuOpt — глобальная оптимизация',
-    hint: 'Считает на видеокарте NVIDIA: максимум срочных заявок, затем всех заявок, меньше исполнителей и пробега',
+    hint: 'Считает на видеокарте NVIDIA: максимум аварийных заявок, затем высокого приоритета, затем всех заявок, меньше исполнителей и пробега',
   },
   {
     value: 'baseline',
@@ -32,6 +33,14 @@ const SOLVERS = [
     hint: 'Контрольный алгоритм ТЗ: заявки по порядку поступления, без перестановок. Считается мгновенно',
   },
 ]
+
+// пояснение к выбору «Сначала выполнить» — во всплывающей подсказке у значка «i»
+const SERVICE_HINTS = {
+  urgent_requests:
+    'Сначала как можно больше аварийных заявок, затем — высокого приоритета, потом все остальные. ' +
+    'Уровень заявки — из справочника «Приоритеты».',
+  assigned_requests: 'Как можно больше заявок всего, без учёта уровня приоритета.',
+}
 
 // значения по умолчанию: ими же расчёт и запускается, если ничего не менять
 const params = reactive({
@@ -180,9 +189,9 @@ async function submit() {
       <fieldset v-if="params.solver === 'cuopt'" class="priority-settings" :disabled="building">
         <legend>Порядок целей</legend>
         <label class="field">
-          <span>Сначала выполнить</span>
+          <span>Сначала выполнить <InfoHint :text="SERVICE_HINTS[params.servicePriority]" /></span>
           <select v-model="params.servicePriority">
-            <option value="urgent_requests">Максимум срочных заявок</option>
+            <option value="urgent_requests">По уровням приоритета</option>
             <option value="assigned_requests">Максимум всех заявок</option>
           </select>
         </label>

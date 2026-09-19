@@ -7,6 +7,8 @@ import { isClosed, mapsLink, moscowTime, nextAction } from '../route.js'
 
 const props = defineProps({
   visit: { type: Object, required: true },
+  // откуда бригада едет на эту заявку: прошлый визит маршрута или старт смены
+  from: { type: Object, default: null },
   current: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
 })
@@ -23,8 +25,12 @@ const stateText = computed(() => {
   if (visit.removed) return 'Снята с плана'
   if (visit.status_code === 'done') return `Выполнена${visit.finished_at ? ` в ${moscowTime(visit.finished_at)}` : ''}`
   if (visit.status_code === 'cancelled') return 'Не выполнена'
-  if (visit.arrived_at) return `На месте с ${moscowTime(visit.arrived_at)}`
-  if (visit.departed_at) return `В пути с ${moscowTime(visit.departed_at)}`
+  if (visit.status_code === 'in_progress') {
+    return `На месте${visit.arrived_at ? ` с ${moscowTime(visit.arrived_at)}` : ''}`
+  }
+  if (visit.status_code === 'en_route') {
+    return `В пути${visit.departed_at ? ` с ${moscowTime(visit.departed_at)}` : ''}`
+  }
   return `Начало работ по плану в ${moscowTime(visit.planned_arrival_time)}`
 })
 </script>
@@ -39,7 +45,10 @@ const stateText = computed(() => {
         <strong>{{ visit.address }}</strong>
         <span class="state">{{ stateText }}</span>
       </div>
-      <span v-if="visit.urgent && !closed" class="urgent">Срочно</span>
+      <!-- аварийный и высокий уровень приоритета видны сразу; обычный не отмечаем -->
+      <span v-if="visit.priority_level < 3 && !closed" :class="['priority', `level-${visit.priority_level}`]">
+        {{ visit.priority }}
+      </span>
     </header>
 
     <div v-if="open" class="details">
@@ -64,8 +73,8 @@ const stateText = computed(() => {
         </div>
       </dl>
 
-      <a v-if="!closed" class="maps" :href="mapsLink(visit)" target="_blank" rel="noopener" @click.stop>
-        Маршрут в Яндекс Картах ↗
+      <a v-if="!closed" class="maps" :href="mapsLink(visit, from)" target="_blank" rel="noopener" @click.stop>
+        {{ from ? 'Маршрут в Яндекс Картах ↗' : 'Показать в Яндекс Картах ↗' }}
       </a>
 
       <div v-if="action" class="actions" @click.stop>
@@ -122,6 +131,7 @@ header {
   font-weight: 700;
 }
 
+.order.state-en_route,
 .order.state-in_progress {
   background: #fcd535;
 }
@@ -160,14 +170,22 @@ header {
   font-weight: 600;
 }
 
-.urgent {
+.priority {
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #fee2e2;
-  color: #b91c1c;
   font-size: 12px;
   font-weight: 600;
+}
+
+.priority.level-1 {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.priority.level-2 {
+  background: #ffedd5;
+  color: #c2410c;
 }
 
 .details {

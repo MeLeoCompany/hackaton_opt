@@ -22,6 +22,13 @@ class EngineerSpec:
     shift_end_min: int  # конец смены, минуты от начала дня
 
 
+# уровни приоритета: 1 — авария, 2 — подключение, 3 — ремонт и дозаказ (db/init/032)
+TOP_PRIORITY_LEVEL = 1
+LOWEST_PRIORITY_LEVEL = 3
+# уровни выше базового: по ним в целевой функции идут отдельные ступени
+PRIORITY_LEVELS = (1, 2)
+
+
 @dataclass(frozen=True)
 class RequestSpec:
     request_id: int
@@ -30,7 +37,14 @@ class RequestSpec:
     window_end_min: int  # позже этого времени начинать работу нельзя
     skill_id: int
     required_transport_id: int | None  # None — транспорт не важен
-    is_urgent: bool  # срочные аварии имеют высший приоритет в целевой функции
+    # уровень приоритета из справочника: 1 — авария, 2 — подключение, 3 — ремонт и дозаказ.
+    # Оптимизатор берёт заявки по уровням: сначала все аварии, потом подключения, потом остальное
+    priority_level: int = LOWEST_PRIORITY_LEVEL
+
+    @property
+    def is_urgent(self) -> bool:
+        """Авария — верхний уровень приоритета."""
+        return self.priority_level == TOP_PRIORITY_LEVEL
 
 
 @dataclass

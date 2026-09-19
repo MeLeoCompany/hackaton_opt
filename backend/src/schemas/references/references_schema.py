@@ -8,13 +8,27 @@ class ReferenceItem(BaseModel):
     name: str
 
 
+class PriorityItem(ReferenceItem):
+    """Приоритет: level 1 — авария (важнее всего), 2 — подключение, 3 — ремонт и дозаказ."""
+
+    level: int
+
+
 class WorkTypeItem(ReferenceItem):
-    """Тип работ с нормативами: сколько ехать, сколько работать на месте, базовый норматив."""
+    """Тип работ с нормативами: сколько ехать, сколько работать на месте, базовый норматив
+    и приоритет, который подставляется новой заявке этого типа."""
 
     skill_id: int
+    priority_id: int
     travel_minutes: int
     work_minutes: int
     baseline_minutes: int
+
+
+class WorkTypePriorityWrite(BaseModel):
+    """Уровень приоритета по умолчанию для типа работ (справочник «Приоритеты»)."""
+
+    priority_id: int
 
 
 class WorkTypeNormsWrite(BaseModel):
@@ -64,7 +78,7 @@ class ReferencesRead(BaseModel):
     """Все справочники, из которых диспетчер выбирает значения заявок и исполнителей."""
 
     skills: list[ReferenceItem]
-    priorities: list[ReferenceItem]
+    priorities: list[PriorityItem]
     transports: list[ReferenceItem]
     work_types: list[WorkTypeItem]
     offices: list[OfficeItem] = []

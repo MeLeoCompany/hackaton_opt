@@ -17,7 +17,9 @@ defineEmits(['close', 'replan'])
 const { openRequest } = usePlanFocus()
 
 const withdrawn = computed(() => props.summary.withdrawn_requests ?? [])
-const fresh = computed(() => props.summary.new_request_ids ?? [])
+// аварийные — часть новых: показываем их первым пунктом и в остальных новых не повторяем
+const emergency = computed(() => props.summary.urgent_request_ids ?? [])
+const fresh = computed(() => (props.summary.new_request_ids ?? []).filter((id) => !emergency.value.includes(id)))
 const atRisk = computed(() => props.summary.at_risk_request_ids ?? [])
 
 // как сняли: отменили или вернули в «Новая» — ждёт нового расчёта
@@ -30,6 +32,12 @@ function howWithdrawn(item) {
 <template>
   <ErrorMessage :message="`План №${summary.id} стоит пересчитать`" @close="$emit('close')">
     <ul class="replan-reasons">
+      <li v-if="emergency.length">
+        Новые аварийные заявки — план их не видел, а их нужно выполнить в первую очередь:
+        <span v-for="id in emergency" :key="id" class="replan-request">
+          <button type="button" class="link" @click="openRequest(id)">№{{ id }}</button>
+        </span>
+      </li>
       <li v-if="atRisk.length">
         Бригады отстают от плана — к этим заявкам уже не успеть до конца окна:
         <span v-for="id in atRisk" :key="id" class="replan-request">

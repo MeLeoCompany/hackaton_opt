@@ -480,7 +480,9 @@ async def load_reference_lookup(session: AsyncSession) -> ReferenceLookup:
         equipment=reference_options([(item.id, item.name) for item in equipment]),
         work_type_norms={
             work_type.id: WorkTypeNorm(
-                skill_id=work_type.skill_id, work_minutes=work_type.work_minutes
+                skill_id=work_type.skill_id,
+                work_minutes=work_type.work_minutes,
+                priority_id=work_type.priority_id,
             )
             for work_type in work_types
         },
@@ -508,12 +510,17 @@ async def apply_work_type_norms(session: AsyncSession, payload: RequestWrite) ->
         payload.skill_id = norm.skill_id
         if payload.duration_minutes is None:
             payload.duration_minutes = norm.work_minutes
+        # приоритет по умолчанию — из типа работ; заданный в заявке остаётся
+        if payload.priority_id is None:
+            payload.priority_id = norm.priority_id
 
     problems = []
     if payload.duration_minutes is None:
         problems.append("укажите длительность работ или выберите тип работ")
     if payload.skill_id is None:
         problems.append("укажите навык или выберите тип работ")
+    if payload.priority_id is None:
+        problems.append("укажите приоритет или выберите тип работ")
     if problems:
         raise RequestDataError(problems)
 

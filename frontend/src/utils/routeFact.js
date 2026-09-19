@@ -11,6 +11,7 @@ export function visitFactState(visit, references, planId) {
   const code = statusCode(references, visit.status_id)
   if (code === 'done') return 'done'
   if (code === 'cancelled') return 'cancelled'
+  if (code === 'en_route') return 'moving' // бригада выехала, ещё не на месте
   if (code === 'in_progress') return visit.arrived_at ? 'onsite' : 'moving'
   return 'planned'
 }

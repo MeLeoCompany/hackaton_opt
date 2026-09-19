@@ -19,8 +19,8 @@ class StatusTransitionError(DataError):
 
 # заявка закрыта: бригада с ней закончила — выполнена или отменена
 CLOSED_STATUSES = {RequestStatusId.DONE, RequestStatusId.CANCELLED}
-# бригада до заявки уже добралась: едет, работает или закончила
-STARTED_STATUSES = {RequestStatusId.IN_PROGRESS, RequestStatusId.DONE}
+# бригада заявку уже начала: едет к ней, работает на месте или закончила
+STARTED_STATUSES = {RequestStatusId.EN_ROUTE, RequestStatusId.IN_PROGRESS, RequestStatusId.DONE}
 
 
 async def change_status(

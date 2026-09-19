@@ -148,6 +148,8 @@ class PlanSummary(BaseModel):
     # новые — заявки дня офиса, которые ждут планирования, а расчёт плана их не видел
     withdrawn_requests: list[WithdrawnRequest] = []
     new_request_ids: list[int] = []
+    # из новых — аварии: главный повод пересчитать, авария меняет маршруты бригад
+    urgent_request_ids: list[int] = []
     # бригады отстают: к этим заявкам по плану уже не успеть до конца окна
     at_risk_request_ids: list[int] = []
 

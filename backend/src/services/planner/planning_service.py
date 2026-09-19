@@ -16,6 +16,7 @@ from src.core.local_day import intersected_local_dates
 from src.models import Assignment, Engineer, Plan, PlanRunType, Request, RequestStatusId
 from src.repositories.brigade import brigade_repository
 from src.repositories.plans import plans_repository
+from src.repositories.references import references_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
@@ -38,6 +39,7 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_loader import LoadedDay
+from src.services.planner.planner_problem import TOP_PRIORITY_LEVEL
 from src.services.planner.route_delay import RouteDelay, VisitFact, route_delay, visit_state
 from src.services.requests import request_status_service
 from src.services.travel import build_route
@@ -664,15 +666,25 @@ async def replan_reasons(session: AsyncSession, plan: Plan) -> dict[str, list]:
         session, day.day_start, day.day_end, plan_date=plan.plan_date, office_id=plan.office_id
     )
     seen = await plans_repository.plan_request_ids(session, plan.id)
-    new_request_ids = [
-        request.id
+    new_requests = [
+        request
         for request in day_requests
         if request.status_id == RequestStatusId.NEW
         and request.approved_plan_id is None
         and request.id not in seen
     ]
+    # новые аварии — отдельно: по ним маршрут бригады меняют посреди дня
+    top_level = {
+        priority.id
+        for priority in await references_repository.list_priorities(session)
+        if priority.level == TOP_PRIORITY_LEVEL
+    }
     delays = await plan_route_delays(session, plan)
     return {
+        "new_request_ids": [request.id for request in new_requests],
+        "urgent_request_ids": [
+            request.id for request in new_requests if request.priority_id in top_level
+        ],
         "at_risk_request_ids": sorted(
             request_id for delay in delays.values() for request_id in delay.at_risk_request_ids
         ),
@@ -680,7 +692,6 @@ async def replan_reasons(session: AsyncSession, plan: Plan) -> dict[str, list]:
             WithdrawnRequest(request_id=request_id, status_id=status_id)
             for request_id, status_id in withdrawn
         ],
-        "new_request_ids": new_request_ids,
     }
 
 

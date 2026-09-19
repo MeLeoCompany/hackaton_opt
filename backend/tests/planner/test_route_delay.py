@@ -57,6 +57,14 @@ def test_now_matters_only_for_todays_plan():
     assert route_delay(route, None).delay_minutes == 0
 
 
+def test_en_route_visit_is_counted_as_moving():
+    # «В пути» — бригада едет: визит считается начатым, но она ещё не на месте
+    from src.services.planner.route_delay import visit_state
+
+    assert visit_state("en_route", False, None) == "moving"
+    assert visit_state("in_progress", False, at(10)) == "onsite"
+
+
 def test_cancelled_and_removed_visits_are_skipped():
     route = [
         visit(1, at(10), "cancelled"),

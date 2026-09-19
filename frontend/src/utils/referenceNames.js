@@ -5,6 +5,18 @@ export function referenceName(references, listName, id) {
   return references[listName]?.find((item) => item.id === id)?.name ?? `№${id}`
 }
 
+// уровень приоритета: 1 — аварийный (важнее всего), 2 — высокий, 3 — обычный
+export const TOP_PRIORITY_LEVEL = 1
+
+export function priorityLevel(references, priorityId) {
+  return references.priorities?.find((item) => item.id === priorityId)?.level ?? null
+}
+
 export function isUrgent(references, request) {
-  return referenceName(references, 'priorities', request.priority_id) === 'Срочная'
+  return priorityLevel(references, request.priority_id) === TOP_PRIORITY_LEVEL
+}
+
+// плашка приоритета окрашивается по уровню: аварийный — красная, высокий — оранжевая
+export function priorityBadgeClass(references, priorityId) {
+  return ['badge', `priority-${priorityLevel(references, priorityId) ?? 'none'}`]
 }

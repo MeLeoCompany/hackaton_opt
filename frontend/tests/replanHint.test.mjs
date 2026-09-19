@@ -27,3 +27,13 @@ test('отставание бригад — тоже повод: номера з
   const hint = replanHint({ approved_at: APPROVED, withdrawn_requests: [], new_request_ids: [], at_risk_request_ids: [32840] })
   assert.match(hint, /бригады не успевают к окну: №32840/)
 })
+
+test('новые аварийные заявки — первым пунктом и без повтора среди новых', () => {
+  const hint = replanHint({
+    approved_at: APPROVED,
+    withdrawn_requests: [],
+    new_request_ids: [16, 17],
+    urgent_request_ids: [17],
+  })
+  assert.match(hint, /— новые аварийные заявки: №17; новые заявки дня: №16$/)
+})

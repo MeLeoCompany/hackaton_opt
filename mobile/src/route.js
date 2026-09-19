@@ -30,12 +30,13 @@ export function currentVisit(route) {
   return route?.visits.find((visit) => !isClosed(visit)) ?? null
 }
 
-// какую главную кнопку показать у текущей заявки
+// какую главную кнопку показать у текущей заявки: шаги идут по статусу заявки —
+// «В плане» → выехали, «В пути» → на месте, «В работе» → выполнено
 export function nextAction(visit) {
   if (!visit || isClosed(visit)) return null
-  if (!visit.departed_at) return { action: 'depart', label: 'Выехали' }
-  if (!visit.arrived_at) return { action: 'arrive', label: 'На месте' }
-  return { action: 'done', label: 'Выполнено' }
+  if (visit.status_code === 'in_progress') return { action: 'done', label: 'Выполнено' }
+  if (visit.status_code === 'en_route') return { action: 'arrive', label: 'На месте' }
+  return { action: 'depart', label: 'Выехали' }
 }
 
 // сколько закрыто из маршрута: для полоски прогресса
@@ -45,7 +46,18 @@ export function progress(route) {
   return { done, total: visits.length }
 }
 
-// ссылка на маршрут в Яндекс Картах: от текущего места до заявки
-export function mapsLink(visit) {
-  return `https://yandex.ru/maps/?rtext=~${visit.latitude},${visit.longitude}&rtt=auto`
+// ссылка на маршрут в Яндекс Картах: откуда бригада едет (прошлая заявка маршрута, а для
+// первой — старт смены) и куда. Без точки отправления — просто маршрут до заявки
+export function mapsLink(visit, from = null) {
+  const to = `${visit.latitude},${visit.longitude}`
+  const start = from ? `${from.latitude},${from.longitude}` : ''
+  return `https://yandex.ru/maps/?rtext=${start}~${to}&rtt=auto`
+}
+
+// откуда бригада едет на эту заявку: прошлый визит маршрута или старт смены
+export function departurePoint(route, visit) {
+  const index = route?.visits.findIndex((item) => item.request_id === visit.request_id) ?? -1
+  if (index > 0) return route.visits[index - 1]
+  if (route?.start_latitude != null) return { latitude: route.start_latitude, longitude: route.start_longitude }
+  return null
 }

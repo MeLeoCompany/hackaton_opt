@@ -55,7 +55,7 @@ function solveDuration(summary) {
           <th>Решатель</th>
           <th>Приоритеты</th>
           <th>Назначено</th>
-          <th>Срочных</th>
+          <th>Аварийных</th>
           <th>Не назначено</th>
           <th>Исполнителей</th>
           <th>Пробег, км</th>

@@ -69,7 +69,8 @@ export function useRequestsTable() {
       duration_minutes: references.value.work_types[0]?.work_minutes ?? 60,
       window_start: '',
       window_end: '',
-      priority_id: references.value.priorities[0]?.id ?? '',
+      // уровень приоритета по умолчанию — из справочника «Приоритеты» для типа работ
+      priority_id: references.value.work_types[0]?.priority_id ?? references.value.priorities.at(-1)?.id ?? '',
       skill_id: references.value.work_types[0]?.skill_id ?? '',
       transport_id: '',
       work_type_id: references.value.work_types[0]?.id ?? '',
@@ -78,13 +79,14 @@ export function useRequestsTable() {
     }
   }
 
-  // выбрали тип работ — подставляем норматив работы на месте и нужный навык:
-  // навык отдельно не выбирают, он определяется типом работ
+  // выбрали тип работ — подставляем норматив работы на месте, нужный навык и уровень
+  // приоритета по умолчанию: навык определяется типом работ, приоритет можно сменить
   function applyWorkTypeNorms(workTypeId) {
     const workType = references.value.work_types.find((item) => item.id === Number(workTypeId))
     if (!workType) return
     form.value.duration_minutes = workType.work_minutes
     form.value.skill_id = workType.skill_id
+    form.value.priority_id = workType.priority_id
   }
 
   function startEdit(request) {

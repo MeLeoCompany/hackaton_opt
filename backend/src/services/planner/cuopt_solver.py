@@ -19,6 +19,7 @@ import asyncio
 import logging
 import math
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -30,7 +31,11 @@ from src.services.planner.objective_policy import (
     ObjectiveCriterion,
     validate_objective_order,
 )
-from src.services.planner.planner_problem import ProblemInstance
+from src.services.planner.planner_problem import (
+    PRIORITY_LEVELS,
+    TOP_PRIORITY_LEVEL,
+    ProblemInstance,
+)
 
 # Objective cuOpt хранится в float32. Ограничиваем суммарный масштаб половиной точного
 # целочисленного диапазона: остаётся запас для сложения и единичных границ Big-M.
@@ -59,8 +64,13 @@ class ObjectivePolicy:
     """Коэффициенты строгой иерархии выбранных диспетчером критериев."""
 
     criteria: tuple[ObjectiveCriterion, ...]
-    urgent_reward: float
+    # награда за выполненную заявку по уровню приоритета: 1 — авария, 2 — подключение;
+    # остальные уровни получают regular_reward
+    level_rewards: dict[int, float]
     regular_reward: float
+
+    def reward_for(self, priority_level: int) -> float:
+        return self.level_rewards.get(priority_level, self.regular_reward)
     vehicle_cost: float
     distance_weight: float
     distance_scale: float
@@ -206,8 +216,7 @@ def build_solver_inputs(
         ),
         order_prizes=np.array(
             [
-                objective.urgent_reward if request.is_urgent else objective.regular_reward
-                for request in requests
+                objective.reward_for(request.priority_level) for request in requests
             ],
             dtype=np.float32,
         ),
@@ -236,23 +245,35 @@ def build_objective_policy(
     criteria = validate_objective_order(objective_order)
 
     request_count = len(task_request_indices)
-    urgent_count = sum(instance.requests[index].is_urgent for index in task_request_indices)
+    level_counts = Counter(
+        instance.requests[index].priority_level for index in task_request_indices
+    )
     maximum_changes = {
-        ObjectiveCriterion.URGENT_REQUESTS: urgent_count,
         ObjectiveCriterion.ASSIGNED_REQUESTS: request_count,
         ObjectiveCriterion.ENGINEERS_USED: instance.n_engineers,
         ObjectiveCriterion.TRAVEL_DISTANCE: 1.0,
     }
-    coefficients: dict[ObjectiveCriterion, float] = {}
+    # «срочность» — это ступени по уровням приоритета: сначала аварии, потом подключения.
+    # Каждая ступень сильнее всех нижних вместе взятых, поэтому одна авария важнее любого
+    # числа подключений, а подключение — любого числа обычных заявок
+    tiers: list[tuple[object, float]] = []
+    for criterion in criteria:
+        if criterion is ObjectiveCriterion.URGENT_REQUESTS:
+            tiers += [(level, level_counts.get(level, 0)) for level in PRIORITY_LEVELS]
+        else:
+            tiers.append((criterion, maximum_changes[criterion]))
+
+    coefficients: dict[object, float] = {}
     lower_levels = 0.0
-    for criterion in reversed(criteria):
-        increment = distance_weight if criterion is ObjectiveCriterion.TRAVEL_DISTANCE else 1.0
+    for key, maximum in reversed(tiers):
+        increment = distance_weight if key is ObjectiveCriterion.TRAVEL_DISTANCE else 1.0
         coefficient = lower_levels + increment
-        coefficients[criterion] = coefficient
-        lower_levels += maximum_changes[criterion] * coefficient
+        coefficients[key] = coefficient
+        lower_levels += maximum * coefficient
 
     assigned_reward = coefficients[ObjectiveCriterion.ASSIGNED_REQUESTS]
-    urgent_reward = assigned_reward + coefficients[ObjectiveCriterion.URGENT_REQUESTS]
+    level_rewards = {level: assigned_reward + coefficients[level] for level in PRIORITY_LEVELS}
+    urgent_reward = level_rewards[TOP_PRIORITY_LEVEL]
     vehicle_cost = coefficients[ObjectiveCriterion.ENGINEERS_USED]
     effective_distance_weight = coefficients[ObjectiveCriterion.TRAVEL_DISTANCE]
     maximum_objective_magnitude = lower_levels
@@ -307,7 +328,7 @@ def build_objective_policy(
 
     return ObjectivePolicy(
         criteria=criteria,
-        urgent_reward=urgent_reward,
+        level_rewards=level_rewards,
         regular_reward=assigned_reward,
         vehicle_cost=vehicle_cost,
         distance_weight=effective_distance_weight,

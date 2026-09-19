@@ -22,7 +22,8 @@ class BrigadeVisit(BaseModel):
     duration_minutes: int
     work_type: str | None
     priority: str
-    urgent: bool
+    # уровень приоритета: 1 аварийный, 2 высокий, 3 обычный
+    priority_level: int
     equipment: list[BrigadeEquipment]
     status_id: int
     status_code: str
@@ -42,6 +43,9 @@ class BrigadeRoute(BaseModel):
     plan_id: int | None = None
     shift_start: datetime | None = None
     shift_end: datetime | None = None
+    # откуда бригада выезжает на первую заявку — для маршрута в картах
+    start_latitude: float | None = None
+    start_longitude: float | None = None
     visits: list[BrigadeVisit] = []
 
 

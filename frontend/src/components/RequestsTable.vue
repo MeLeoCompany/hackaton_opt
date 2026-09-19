@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { NEW_REQUEST } from '../composables/useRequestsTable.js'
 import { useColumnWidths } from '../composables/useColumnWidths.js'
 import { REQUEST_COLUMNS as COLUMNS } from '../composables/useRequestsView.js'
-import { isUrgent, referenceName } from '../utils/referenceNames.js'
+import { priorityBadgeClass, referenceName } from '../utils/referenceNames.js'
 import { statusCode } from '../utils/requestStatuses.js'
 import IconButton from './IconButton.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
@@ -183,7 +183,7 @@ onMounted(scrollToSelected)
               <TimeRangeValue :start="request.window_start" :end="request.window_end" />
             </td>
             <td>
-              <span :class="['badge', { urgent: isUrgent(references, request) }]">
+              <span :class="priorityBadgeClass(references, request.priority_id)">
                 {{ referenceName(references, 'priorities', request.priority_id) }}
               </span>
             </td>

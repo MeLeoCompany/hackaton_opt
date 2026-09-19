@@ -4,7 +4,7 @@
 // пересчитать план.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-import { currentVisit, formatDay, isClosed, moscowTime, progress } from '../route.js'
+import { currentVisit, departurePoint, formatDay, isClosed, moscowTime, progress } from '../route.js'
 import { useBrigade } from '../useBrigade.js'
 import FailSheet from './FailSheet.vue'
 import VisitCard from './VisitCard.vue'
@@ -83,13 +83,25 @@ onBeforeUnmount(() => clearInterval(timer))
       <template v-else-if="route">
         <section v-if="current" class="block">
           <h2>Сейчас</h2>
-          <VisitCard :visit="current" current :busy="busy" @mark="mark" @fail="failing = $event" />
+          <VisitCard
+            :visit="current"
+            :from="departurePoint(route, current)"
+            current
+            :busy="busy"
+            @mark="mark"
+            @fail="failing = $event"
+          />
         </section>
         <p v-else class="empty done">Все заявки маршрута закрыты. Хорошая работа!</p>
 
         <section v-if="upcoming.length" class="block">
           <h2>Дальше по маршруту · {{ upcoming.length }}</h2>
-          <VisitCard v-for="visit in upcoming" :key="visit.request_id" :visit="visit" />
+          <VisitCard
+            v-for="visit in upcoming"
+            :key="visit.request_id"
+            :visit="visit"
+            :from="departurePoint(route, visit)"
+          />
         </section>
 
         <section v-if="closedVisits.length" class="block">

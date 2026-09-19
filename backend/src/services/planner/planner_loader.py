@@ -25,6 +25,7 @@ from src.repositories.references import references_repository
 from src.repositories.requests import requests_repository
 from src.schemas.travel import Point, TransportKind
 from src.services.planner.planner_problem import (
+    LOWEST_PRIORITY_LEVEL,
     EngineerSpec,
     ProblemInstance,
     RequestSpec,
@@ -34,7 +35,6 @@ from src.services.travel import build_matrix
 
 MINUTES_IN_DAY = 24 * 60
 
-URGENT_PRIORITY_NAME = "Срочная"
 # если между точками нет дороги, пару заменяем заведомо непроходимым значением:
 # решатели не принимают бесконечность
 UNREACHABLE_MINUTES = 100_000
@@ -135,9 +135,7 @@ async def load_day(
     skills = await references_repository.list_skills(session)
     transports = await references_repository.list_transports(session)
     priorities = await references_repository.list_priorities(session)
-    urgent_priority_ids = {
-        priority.id for priority in priorities if priority.name == URGENT_PRIORITY_NAME
-    }
+    priority_levels = {priority.id: priority.level for priority in priorities}
 
     start_points = [
         Point(latitude=starts[e.id].latitude, longitude=starts[e.id].longitude)
@@ -168,7 +166,7 @@ async def load_day(
                 window_end_min=day.to_minutes(request.window_end),
                 skill_id=request.skill_id,
                 required_transport_id=request.transport_id,
-                is_urgent=request.priority_id in urgent_priority_ids,
+                priority_level=priority_levels.get(request.priority_id, LOWEST_PRIORITY_LEVEL),
             )
             for request in requests
         ],

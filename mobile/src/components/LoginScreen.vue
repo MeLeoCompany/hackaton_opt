@@ -1,5 +1,5 @@
 <script setup>
-// Вход бригады: логин и пароль учётки бригады (заводит администратор в «Пользователях»).
+// Вход бригады: логин и пароль задаются в справочнике бригад диспетчерской.
 import { ref } from 'vue'
 
 import { useBrigade } from '../useBrigade.js'
@@ -14,14 +14,8 @@ const showPassword = ref(false)
   <div class="login">
     <div class="brand">
       <span class="brand-mark">Б</span>
-      <div>
-        <strong>Билайн Бизнес</strong>
-        <span>Бригада на выезде</span>
-      </div>
+      <strong>Маршрут бригады</strong>
     </div>
-
-    <h1>Маршрут на день</h1>
-    <p class="hint">Отмечайте выезд, прибытие и выполнение — диспетчер видит, где вы, и пересчитывает план.</p>
 
     <form @submit.prevent="signIn(loginName.trim(), password)">
       <label>
@@ -53,26 +47,19 @@ const showPassword = ref(false)
   display: flex;
   flex-direction: column;
   gap: 14px;
+  justify-content: center;
   min-height: 100%;
-  padding: 32px 20px 24px;
-  background: linear-gradient(180deg, #111827 0, #111827 220px, #f3f4f6 220px);
+  padding: 24px 20px;
+  background: #111827;
 }
 
 .brand {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   color: #fff;
-}
-
-.brand div {
-  display: flex;
-  flex-direction: column;
-  font-size: 13px;
-}
-
-.brand div span {
-  color: #d1d5db;
+  font-size: 18px;
 }
 
 .brand-mark {
@@ -84,18 +71,6 @@ const showPassword = ref(false)
   background: #fcd535;
   color: #111827;
   font-weight: 800;
-}
-
-h1 {
-  margin: 18px 0 0;
-  color: #fff;
-  font-size: 24px;
-}
-
-.hint {
-  margin: 0 0 18px;
-  color: #d1d5db;
-  font-size: 14px;
 }
 
 form {

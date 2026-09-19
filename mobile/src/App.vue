@@ -31,7 +31,9 @@ onMounted(restore)
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  /* страница целиком не прокручивается: скроллится только экран телефона */
+  height: 100vh;
+  overflow: hidden;
   background: radial-gradient(circle at 30% 20%, #374151, #111827 70%);
 }
 
@@ -47,23 +49,40 @@ onMounted(restore)
     0 30px 80px rgb(0 0 0 / 55%);
 }
 
+/* экран телефона прокручивается сам: тонкая полоса внутри рамки вместо системной у края окна */
 .phone-screen {
   position: relative;
   height: 100%;
   overflow: auto;
   border-radius: 36px;
   background: #f3f4f6;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.phone-screen::-webkit-scrollbar {
+  width: 6px;
+}
+
+.phone-screen::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.phone-screen::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
 }
 
 @media (max-width: 500px) {
   .stage {
     display: block;
+    height: 100vh;
     background: #f3f4f6;
   }
 
   .phone {
     width: auto;
-    height: 100vh;
+    height: 100%;
     padding: 0;
     border-radius: 0;
     background: none;

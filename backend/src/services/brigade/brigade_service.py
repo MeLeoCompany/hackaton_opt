@@ -1,8 +1,8 @@
 """Мобильное приложение бригады: маршрут дня и отметки по заявкам.
 
 Бригада видит свой маршрут из утверждённого плана офиса и по ходу дня отмечает:
-- «Выехали» — заявка «В работе», запоминается время выезда;
-- «На месте» — время прибытия (если выезд не отметили — заявка тоже уходит «В работу»);
+- «Выехали» — заявка «В пути», запоминается время выезда;
+- «На месте» — заявка «В работе», время прибытия (если выезд не отметили — тоже «В работе»);
 - «Выполнено» — заявка «Выполнена», время окончания;
 - «Не выполнить» — заявка «Отменена» с причиной.
 Статус меняется тем же переходом, что у оператора: действует таблица переходов и правило
@@ -24,6 +24,7 @@ from src.repositories.references import references_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.brigade import BrigadeDays, BrigadeEquipment, BrigadeRoute, BrigadeVisit
+from src.services.planner.planner_problem import LOWEST_PRIORITY_LEVEL
 from src.services.requests import request_status_service
 
 
@@ -79,9 +80,7 @@ async def get_route(session: AsyncSession, user: AppUser, plan_date: date) -> Br
     work_types = {
         item.id: item.name for item in await references_repository.list_work_types(session)
     }
-    priorities = {
-        item.id: item.name for item in await references_repository.list_priorities(session)
-    }
+    priorities = {item.id: item for item in await references_repository.list_priorities(session)}
     equipment = {item.id: item.name for item in await references_repository.list_equipment(session)}
     facts = await brigade_repository.list_facts(
         session, [assignment.request_id for assignment in assignments]
@@ -89,11 +88,13 @@ async def get_route(session: AsyncSession, user: AppUser, plan_date: date) -> Br
 
     engineer = assignments[0].engineer
     route.shift_start, route.shift_end = engineer.shift_start, engineer.shift_end
+    route.start_latitude = float(engineer.start_latitude)
+    route.start_longitude = float(engineer.start_longitude)
     for assignment in assignments:
         request = assignment.request
         status = statuses[request.status_id]
         fact = facts.get(request.id)
-        priority = priorities.get(request.priority_id, "")
+        priority = priorities.get(request.priority_id)
         route.visits.append(
             BrigadeVisit(
                 request_id=request.id,
@@ -106,8 +107,8 @@ async def get_route(session: AsyncSession, user: AppUser, plan_date: date) -> Br
                 planned_arrival_time=assignment.planned_arrival_time,
                 duration_minutes=request.duration_minutes,
                 work_type=work_types.get(request.work_type_id),
-                priority=priority,
-                urgent=priority == "Срочная",
+                priority=priority.name if priority else "",
+                priority_level=priority.level if priority else LOWEST_PRIORITY_LEVEL,
                 equipment=[
                     BrigadeEquipment(
                         name=equipment.get(item.equipment_id, "—"), quantity=item.quantity
@@ -161,7 +162,7 @@ async def mark(
     if action == "depart":
         if fact.departed_at is not None:
             raise BrigadeActionError([f"выезд на заявку №{request_id} уже отмечен"])
-        await to_status(RequestStatusId.IN_PROGRESS, "Бригада выехала")
+        await to_status(RequestStatusId.EN_ROUTE, "Бригада выехала")
         fact.departed_at = moment
     elif action == "arrive":
         if fact.arrived_at is not None:

@@ -4,7 +4,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 
 import { moscowTimeOf } from '../utils/moscowTime.js'
-import { referenceName } from '../utils/referenceNames.js'
+import { priorityLevel, referenceName } from '../utils/referenceNames.js'
 import { statusRank } from '../utils/requestStatuses.js'
 
 // значение фильтра транспорта «транспорт не важен» (в заявке transport_id = null)
@@ -32,7 +32,8 @@ export const REQUEST_COLUMNS = [
   { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', grow: 2, minWidth: 150, floor: 115 },
   { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '115px' },
   { key: 'window', label: 'Окно (МСК)', sortKey: 'window_start', width: '130px' },
-  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '120px', floor: 105 },
+  // плашка уровня приоритета — целиком и одной ширины: колонка не сужается
+  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '112px', fixed: true },
   { key: 'transport', label: 'Транспорт', sortKey: 'transport', grow: 1, minWidth: 125 },
   // кнопки правки и удаления не сужаются: той же ширины, что выгрузка и синхронизация над ними
   { key: 'actions', label: '', sortKey: null, width: '130px', fixed: true },
@@ -129,7 +130,7 @@ export function useRequestsView(requests, references) {
       case 'window_start':
         return new Date(request.window_start).getTime()
       case 'priority':
-        return referenceName(references.value, 'priorities', request.priority_id)
+        return priorityLevel(references.value, request.priority_id) // аварийные первыми
       case 'work_type':
         return request.work_type_id === null ? null : referenceName(references.value, 'work_types', request.work_type_id)
       case 'transport':

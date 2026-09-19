@@ -17,6 +17,7 @@ import NormsPage from './pages/NormsPage.vue'
 import OfficesPage from './pages/OfficesPage.vue'
 import PlanComparisonPage from './pages/PlanComparisonPage.vue'
 import PlansPage from './pages/PlansPage.vue'
+import PrioritiesPage from './pages/PrioritiesPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
 import UsersPage from './pages/UsersPage.vue'
@@ -42,6 +43,7 @@ const ALL_SECTIONS = [
       // бригады — и администратору, и диспетчеру: смены на день заводят из них
       { key: 'brigades', label: 'Бригады' },
       { key: 'norms', label: 'Нормативы' },
+      { key: 'priorities', label: 'Приоритеты' },
       { key: 'equipment', label: 'Оборудование' },
       { key: 'users', label: 'Пользователи', adminOnly: true },
     ],
@@ -52,7 +54,7 @@ const ALL_SECTIONS = [
 
 const TAB_STORAGE_KEY = 'routing.activeTab'
 const TABS = [
-  'requests', 'engineers', 'plans', 'comparison', 'offices', 'brigades', 'norms', 'equipment', 'users', 'import',
+  'requests', 'engineers', 'plans', 'comparison', 'offices', 'brigades', 'norms', 'priorities', 'equipment', 'users', 'import',
   'routes',
 ]
 // вкладка «Справочники» была одной страницей — теперь это «Офисы» внутри раздела
@@ -133,6 +135,7 @@ onMounted(async () => {
         <OfficesPage v-else-if="activeTab === 'offices'" />
         <BrigadesPage v-else-if="activeTab === 'brigades'" />
         <NormsPage v-else-if="activeTab === 'norms'" />
+        <PrioritiesPage v-else-if="activeTab === 'priorities'" />
         <EquipmentPage v-else-if="activeTab === 'equipment'" />
         <UsersPage v-else-if="activeTab === 'users'" />
         <ImportPage v-else-if="activeTab === 'import'" />

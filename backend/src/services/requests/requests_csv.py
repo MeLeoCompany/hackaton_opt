@@ -14,6 +14,7 @@
 - id можно не заполнять — номер присвоится сам; если заполнен и такая заявка уже есть,
   она будет обновлена;
 - приоритет, навык и транспорт — названием из справочника (регистр не важен) или номером;
+  пустой приоритет берётся из типа работ;
   транспорт можно оставить пустым;
 - «оборудование» — что и сколько нужно привезти: названия или номера из справочника
   оборудования через запятую, с количеством через двоеточие («Роутер: 2, ТВ-приставка»;
@@ -69,10 +70,11 @@ class ReferenceOptions:
 
 @dataclass
 class WorkTypeNorm:
-    """Нормативы типа работ: чем заполнить пустые «длительность_мин» и «навык»."""
+    """Нормативы типа работ: чем заполнить пустые «длительность_мин», «навык» и «приоритет»."""
 
     skill_id: int
     work_minutes: int
+    priority_id: int | None = None
 
 
 @dataclass
@@ -109,9 +111,9 @@ def build_csv_template() -> str:
         ";".join(COLUMNS),
         # длительность и навык не заполнены: возьмутся из типа работ
         ";Город Москва, пер.Маяковского, д. 2;55.7400;37.6580;Подключение клиентов, базовая;;"
-        '17.08.2026 18:00;17.08.2026 20:00;Обычная;;;да;"Роутер: 2, ТВ-приставка"',
+        '17.08.2026 18:00;17.08.2026 20:00;Обычный;;;да;"Роутер: 2, ТВ-приставка"',
         "400000001;Город Москва, ул.Саратовская, д. 16;55.7090;37.7368;Авария на ТКД;90;"
-        "17.08.2026 20:00;17.08.2026 22:00;Срочная;Аварийные работы;Автомобиль;нет;",
+        "17.08.2026 20:00;17.08.2026 22:00;Аварийный;Аварийные работы;Автомобиль;нет;",
     ]
     return "\n".join(lines) + "\n"
 
@@ -240,8 +242,9 @@ def parse_row(
     if window_start and window_end and window_end <= window_start:
         errors.append("«окно_конец» должно быть позже, чем «окно_начало»")
 
+    # пустой приоритет — возьмётся из типа работ (ниже)
     priority_id = parse_reference(
-        cell(raw_row, "приоритет"), "приоритет", references.priorities, errors, required=True
+        cell(raw_row, "приоритет"), "приоритет", references.priorities, errors, required=False
     )
     skill_id = parse_reference(
         cell(raw_row, "навык"), "навык", references.skills, errors, required=False
@@ -252,6 +255,9 @@ def parse_row(
     if norm is not None:
         skill_id = norm.skill_id
         duration_minutes = norm.work_minutes if duration_minutes is None else duration_minutes
+        priority_id = norm.priority_id if priority_id is None else priority_id
+    if priority_id is None:
+        errors.append("не заполнено поле «приоритет» — заполните его или укажите «тип_работ»")
     if duration_minutes is None:
         errors.append(
             "не заполнено поле «длительность_мин» — заполните его или укажите «тип_работ»"

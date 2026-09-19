@@ -21,8 +21,13 @@ def plan(approved: bool = True):
     )
 
 
-def request(request_id, status_id, approved_plan_id=None):
-    return SimpleNamespace(id=request_id, status_id=status_id, approved_plan_id=approved_plan_id)
+def request(request_id, status_id, approved_plan_id=None, priority_id=1):
+    return SimpleNamespace(
+        id=request_id,
+        status_id=status_id,
+        approved_plan_id=approved_plan_id,
+        priority_id=priority_id,
+    )
 
 
 async def reasons(the_plan, *, withdrawn, day_requests, seen):
@@ -33,6 +38,13 @@ async def reasons(the_plan, *, withdrawn, day_requests, seen):
         ),
         patch.object(plans_repository, "plan_request_ids", AsyncMock(return_value=seen)),
         patch.object(planning_service, "plan_route_delays", AsyncMock(return_value={})),
+        patch.object(
+            planning_service.references_repository,
+            "list_priorities",
+            AsyncMock(
+                return_value=[SimpleNamespace(id=2, level=1), SimpleNamespace(id=1, level=3)]
+            ),
+        ),
         patch.object(
             planning_service.requests_repository,
             "list_active_requests_in_period",
@@ -47,11 +59,13 @@ async def test_new_request_of_the_day_is_a_reason_to_replan():
     result = await reasons(
         plan(),
         withdrawn=[],
-        day_requests=[request(1, PLANNED, 22), request(7, NEW)],
+        day_requests=[request(1, PLANNED, 22), request(7, NEW), request(8, NEW, priority_id=2)],
         seen={1},
     )
 
-    assert result == {"at_risk_request_ids": [], "withdrawn_requests": [], "new_request_ids": [7]}
+    assert result["new_request_ids"] == [7, 8]
+    # новая авария — отдельным поводом: она меняет маршруты бригад посреди дня
+    assert result["urgent_request_ids"] == [8]
 
 
 @pytest.mark.asyncio

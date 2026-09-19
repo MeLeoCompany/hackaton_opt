@@ -1,7 +1,7 @@
 <script setup>
 // Карточка заявки, выбранной на карте.
 import { formatMoscowWindow } from '../utils/moscowTime.js'
-import { isUrgent, referenceName } from '../utils/referenceNames.js'
+import { priorityBadgeClass, referenceName } from '../utils/referenceNames.js'
 import RequestStatusMenu from './RequestStatusMenu.vue'
 
 defineProps({
@@ -46,7 +46,7 @@ defineEmits(['show-in-table', 'close', 'change-status', 'history', 'open-plan'])
         <div>
           <dt>Приоритет</dt>
           <dd>
-            <span :class="['badge', { urgent: isUrgent(references, request) }]">
+            <span :class="priorityBadgeClass(references, request.priority_id)">
               {{ referenceName(references, 'priorities', request.priority_id) }}
             </span>
           </dd>

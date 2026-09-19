@@ -28,7 +28,7 @@ REFERENCES = ReferenceLookup(
     ),
     work_type_norms={
         1: WorkTypeNorm(skill_id=2, work_minutes=70),
-        2: WorkTypeNorm(skill_id=3, work_minutes=80),
+        2: WorkTypeNorm(skill_id=3, work_minutes=80, priority_id=2),
         4: WorkTypeNorm(skill_id=1, work_minutes=30),
     },
 )
@@ -207,6 +207,31 @@ def test_without_work_type_duration_and_skill_are_required():
         "длительность_мин" in message and "тип_работ" in message for message in result.errors
     )
     assert any("навык" in message and "тип_работ" in message for message in result.errors)
+
+
+def test_empty_priority_comes_from_work_type_and_own_one_wins():
+    """Приоритет по умолчанию — из типа работ; заданный в строке остаётся."""
+    default = parse(
+        WORK_TYPE_HEADER,
+        "ул. Ленина, 1;55.74;37.658;Авария на ТКД;;17.08.2026 10:00;17.08.2026 12:00;;",
+    )
+    assert default.errors == []
+    assert default.rows[0]["priority_id"] == 2  # авария — приоритет типа работ
+
+    own = parse(
+        WORK_TYPE_HEADER,
+        "ул. Ленина, 1;55.74;37.658;Авария на ТКД;;17.08.2026 10:00;17.08.2026 12:00;Обычная;",
+    )
+    assert own.rows[0]["priority_id"] == 1
+
+
+def test_priority_is_required_without_work_type():
+    result = parse(
+        WORK_TYPE_HEADER,
+        "ул. Ленина, 1;55.74;37.658;;60;17.08.2026 10:00;17.08.2026 12:00;;Локальные работы",
+    )
+
+    assert any("приоритет" in message and "тип_работ" in message for message in result.errors)
 
 
 def test_day_copy_moves_dates_and_drops_numbers():

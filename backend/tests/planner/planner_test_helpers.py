@@ -19,8 +19,12 @@ CAR = 1
 WALK = 2
 BIKE = 3
 
-REGULAR = False
-URGENT = True
+# уровни приоритета из справочника (db/init/032): авария важнее подключения, подключение —
+# важнее ремонта и дозаказа
+EMERGENCY = 1
+CONNECTION = 2
+REGULAR = 3
+URGENT = EMERGENCY
 
 # arrival_stamp у cuOpt дробный — сравниваем с небольшим допуском
 MINUTE_TOLERANCE = 1e-6

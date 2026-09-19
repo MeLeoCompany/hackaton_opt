@@ -9,7 +9,7 @@ import { useSelectedDay } from './useSelectedDay.js'
 
 // чем больше — тем лучше, кроме отмеченных lessIsBetter
 export const COMPARED_METRICS = [
-  { key: 'urgent_assigned_count', label: 'Срочных выполнено', digits: 0 },
+  { key: 'urgent_assigned_count', label: 'Аварийных выполнено', digits: 0 },
   { key: 'assigned_count', label: 'Всего выполнено', digits: 0 },
   { key: 'unassigned_count', label: 'Не назначено', digits: 0, lessIsBetter: true },
   { key: 'engineers_used', label: 'Исполнителей', digits: 0, lessIsBetter: true },

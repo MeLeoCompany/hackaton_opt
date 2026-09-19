@@ -19,10 +19,14 @@ class Transport(Base):
 
 
 class Priority(Base):
+    """Приоритет заявки. level — уровень распределения: 1 — авария (важнее всего), 2 —
+    подключение, 3 — ремонт и дозаказ (db/init/032). Оптимизатор берёт заявки по уровням."""
+
     __tablename__ = "priority"
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
+    level: Mapped[int] = mapped_column(SmallInteger)
 
 
 class WorkType(Base):
@@ -41,3 +45,5 @@ class WorkType(Base):
     travel_minutes: Mapped[int] = mapped_column(Integer)
     work_minutes: Mapped[int] = mapped_column(Integer)
     baseline_minutes: Mapped[int] = mapped_column(Integer)
+    # приоритет по умолчанию: подставляется новой заявке этого типа, в заявке его можно сменить
+    priority_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("priority.id"))

@@ -1,6 +1,8 @@
 <script setup>
 // Боковая панель разделов: свёрнутая показывает значки, по клику по кнопке разъезжается
 // с подписями. Клик по пункту — переход, на узком экране панель сразу сворачивается.
+// Разделы с подпунктами (планы, справочники) раскрываются по клику на сам раздел — стрелка
+// справа показывает, раскрыт ли он. Раздел открытой страницы раскрыт сразу.
 import { ref } from 'vue'
 
 const props = defineProps({
@@ -35,6 +37,28 @@ function toggle() {
   }
 }
 
+// раскрытые разделы с подпунктами
+const openSections = ref(
+  new Set(
+    props.sections
+      .filter((section) => section.items?.some((item) => item.key === props.activeTab))
+      .map((section) => section.key),
+  ),
+)
+
+function toggleSection(section) {
+  if (!expanded.value) {
+    // в свёрнутой панели подписей нет: разворачиваем её сразу с этим разделом
+    toggle()
+    openSections.value = new Set([...openSections.value, section.key])
+    return
+  }
+  const next = new Set(openSections.value)
+  if (next.has(section.key)) next.delete(section.key)
+  else next.add(section.key)
+  openSections.value = next
+}
+
 function open(tab) {
   emit('open', tab)
   if (window.innerWidth < 900) expanded.value = false
@@ -57,13 +81,20 @@ function sectionIsActive(section) {
       <button
         :class="['section-button', { active: sectionIsActive(section) }]"
         :title="expanded ? '' : section.label"
-        @click="section.items ? (expanded ? open(section.items[0].key) : toggle()) : open(section.key)"
+        :aria-expanded="section.items ? openSections.has(section.key) : undefined"
+        @click="section.items ? toggleSection(section) : open(section.key)"
       >
         <span class="icon" aria-hidden="true">{{ section.icon }}</span>
         <span v-if="expanded" class="label">{{ section.label }}</span>
+        <span
+          v-if="expanded && section.items"
+          :class="['chevron', { open: openSections.has(section.key) }]"
+          aria-hidden="true"
+          >›</span
+        >
       </button>
 
-      <div v-if="expanded && section.items" class="items">
+      <div v-if="expanded && section.items && openSections.has(section.key)" class="items">
         <button
           v-for="item in section.items"
           :key="item.key"
@@ -150,6 +181,18 @@ function sectionIsActive(section) {
 .section-button.active {
   background: #e0e7ff;
   color: #1d4ed8;
+}
+
+.chevron {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
 }
 
 .icon {

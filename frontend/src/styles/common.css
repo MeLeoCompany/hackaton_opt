@@ -639,9 +639,24 @@ button.link:disabled {
   white-space: nowrap;
 }
 
-.badge.urgent {
+/* уровень приоритета: 1 аварийный — красный, 2 высокий — оранжевый, 3 обычный — серый;
+   плашки одной ширины, чтобы колонка приоритета читалась ровно: по ширине ячейки, но не шире 96 */
+.badge[class*='priority-'] {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 96px;
+  padding: 2px 4px;
+  text-align: center;
+}
+
+.badge.priority-1 {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+.badge.priority-2 {
+  background: #ffedd5;
+  color: #c2410c;
 }
 
 /* оборудование — жёлтая плашка «⚙ Роутер» (у бригады «⚙ Роутер × 3»): каждое отдельной
@@ -927,6 +942,12 @@ button.link:disabled {
 .status-badge.status-planned {
   background: #ede9fe;
   color: #6d28d9;
+}
+
+/* в пути — бригада едет; в работе — уже на месте */
+.status-badge.status-en_route {
+  background: #ffedd5;
+  color: #c2410c;
 }
 
 .status-badge.status-in_progress {

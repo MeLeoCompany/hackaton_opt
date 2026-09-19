@@ -8,8 +8,9 @@ import pytest
 from src.models import RequestStatusId
 from src.services.brigade import brigade_service
 
-PLANNED, IN_PROGRESS, DONE, CANCELLED = (
+PLANNED, EN_ROUTE, IN_PROGRESS, DONE, CANCELLED = (
     RequestStatusId.PLANNED,
+    RequestStatusId.EN_ROUTE,
     RequestStatusId.IN_PROGRESS,
     RequestStatusId.DONE,
     RequestStatusId.CANCELLED,
@@ -60,19 +61,19 @@ async def mark(stored, action, reason="", *, in_route=True, fact=None):
 
 
 @pytest.mark.asyncio
-async def test_departure_puts_request_in_progress_and_remembers_the_time():
+async def test_departure_puts_request_en_route_and_remembers_the_time():
     result, fact, targets = await mark(request(), "depart")
 
     assert result == "маршрут"
-    assert targets == [(IN_PROGRESS, "Бригада выехала")]
+    assert targets == [(EN_ROUTE, "Бригада выехала")]  # «В пути» — едет, ещё не на месте
     assert fact.departed_at is not None and fact.arrived_at is None
 
 
 @pytest.mark.asyncio
-async def test_arrival_without_departure_marks_both():
+async def test_arrival_puts_request_in_work_and_marks_departure_if_it_was_missed():
     _, fact, targets = await mark(request(), "arrive")
 
-    assert targets == [(IN_PROGRESS, "Бригада на месте")]
+    assert targets == [(IN_PROGRESS, "Бригада на месте")]  # «В работе» — работает на месте
     assert fact.departed_at is not None and fact.arrived_at == fact.departed_at
 
 
@@ -103,4 +104,4 @@ async def test_request_of_another_route_or_removed_from_plan_cannot_be_marked():
 async def test_departure_is_marked_once():
     fact = SimpleNamespace(departed_at="09:00", arrived_at=None, finished_at=None, updated_at=None)
     with pytest.raises(brigade_service.BrigadeActionError, match="уже отмечен"):
-        await mark(request(IN_PROGRESS), "depart", fact=fact)
+        await mark(request(EN_ROUTE), "depart", fact=fact)

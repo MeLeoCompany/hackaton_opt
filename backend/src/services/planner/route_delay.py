@@ -42,6 +42,8 @@ def visit_state(status_code: str, removed: bool, arrived_at: datetime | None) ->
         return "removed"
     if status_code in ("done", "cancelled"):
         return status_code
+    if status_code == "en_route":
+        return "moving"
     if status_code == "in_progress":
         return "onsite" if arrived_at is not None else "moving"
     return "planned"
