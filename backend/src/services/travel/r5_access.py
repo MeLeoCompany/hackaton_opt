@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import math
 from dataclasses import replace
 from datetime import datetime, timedelta
+from functools import lru_cache
+from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 import httpx
 
+from src.core.config import settings
 from src.schemas.travel import Point, TransportKind, TravelLeg, TravelMode
 from src.services.travel import r5_provider, valhalla_provider
 
@@ -18,6 +24,8 @@ logger = logging.getLogger(__name__)
 # Подход ограничен несколькими минутами ходьбы, чтобы не скрыть отсутствие маршрута.
 ACCESS_RADII_METERS = (100, 200)
 MAX_ACCESS_DISTANCE_KM = 0.5
+MAX_STOP_ACCESS_DISTANCE_KM = 1.5
+MAX_NEARBY_STOPS = 3
 MAX_MATRIX_REPAIR_POINTS = 8
 
 
@@ -32,24 +40,74 @@ def _nearby_points(point: Point):
             )
 
 
-async def _walk(origin: Point, destination: Point) -> TravelLeg | None:
-    try:
-        legs = await valhalla_provider.route_legs(
-            [origin, destination], TransportKind.PEDESTRIAN
+@lru_cache(maxsize=2)
+def _gtfs_stops(path: Path, modified_ns: int) -> tuple[Point, ...]:
+    """Остановки активного GTFS: метро и наземный транспорт обрабатываются одинаково."""
+    del modified_ns
+    with ZipFile(path) as archive, archive.open("stops.txt") as source:
+        rows = csv.DictReader(io.TextIOWrapper(source, encoding="utf-8-sig"))
+        return tuple(
+            Point(latitude=float(row["stop_lat"]), longitude=float(row["stop_lon"]))
+            for row in rows
+            if row.get("location_type", "0") in {"", "0"}
+            and row.get("stop_lat")
+            and row.get("stop_lon")
         )
+
+
+def _nearby_stops(point: Point) -> list[Point]:
+    path = settings.r5_gtfs_path
+    try:
+        stops = _gtfs_stops(path, path.stat().st_mtime_ns)
+    except (OSError, BadZipFile, KeyError, ValueError):
+        logger.warning("R5: не удалось прочитать остановки GTFS из %s", path, exc_info=True)
+        return []
+
+    # Точная проверка доступности остаётся за пешеходным маршрутом Valhalla.
+    cos_lat = math.cos(math.radians(point.latitude))
+    nearby = []
+    for stop in stops:
+        north = (stop.latitude - point.latitude) * 111_320
+        east = (stop.longitude - point.longitude) * 111_320 * cos_lat
+        distance = math.hypot(north, east)
+        if distance <= MAX_STOP_ACCESS_DISTANCE_KM * 1000:
+            nearby.append((distance, stop))
+    nearby.sort(key=lambda item: item[0])
+    selected: list[Point] = []
+    for _, stop in nearby:
+        # Не тратим все попытки на платформы одной станции или соседние
+        # остановки одного автобусного узла.
+        if any(
+            math.hypot(
+                (stop.latitude - existing.latitude) * 111_320,
+                (stop.longitude - existing.longitude) * 111_320 * cos_lat,
+            )
+            < 80
+            for existing in selected
+        ):
+            continue
+        selected.append(stop)
+        if len(selected) == MAX_NEARBY_STOPS:
+            break
+    return selected
+
+
+async def _walk(
+    origin: Point, destination: Point, *, max_distance_km: float = MAX_ACCESS_DISTANCE_KM
+) -> TravelLeg | None:
+    try:
+        legs = await valhalla_provider.route_legs([origin, destination], TransportKind.PEDESTRIAN)
     except (httpx.HTTPError, KeyError, ValueError):
         return None
     if len(legs) != 1 or not legs[0].geometry:
         return None
     leg = legs[0]
-    if leg.distance_km > MAX_ACCESS_DISTANCE_KM:
+    if leg.distance_km > max_distance_km:
         return None
     return leg.model_copy(update={"mode": TravelMode.WALK})
 
 
-async def route(
-    origin: Point, destination: Point, departure: datetime
-) -> r5_provider.RouteResult:
+async def route(origin: Point, destination: Point, departure: datetime) -> r5_provider.RouteResult:
     """Повторить поиск только при 404 R5, добавив проверенный пеший участок."""
     try:
         return await r5_provider.build_route(origin, destination, departure)
@@ -58,43 +116,80 @@ async def route(
             raise
         original_error = error
 
-    for candidate in _nearby_points(origin):
-        walk = await _walk(origin, candidate)
-        if walk is None:
-            continue
-        try:
-            result = await r5_provider.build_route(
-                candidate, destination, departure + timedelta(minutes=walk.duration_min)
+    options: list[r5_provider.RouteResult] = []
+    stop_access: dict[bool, list[tuple[Point, TravelLeg]]] = {True: [], False: []}
+    for is_origin, point in ((True, origin), (False, destination)):
+        stop_candidates = _nearby_stops(point)
+        candidates = [*stop_candidates, *_nearby_points(point)]
+        for candidate in candidates:
+            access_limit = (
+                MAX_STOP_ACCESS_DISTANCE_KM
+                if candidate in stop_candidates
+                else MAX_ACCESS_DISTANCE_KM
             )
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code == 404:
+            walk = await _walk(
+                point if is_origin else candidate,
+                candidate if is_origin else point,
+                max_distance_km=access_limit,
+            )
+            if walk is None:
                 continue
-            raise
-        logger.info("R5: найден пеший подход к начальной точке графа")
-        return replace(
-            result,
-            legs=[walk, *result.legs],
-            total_duration_min=result.total_duration_min + walk.duration_min,
-            walking_duration_min=result.walking_duration_min + walk.duration_min,
-        )
+            if candidate in stop_candidates:
+                stop_access[is_origin].append((candidate, walk))
+            try:
+                result = await r5_provider.build_route(
+                    candidate if is_origin else origin,
+                    destination if is_origin else candidate,
+                    departure + timedelta(minutes=walk.duration_min) if is_origin else departure,
+                )
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code == 404:
+                    continue
+                raise
+            options.append(
+                replace(
+                    result,
+                    legs=[walk, *result.legs] if is_origin else [*result.legs, walk],
+                    total_duration_min=result.total_duration_min + walk.duration_min,
+                    walking_duration_min=result.walking_duration_min + walk.duration_min,
+                )
+            )
 
-    for candidate in _nearby_points(destination):
-        walk = await _walk(candidate, destination)
-        if walk is None:
-            continue
-        try:
-            result = await r5_provider.build_route(origin, candidate, departure)
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code == 404:
-                continue
-            raise
-        logger.info("R5: найден пеший подход от конечной точки графа")
-        return replace(
-            result,
-            legs=[*result.legs, walk],
-            total_duration_min=result.total_duration_min + walk.duration_min,
-            walking_duration_min=result.walking_duration_min + walk.duration_min,
-        )
+    # Обе исходные точки могут оказаться на изолированных рёбрах. В этом случае
+    # проверяем ограниченное число пар остановок, не перебирая все смещения.
+    if not options:
+        for start, start_walk in stop_access[True]:
+            for end, end_walk in stop_access[False]:
+                try:
+                    result = await r5_provider.build_route(
+                        start,
+                        end,
+                        departure + timedelta(minutes=start_walk.duration_min),
+                    )
+                except httpx.HTTPStatusError as error:
+                    if error.response.status_code == 404:
+                        continue
+                    raise
+                options.append(
+                    replace(
+                        result,
+                        legs=[start_walk, *result.legs, end_walk],
+                        total_duration_min=(
+                            result.total_duration_min
+                            + start_walk.duration_min
+                            + end_walk.duration_min
+                        ),
+                        walking_duration_min=(
+                            result.walking_duration_min
+                            + start_walk.duration_min
+                            + end_walk.duration_min
+                        ),
+                    )
+                )
+
+    if options:
+        logger.info("R5: найден пеший подход к остановке или связной части графа")
+        return min(options, key=lambda option: option.total_duration_min)
 
     raise original_error
 

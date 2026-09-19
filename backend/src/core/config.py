@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str
     valhalla_url: str = "http://localhost:8002"
     r5_url: str = "http://localhost:8003"
+    r5_gtfs_path: Path = Path("transit/generated/moscow-pilot.gtfs.zip")
     r5_timeout_seconds: float = Field(default=180.0, gt=0.0, allow_inf_nan=False)
     # подпись токенов входа; в любом общем окружении задайте свой AUTH_SECRET
     auth_secret: str = "dev-secret-change-me"

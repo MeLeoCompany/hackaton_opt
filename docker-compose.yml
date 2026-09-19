@@ -105,6 +105,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://routing:routing@postgres:5432/routing
       VALHALLA_URL: http://valhalla:8002
       R5_URL: http://r5:8003
+      R5_GTFS_PATH: /app/transit/moscow-pilot.gtfs.zip
       R5_TIMEOUT_SECONDS: ${R5_TIMEOUT_SECONDS:-180}
       CUOPT_TIME_LIMIT_SECONDS: ${CUOPT_TIME_LIMIT_SECONDS:-1.0}
       CUOPT_MAX_TIME_LIMIT_SECONDS: ${CUOPT_MAX_TIME_LIMIT_SECONDS:-120.0}
@@ -123,6 +124,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/src:/app/src:ro
+      - ./transit/generated:/app/transit:ro
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       postgres:

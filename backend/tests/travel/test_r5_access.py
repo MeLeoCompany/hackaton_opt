@@ -1,5 +1,7 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
+from zipfile import ZipFile
 
 import httpx
 import pytest
@@ -32,13 +34,88 @@ def result() -> r5_provider.RouteResult:
     )
 
 
+def test_gtfs_candidates_include_regular_stops_and_skip_parent_station(tmp_path):
+    archive_path = tmp_path / "network.zip"
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "stops.txt",
+            "stop_id,stop_lat,stop_lon,location_type\n"
+            "metro,55.7005,37.5,0\n"
+            "bus,55.702,37.5,\n"
+            "parent,55.7002,37.5,1\n"
+            "far,56.0,37.5,0\n",
+        )
+
+    with patch.object(r5_access.settings, "r5_gtfs_path", archive_path):
+        candidates = r5_access._nearby_stops(ORIGIN)
+
+    assert [point.latitude for point in candidates] == [55.7005, 55.702]
+
+
+@pytest.mark.asyncio
+async def test_stop_access_selects_fastest_complete_route():
+    first = ORIGIN.model_copy(update={"latitude": 55.701})
+    second = ORIGIN.model_copy(update={"latitude": 55.702})
+    walk = TravelLeg(distance_km=0.2, duration_min=3, geometry="shape", mode=TravelMode.WALK)
+    slow = replace(result(), total_duration_min=30)
+    fast = replace(result(), total_duration_min=12)
+    with (
+        patch.object(r5_access, "_nearby_stops", side_effect=[[first, second], []]),
+        patch.object(r5_access, "_nearby_points", return_value=iter([])),
+        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(
+            r5_provider, "build_route", AsyncMock(side_effect=[not_found(), slow, fast])
+        ) as build,
+    ):
+        route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
+
+    assert route.total_duration_min == 15
+    assert route.walking_duration_min == 4
+    assert build.await_args_list[2].args == (
+        second,
+        DESTINATION,
+        datetime(2026, 9, 19, 9, 3, tzinfo=UTC),
+    )
+
+
+@pytest.mark.asyncio
+async def test_stop_access_handles_both_isolated_endpoints():
+    first = ORIGIN.model_copy(update={"latitude": 55.701})
+    last = DESTINATION.model_copy(update={"latitude": 55.799})
+    walk = TravelLeg(distance_km=0.2, duration_min=3, geometry="shape", mode=TravelMode.WALK)
+
+    async def build(start, end, departure):
+        if start == first and end == last:
+            assert departure == datetime(2026, 9, 19, 9, 3, tzinfo=UTC)
+            return result()
+        raise not_found()
+
+    with (
+        patch.object(r5_access, "_nearby_stops", side_effect=[[first], [last]]),
+        patch.object(r5_access, "_nearby_points", return_value=iter([])),
+        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_provider, "build_route", side_effect=build),
+    ):
+        route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
+
+    assert route.total_duration_min == 21
+    assert [leg.mode for leg in route.legs] == [TravelMode.WALK, TravelMode.METRO, TravelMode.WALK]
+
+
 @pytest.mark.asyncio
 async def test_nearby_access_adds_real_walk_and_shifts_departure():
     walk = TravelLeg(distance_km=0.15, duration_min=2, geometry="shape", mode=TravelMode.WALK)
     with (
-        patch.object(r5_access, "_nearby_points", return_value=iter([ORIGIN.model_copy(update={"latitude": 55.699})])),
+        patch.object(r5_access, "_nearby_stops", return_value=[]),
+        patch.object(
+            r5_access,
+            "_nearby_points",
+            return_value=iter([ORIGIN.model_copy(update={"latitude": 55.699})]),
+        ),
         patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
-        patch.object(r5_provider, "build_route", AsyncMock(side_effect=[not_found(), result()])) as build,
+        patch.object(
+            r5_provider, "build_route", AsyncMock(side_effect=[not_found(), result()])
+        ) as build,
     ):
         route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
 
@@ -51,6 +128,7 @@ async def test_nearby_access_adds_real_walk_and_shifts_departure():
 @pytest.mark.asyncio
 async def test_no_access_keeps_r5_not_found():
     with (
+        patch.object(r5_access, "_nearby_stops", return_value=[]),
         patch.object(r5_access, "_walk", AsyncMock(return_value=None)),
         patch.object(r5_provider, "build_route", AsyncMock(side_effect=not_found())) as build,
         pytest.raises(httpx.HTTPStatusError) as error,
