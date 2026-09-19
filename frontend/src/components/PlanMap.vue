@@ -7,6 +7,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { TRAVEL_MODES } from '../api/travelApi.js'
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { decodePolyline } from '../utils/polyline.js'
 import { routeColor } from '../utils/routeColors.js'
@@ -59,8 +60,21 @@ function drawPlan() {
     const selectThisRoute = () => emit('select-engineer', route.engineer_id)
 
     if (route.geometry.length > 0) {
-      for (const leg of route.geometry) {
-        L.polyline(decodePolyline(leg), lineStyle).on('click', selectThisRoute).addTo(planLayer)
+      for (const [legIndex, leg] of route.geometry.entries()) {
+        const details = route.legs?.[legIndex]
+        const modeStyle = details?.mode && details.mode !== 'road' ? TRAVEL_MODES[details.mode] : null
+        const style = {
+          ...lineStyle,
+          color: modeStyle?.color ?? color,
+          dashArray: details?.mode === 'walk' ? '6 6' : undefined,
+        }
+        const label = modeStyle
+          ? `${modeStyle.label}${details.route_id ? ` · ${escapeHtml(details.route_id)}` : ''}`
+          : escapeHtml(route.engineer_name)
+        L.polyline(decodePolyline(leg), style)
+          .bindTooltip(label)
+          .on('click', selectThisRoute)
+          .addTo(planLayer)
       }
     } else {
       // маршрутизатор был недоступен — рисуем прямые пунктиром, чтобы было видно, что это оценка

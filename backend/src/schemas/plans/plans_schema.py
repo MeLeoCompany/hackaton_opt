@@ -3,6 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator
 
+from src.schemas.travel import TravelLeg
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -108,6 +109,9 @@ class EngineerRoute(BaseModel):
     duration_min: float  # время в пути, без работы на заявках
     provider: str  # valhalla или haversine — чем посчитаны пробег и линия
     geometry: list[str]  # encoded polyline по участкам; пусто, если посчитано по прямой
+    legs: list[TravelLeg] = Field(
+        default_factory=list
+    )  # режим, ожидание и остановки каждого участка
     shift_start: datetime
     shift_end: datetime
     visits: list[PlanVisit]

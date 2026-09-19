@@ -31,6 +31,8 @@ function matrixLegSum(matrix) {
       <div><dt>Пробег</dt><dd>{{ route.distance_km.toFixed(2) }} км</dd></div>
       <div><dt>Время</dt><dd>{{ formatDuration(route.duration_min) }}</dd></div>
       <div><dt>Участков</dt><dd>{{ route.geometry.length || '—' }}</dd></div>
+      <div v-if="route.provider === 'r5'"><dt>Пересадок</dt><dd>{{ route.transfers }}</dd></div>
+      <div v-if="route.waiting_duration_min"><dt>Ожидание</dt><dd>{{ formatDuration(route.waiting_duration_min) }}</dd></div>
       <div>
         <dt>Провайдер</dt>
         <dd :class="{ fallback: route.provider !== 'valhalla' }">{{ route.provider }}</dd>
@@ -38,14 +40,21 @@ function matrixLegSum(matrix) {
     </dl>
     <ol v-if="route.legs?.length" class="legs">
       <li v-for="(leg, index) in route.legs" :key="index">
-        <span class="leg-points">{{ index + 1 }} → {{ index + 2 }}</span>
+        <span class="leg-points">{{ index + 1 }}</span>
         <span class="mode" :style="{ background: modeOf(leg).color }">{{ modeOf(leg).label }}</span>
-        <span class="leg-numbers">{{ formatDuration(leg.duration_min) }} · {{ leg.distance_km.toFixed(2) }} км</span>
+        <span v-if="leg.route_id" class="route-id">{{ leg.route_id }}</span>
+        <span class="leg-numbers">
+          {{ formatDuration(leg.duration_min) }}<template v-if="leg.wait_min">, ожидание {{ formatDuration(leg.wait_min) }}</template>
+          · {{ leg.distance_km.toFixed(2) }} км
+        </span>
       </li>
     </ol>
 
-    <p v-if="route.provider !== 'valhalla'" class="warn">
-      Valhalla недоступна, посчитано по прямой линии — цифры оценочные, геометрии нет.
+    <p v-if="route.provider === 'haversine'" class="warn">
+      Маршрутизатор недоступен, посчитано по прямой линии — цифры оценочные, геометрии нет.
+    </p>
+    <p v-else-if="route.provider === 'transit_estimate'" class="warn">
+      R5 недоступен: использована приближённая модель общественного транспорта.
     </p>
   </div>
 
@@ -134,6 +143,11 @@ dd.fallback {
 .leg-numbers {
   margin-left: auto;
   color: #334155;
+}
+
+.route-id {
+  color: #475569;
+  font-weight: 600;
 }
 
 .warn {

@@ -51,6 +51,7 @@ function drawRoute() {
   if (props.route.geometry.length > 0) {
     props.route.geometry.forEach((leg, index) => {
       const mode = props.route.legs?.[index]?.mode
+      const routeId = props.route.legs?.[index]?.route_id
       const style = mode && mode !== 'road' ? TRAVEL_MODES[mode] : null
       L.polyline(decodePolyline(leg), {
         color: style ? style.color : LEG_COLORS[index % LEG_COLORS.length],
@@ -59,7 +60,11 @@ function drawRoute() {
         // пеший кусок пунктиром: это не поездка
         dashArray: mode === 'walk' ? '6 6' : undefined,
       })
-        .bindTooltip(style ? `Участок ${index + 1}: ${style.label}` : `Участок ${index + 1}`)
+        .bindTooltip(
+          style
+            ? `Участок ${index + 1}: ${style.label}${routeId ? ` · ${routeId}` : ''}`
+            : `Участок ${index + 1}`,
+        )
         .addTo(routeLayer)
     })
   } else {

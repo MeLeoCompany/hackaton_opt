@@ -27,6 +27,11 @@ class TravelMode(str, enum.Enum):
 
     ROAD = "road"
     METRO = "metro"
+    BUS = "bus"
+    TRAM = "tram"
+    RAIL = "rail"
+    FERRY = "ferry"
+    TRANSIT = "transit"
     WALK = "walk"
 
 
@@ -43,6 +48,13 @@ class TravelEstimate(BaseModel):
 class TravelRouteRequest(BaseModel):
     points: list[Point] = Field(min_length=2)
     transport: TransportKind = TransportKind.CAR
+    departure_time: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_departure_time(self) -> "TravelRouteRequest":
+        if self.departure_time is not None and self.departure_time.tzinfo is None:
+            raise ValueError("departure_time должен содержать часовой пояс")
+        return self
 
 
 class TravelMatrixRequest(BaseModel):
@@ -73,6 +85,10 @@ class TravelLeg(BaseModel):
     # encoded polyline участка; пусто, если геометрии нет (haversine)
     geometry: str = ""
     mode: TravelMode = TravelMode.ROAD
+    wait_min: float = 0
+    route_id: str | None = None
+    from_stop_id: str | None = None
+    to_stop_id: str | None = None
 
 
 class TravelRoute(BaseModel):
@@ -84,4 +100,10 @@ class TravelRoute(BaseModel):
     # пусто у haversine — прямую линию фронт нарисует сам по координатам
     geometry: list[str]
     # те же участки подробно: сколько заняли и чем человек ехал
-    legs: list[TravelLeg] = []
+    legs: list[TravelLeg] = Field(default_factory=list)
+    walking_duration_min: float = 0
+    waiting_duration_min: float = 0
+    transit_duration_min: float = 0
+    entry_exit_penalty_min: float = 0
+    reliability_buffer_min: float = 0
+    transfers: int = 0

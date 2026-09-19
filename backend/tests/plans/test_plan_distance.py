@@ -1,5 +1,6 @@
 """Общий пробег плана считается при построении и попадает в строку списка планов."""
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -63,3 +64,36 @@ async def test_fallback_provider_is_preserved_for_plan_summary():
 
     assert total.distance_km == 2.0
     assert total.provider == "mixed"
+
+
+@pytest.mark.asyncio
+async def test_public_transport_route_uses_service_completion_as_next_departure():
+    day_start = datetime(2026, 9, 18, tzinfo=UTC)
+    shift_start = day_start + timedelta(hours=9)
+    loaded = SimpleNamespace(
+        engineers=[
+            SimpleNamespace(
+                start_latitude=55.7,
+                start_longitude=37.6,
+                transport_id=4,
+                shift_start=shift_start,
+            )
+        ],
+        requests=[
+            SimpleNamespace(latitude=55.71, longitude=37.61, duration_minutes=45),
+            SimpleNamespace(latitude=55.72, longitude=37.62, duration_minutes=30),
+        ],
+        day=SimpleNamespace(from_minutes=lambda minutes: day_start + timedelta(minutes=minutes)),
+    )
+    solution = DaySolution(routes={0: [PlannedVisit(0, 600), PlannedVisit(1, 720)]})
+    travel = SimpleNamespace(distance_km=3, provider=TravelProvider.R5)
+
+    with patch.object(
+        planning_service, "build_route", AsyncMock(return_value=travel)
+    ) as build_route:
+        await planning_service.total_route_distance(loaded, solution)
+
+    assert build_route.await_args.kwargs["leg_departure_times"] == [
+        shift_start,
+        day_start + timedelta(minutes=645),
+    ]

@@ -12,6 +12,11 @@ export const TRANSPORTS = [
 export const TRAVEL_MODES = {
   road: { label: 'Наземным', color: '#2563eb' },
   metro: { label: 'Метро', color: '#7c3aed' },
+  bus: { label: 'Автобус', color: '#dc2626' },
+  tram: { label: 'Трамвай', color: '#d97706' },
+  rail: { label: 'Поезд', color: '#0891b2' },
+  ferry: { label: 'Паром', color: '#0284c7' },
+  transit: { label: 'Транспорт', color: '#475569' },
   walk: { label: 'Пешком', color: '#059669' },
 }
 

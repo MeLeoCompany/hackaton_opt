@@ -170,9 +170,19 @@ async def total_route_distance(
             )
             for visit in visits
         ]
+        transport = TransportKind(engineer.transport_id)
         # TODO: сделать fallback управляемым: retry/cached route и сохранять источник
         # отдельно для каждого маршрута. Пока хотя бы честно помечаем весь пробег плана.
-        travel = await build_route(points, TransportKind(engineer.transport_id))
+        if transport is TransportKind.PUBLIC_TRANSPORT:
+            departures = [engineer.shift_start]
+            departures += [
+                loaded.day.from_minutes(visit.work_start_minute)
+                + timedelta(minutes=loaded.requests[visit.request_index].duration_minutes)
+                for visit in visits[:-1]
+            ]
+            travel = await build_route(points, transport, leg_departure_times=departures)
+        else:
+            travel = await build_route(points, transport)
         provider = (
             travel.provider.value
             if isinstance(travel.provider, TravelProvider)
@@ -562,7 +572,17 @@ async def build_engineer_route(
         )
         for assignment in ordered
     ]
-    travel = await build_route(points, TransportKind(engineer.transport_id))
+    transport = TransportKind(engineer.transport_id)
+    if transport is TransportKind.PUBLIC_TRANSPORT:
+        departures = [engineer.shift_start]
+        departures += [
+            assigned_arrival_time(assignment)
+            + timedelta(minutes=assignment.request.duration_minutes)
+            for assignment in ordered[:-1]
+        ]
+        travel = await build_route(points, transport, leg_departure_times=departures)
+    else:
+        travel = await build_route(points, transport)
 
     return EngineerRoute(
         engineer_id=engineer.id,
@@ -574,6 +594,7 @@ async def build_engineer_route(
         duration_min=travel.duration_min,
         provider=travel.provider.value,
         geometry=travel.geometry,
+        legs=travel.legs,
         shift_start=engineer.shift_start,
         shift_end=engineer.shift_end,
         visits=route_visits(ordered, engineer, candidates_by_request),
