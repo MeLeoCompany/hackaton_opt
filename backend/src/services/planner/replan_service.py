@@ -23,10 +23,19 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.local_day import local_timezone
 from src.models import Assignment, Plan, PlanRunType, RequestStatusId
 from src.repositories.brigade import brigade_repository
 from src.repositories.plans import plans_repository
-from src.schemas.plans import PlanSummary, SolverName
+from src.repositories.request_statuses import request_statuses_repository
+from src.repositories.requests import requests_repository
+from src.schemas.plans import (
+    PlanSummary,
+    ReplanDecision,
+    ReplanPreview,
+    ReplanProblem,
+    SolverName,
+)
 from src.schemas.travel import Point, TransportKind, TravelProvider
 from src.services.planner import planner_loader, planning_service
 from src.services.planner.objective_policy import (
@@ -36,6 +45,7 @@ from src.services.planner.objective_policy import (
 )
 from src.services.planner.planner_loader import EngineerStart
 from src.services.planner.planning_service import PlanDataError, PlanDistance, PlanInUseError
+from src.services.requests import request_status_service
 from src.services.travel import build_route
 
 # заявки, которые бригада уже закрыла или начала: в пересчёте они остаются на месте
@@ -51,8 +61,63 @@ async def replan(
     at: datetime | None = None,
     *,
     office_id: int,
+    decisions: list[ReplanDecision] | None = None,
+    user_id: int | None = None,
 ) -> PlanSummary:
-    """Пересчитывает утверждённый план с момента at (по умолчанию — сейчас)."""
+    """Пересчитывает утверждённый план с момента at (по умолчанию — сейчас).
+
+    decisions — что диспетчер решил по заявкам, на которые не успеваем (пробный пересчёт):
+    новое окно или отмена. Применяются в той же транзакции до расчёта: если расчёт не
+    получился, не меняется ничего.
+    """
+    parent, at = await replannable(session, plan_id, at, office_id=office_id)
+    await apply_decisions(session, parent, decisions or [], office_id=office_id, user_id=user_id)
+    plan = await build_replan(session, parent, solver, objective_order, at, office_id=office_id)
+    planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
+    await session.commit()
+    return (await planning_service.summarize_plans(session, [plan]))[0]
+
+
+async def preview_replan(
+    session: AsyncSession,
+    plan_id: int,
+    solver: SolverName = SolverName.CUOPT,
+    objective_order: list[ObjectiveCriterion]
+    | tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+    at: datetime | None = None,
+    *,
+    office_id: int,
+) -> ReplanPreview:
+    """Пробный пересчёт: тот же расчёт, но ничего не сохраняется. Нужен, чтобы до пересчёта
+    показать заявки, на которые не успеваем, — диспетчер решает: новое окно или отмена."""
+    parent, at = await replannable(session, plan_id, at, office_id=office_id)
+    try:
+        plan = await build_replan(session, parent, solver, objective_order, at, office_id=office_id)
+        assignments = await plans_repository.list_plan_assignments(session, plan.id)
+        preview = ReplanPreview(
+            assigned_count=sum(1 for a in assignments if a.engineer_id is not None),
+            unassigned=[
+                ReplanProblem(
+                    request_id=a.request_id,
+                    address=a.request.address,
+                    window_start=a.request.window_start,
+                    window_end=a.request.window_end,
+                    status_id=a.request.status_id,
+                    reason=a.unassigned_reason or "",
+                )
+                for a in assignments
+                if a.engineer_id is None
+            ],
+        )
+    finally:
+        await session.rollback()
+    return preview
+
+
+async def replannable(
+    session: AsyncSession, plan_id: int, at: datetime | None, *, office_id: int
+) -> tuple[Plan, datetime]:
+    """Действующий утверждённый план и момент пересчёта в пределах его дня."""
     parent = await planning_service.find_plan(session, plan_id, office_id=office_id)
     if parent.approved_at is None or parent.superseded_at is not None or parent.plan_date is None:
         raise PlanInUseError(
@@ -62,8 +127,20 @@ async def replan(
     day = planner_loader.planning_day(parent.plan_date)
     if at >= day.day_end:
         raise PlanDataError([f"день {parent.plan_date:%d.%m.%Y} на этот момент уже закончился"])
-    at = max(at, day.day_start)
+    return parent, max(at, day.day_start)
 
+
+async def build_replan(
+    session: AsyncSession,
+    parent: Plan,
+    solver: SolverName,
+    objective_order: list[ObjectiveCriterion] | tuple[ObjectiveCriterion, ...],
+    at: datetime,
+    *,
+    office_id: int,
+) -> Plan:
+    """Считает пересчёт и записывает его в сессию (без коммита)."""
+    day = planner_loader.planning_day(parent.plan_date)
     assignments = await plans_repository.list_plan_assignments(session, parent.id)
     fixed, starts = await brigade_positions(session, parent, assignments, at)
 
@@ -92,9 +169,84 @@ async def replan(
     )
     plan.parent_plan_id = parent.id
     plan.replanned_at = at
-    planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
-    await session.commit()
-    return (await planning_service.summarize_plans(session, [plan]))[0]
+    await session.flush()
+    return plan
+
+
+async def apply_decisions(
+    session: AsyncSession,
+    parent: Plan,
+    decisions: list[ReplanDecision],
+    *,
+    office_id: int,
+    user_id: int | None,
+) -> None:
+    """Новое окно или отмена для заявок, на которые не успеваем, — до расчёта.
+
+    Решать можно только о заявках, которые пересчёт раскладывает: «Новых» без плана и не
+    начатых «В плане» этого плана. Новое окно снимает заявку с плана: она «Новая» с этим окном.
+    """
+    if not decisions:
+        return
+    await request_status_service.require_transition(
+        session, RequestStatusId.PLANNED, RequestStatusId.NEW, manual=False
+    )
+    statuses = {
+        status.id: status for status in await request_statuses_repository.list_statuses(session)
+    }
+    problems = []
+    requests = {}
+    for decision in decisions:
+        request = await requests_repository.get_request(session, decision.request_id)
+        if request is None or request.office_id != office_id:
+            problems.append(f"заявка №{decision.request_id} не найдена")
+            continue
+        new = request.status_id == RequestStatusId.NEW and request.approved_plan_id is None
+        planned = (
+            request.status_id == RequestStatusId.PLANNED and request.approved_plan_id == parent.id
+        )
+        if not (new or planned):
+            problems.append(
+                f"заявка №{request.id} уже «{request.status.name}» — решать по ней нечего, "
+                "проверьте пересчёт ещё раз"
+            )
+        requests[decision.request_id] = request
+    if problems:
+        raise PlanDataError(problems)
+
+    for decision in decisions:
+        request = requests[decision.request_id]
+        if decision.action == "cancel":
+            await request_status_service.change_status(
+                session,
+                [request],
+                RequestStatusId.CANCELLED,
+                manual=True,
+                user_id=user_id,
+                comment=f"Отменена перед пересчётом плана №{parent.id}: не успеваем",
+            )
+            continue
+        window = f"{local_text(decision.window_start)}–{local_text(decision.window_end)}"
+        if request.status_id == RequestStatusId.PLANNED:
+            request_statuses_repository.add_history(
+                session,
+                [request.id],
+                RequestStatusId.PLANNED,
+                RequestStatusId.NEW,
+                manual=False,
+                user_id=user_id,
+                plan_id=parent.id,
+                comment=f"Перед пересчётом окно перенесено на {window}",
+            )
+            request_status_service.set_status(request, statuses[RequestStatusId.NEW])
+            request.approved_plan_id = None
+        request.window_start = decision.window_start
+        request.window_end = decision.window_end
+    await session.flush()
+
+
+def local_text(moment: datetime) -> str:
+    return moment.astimezone(local_timezone()).strftime("%d.%m %H:%M")
 
 
 async def brigade_positions(

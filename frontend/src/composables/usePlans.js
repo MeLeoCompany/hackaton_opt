@@ -160,9 +160,15 @@ export function usePlans() {
       const result = await replanPlan(summary.id, params)
       if (day !== selectedDay.value) return
       await refreshDay()
+      const decisions = params.decisions ?? []
+      const moved = decisions.filter((decision) => decision.action === 'reschedule').length
+      const cancelled = decisions.filter((decision) => decision.action === 'cancel').length
+      const decided = [moved && `новое окно — ${moved}`, cancelled && `отменено — ${cancelled}`].filter(Boolean)
       showNotice(
         `Пересчёт №${result.id} плана №${summary.id} готов: назначено ${result.assigned_count}, ` +
-          `не назначено ${result.unassigned_count}. Утвердите его, чтобы заменить план №${summary.id}`,
+          `не назначено ${result.unassigned_count}` +
+          (decided.length ? ` (до пересчёта: ${decided.join(', ')})` : '') +
+          `. Утвердите его, чтобы заменить план №${summary.id}`,
       )
     } catch (error) {
       showError(error)

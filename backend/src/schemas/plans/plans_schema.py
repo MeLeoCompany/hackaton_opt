@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
@@ -36,6 +37,50 @@ class PlanBuildRequest(BaseModel):
         return list(validate_objective_order(value))
 
 
+class ReplanDecision(BaseModel):
+    """Что сделать перед пересчётом с заявкой, на которую не успеваем.
+
+    reschedule — новое окно (заявка снимается с плана и становится «Новой» с этим окном:
+    если окно сегодня, пересчёт попробует её разложить, если другой день — она уйдёт в его
+    планирование); cancel — отменить.
+    """
+
+    request_id: int
+    action: Literal["reschedule", "cancel"]
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+
+    @model_validator(mode="after")
+    def check_window(self) -> "ReplanDecision":
+        if self.action != "reschedule":
+            return self
+        if self.window_start is None or self.window_end is None:
+            raise ValueError(f"заявке №{self.request_id} нужно новое окно")
+        if self.window_start.tzinfo is None or self.window_end.tzinfo is None:
+            raise ValueError("время окна — с часовым поясом, например 2026-08-18T10:00:00+03:00")
+        if self.window_end <= self.window_start:
+            raise ValueError(f"заявка №{self.request_id}: конец окна должен быть позже начала")
+        return self
+
+
+class ReplanProblem(BaseModel):
+    """Заявка, на которую при пересчёте не успеваем, — и почему."""
+
+    request_id: int
+    address: str
+    window_start: datetime
+    window_end: datetime
+    status_id: int
+    reason: str
+
+
+class ReplanPreview(BaseModel):
+    """Пробный пересчёт без сохранения: сколько разложится и на какие заявки не успеваем."""
+
+    assigned_count: int
+    unassigned: list[ReplanProblem] = []
+
+
 class PlanReplanRequest(BaseModel):
     """Пересчёт утверждённого плана: чем считать и на какой момент (пусто — сейчас)."""
 
@@ -45,6 +90,8 @@ class PlanReplanRequest(BaseModel):
     )
     # на какой момент пересчитать: бригады свободны не раньше него. Пусто — текущее время
     at: datetime | None = None
+    # решения по заявкам, на которые не успеваем (из пробного пересчёта): применяются до расчёта
+    decisions: list[ReplanDecision] = []
 
     @field_validator("objective_order")
     @classmethod

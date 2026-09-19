@@ -19,6 +19,7 @@ from src.schemas.plans import (
     PlanningDayOption,
     PlanReplanRequest,
     PlanSummary,
+    ReplanPreview,
 )
 from src.services.planner import planning_service, replan_service
 
@@ -87,11 +88,37 @@ async def replan(
     payload: PlanReplanRequest,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
     """Выполненные и начатые заявки остаются за бригадами, бригады стартуют оттуда, где они
     сейчас; остальное раскладывается заново. Получается отдельный план — его утверждение
     заменяет пересчитанный."""
     return await replan_service.replan(
+        session,
+        plan_id,
+        payload.solver,
+        payload.objective_order,
+        payload.at,
+        office_id=office_id,
+        decisions=payload.decisions,
+        user_id=user.id,
+    )
+
+
+@router.post(
+    "/{plan_id}/replan/preview",
+    response_model=ReplanPreview,
+    summary="Пробный пересчёт без сохранения: на какие заявки не успеваем",
+)
+async def preview_replan(
+    plan_id: int,
+    payload: PlanReplanRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    """Тот же расчёт, что и пересчёт, но ничего не сохраняется. По заявкам, на которые не
+    успеваем, диспетчер решает до пересчёта: новое окно или отмена (decisions пересчёта)."""
+    return await replan_service.preview_replan(
         session,
         plan_id,
         payload.solver,

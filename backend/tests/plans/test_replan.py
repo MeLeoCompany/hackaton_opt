@@ -114,3 +114,89 @@ async def test_replan_is_outdated_if_brigades_marked_something_after_it():
         pytest.raises(planning_service.PlanInUseError, match="после него менялись заявки №12"),
     ):
         await planning_service.approve_replan(object(), plan)
+
+
+def stored_request(request_id, status, plan_id=22):
+    return SimpleNamespace(
+        id=request_id,
+        office_id=1,
+        status_id=status,
+        status=SimpleNamespace(name={IN_PROGRESS: "В работе"}.get(status, "")),
+        approved_plan_id=plan_id,
+        window_start=at(18),
+        window_end=at(20),
+    )
+
+
+async def decide(decisions, requests):
+    from src.schemas.plans import ReplanDecision
+
+    history = []
+    change_status = AsyncMock()
+    with (
+        patch.object(
+            replan_service.requests_repository,
+            "get_request",
+            AsyncMock(side_effect=lambda session, request_id: requests[request_id]),
+        ),
+        patch.object(replan_service.request_status_service, "require_transition", AsyncMock()),
+        patch.object(replan_service.request_status_service, "change_status", change_status),
+        patch.object(
+            replan_service.request_statuses_repository,
+            "list_statuses",
+            AsyncMock(return_value=[SimpleNamespace(id=NEW, name="Новая")]),
+        ),
+        patch.object(
+            replan_service.request_statuses_repository,
+            "add_history",
+            lambda *args, **kwargs: history.append((args[1:], kwargs)),
+        ),
+    ):
+        session = SimpleNamespace(flush=AsyncMock())
+        await replan_service.apply_decisions(
+            session,
+            PARENT,
+            [ReplanDecision(**decision) for decision in decisions],
+            office_id=1,
+            user_id=5,
+        )
+    return history, change_status
+
+
+@pytest.mark.asyncio
+async def test_new_window_takes_planned_request_off_the_plan():
+    request = stored_request(12, PLANNED)
+    tomorrow = {
+        "window_start": datetime(2026, 8, 18, 18, tzinfo=MSK),
+        "window_end": datetime(2026, 8, 18, 20, tzinfo=MSK),
+    }
+
+    history, _ = await decide(
+        [{"request_id": 12, "action": "reschedule", **tomorrow}], {12: request}
+    )
+
+    assert (request.status_id, request.approved_plan_id) == (NEW, None)
+    assert (request.window_start, request.window_end) == (
+        tomorrow["window_start"],
+        tomorrow["window_end"],
+    )
+    assert history[0][0] == ([12], PLANNED, NEW)
+    assert "18.08 18:00–18.08 20:00" in history[0][1]["comment"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_goes_through_status_transition():
+    _, change_status = await decide(
+        [{"request_id": 12, "action": "cancel"}], {12: stored_request(12, PLANNED)}
+    )
+
+    assert change_status.call_args.args[2] == RequestStatusId.CANCELLED
+    assert "не успеваем" in change_status.call_args.kwargs["comment"]
+
+
+@pytest.mark.asyncio
+async def test_started_request_is_not_decided_about():
+    with pytest.raises(planning_service.PlanDataError, match="уже «В работе»"):
+        await decide(
+            [{"request_id": 12, "action": "cancel"}], {12: stored_request(12, IN_PROGRESS)}
+        )

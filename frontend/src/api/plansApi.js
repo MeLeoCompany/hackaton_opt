@@ -33,6 +33,12 @@ export function replanPlan(planId, params = {}) {
   return apiRequest('POST', `/plans/${planId}/replan`, { json: params })
 }
 
+// пробный пересчёт без сохранения: { assigned_count, unassigned: [{ request_id, address,
+// window_start, window_end, status_id, reason }] } — на какие заявки не успеваем
+export function previewReplan(planId, params = {}) {
+  return apiRequest('POST', `/plans/${planId}/replan/preview`, { json: params })
+}
+
 export function cancelPlanApproval(planId) {
   return apiRequest('DELETE', `/plans/${planId}/approval`)
 }
