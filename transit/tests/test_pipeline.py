@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import zipfile
 from datetime import date
@@ -178,6 +180,91 @@ def test_multiple_dates_of_same_bus_route_do_not_duplicate_route_or_shape(
     assert counts["shapes.txt"] == 1899
 
 
+def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).parents[2]
+    bus = root / "transit/data/bus"
+    output = tmp_path / "weekly.zip"
+    build_gtfs(
+        [
+            bus / "e10-2026-09-18.json",
+            bus / "route-1054-2026-09-19.json",
+            bus / "route-1054-2026-09-20.json",
+            bus / "e10-weekday-weekly.json",
+            bus / "e10-weekend-weekly.json",
+        ],
+        output,
+    )
+
+    validate_gtfs(output)
+    with zipfile.ZipFile(output) as archive:
+
+        def rows(name: str) -> list[dict[str, str]]:
+            return list(
+                csv.DictReader(io.StringIO(archive.read(name).decode("utf-8-sig")))
+            )
+
+        calendars = rows("calendar.txt")
+        assert len(calendars) == 2
+        assert {
+            tuple(row[day] for day in ("monday", "friday", "saturday", "sunday"))
+            for row in calendars
+        } == {
+            ("1", "1", "0", "0"),
+            ("0", "0", "1", "1"),
+        }
+        assert {row["end_date"] for row in calendars} == {"20261231"}
+        exceptions = rows("calendar_dates.txt")
+        assert len(exceptions) == 3
+        assert {row["exception_type"] for row in exceptions} == {"1"}
+        trips = rows("trips.txt")
+        assert len({row["trip_id"] for row in trips}) == len(trips)
+
+
+def test_exact_bus_day_overrides_weekly_template(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    sample = root / "transit/data/bus/e10-2026-09-18.json"
+    manifest = {
+        "kind": "bus_weekly",
+        "template": str(sample),
+        "service": {
+            "start_date": "2026-09-18",
+            "end_date": "2026-09-25",
+            "weekdays": [4],
+        },
+        "source": {"quality": "приближение"},
+    }
+    path = tmp_path / "weekly.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    output = tmp_path / "override.zip"
+    build_gtfs([sample, path], output)
+
+    with zipfile.ZipFile(output) as archive:
+        exceptions = list(
+            csv.DictReader(
+                io.StringIO(archive.read("calendar_dates.txt").decode("utf-8-sig"))
+            )
+        )
+    assert {(row["date"], row["exception_type"]) for row in exceptions} == {
+        ("20260918", "1"),
+        ("20260918", "2"),
+    }
+
+
+def test_weekly_bus_rejects_different_control_day(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    bus = root / "transit/data/bus"
+    manifest = json.loads((bus / "e10-weekend-weekly.json").read_text(encoding="utf-8"))
+    manifest["template"] = str(bus / "route-1054-2026-09-19.json")
+    manifest["matching_examples"] = [str(bus / "e10-2026-09-18.json")]
+    path = tmp_path / "weekly.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="контрольная дата отличается"):
+        build_gtfs([path], tmp_path / "bad.zip")
+
+
 def test_all_checked_in_metro_lines_build_valid_gtfs(tmp_path: Path) -> None:
     root = Path(__file__).parents[2]
     metro = sorted((root / "transit/data/metro").glob("line-*.json"))
@@ -200,9 +287,7 @@ def test_all_checked_in_metro_lines_build_valid_gtfs(tmp_path: Path) -> None:
 
 def test_metro_normalizer_rejects_single_direction() -> None:
     raw = {
-        "elements": [
-            {"type": "relation", "id": 1, "tags": {"ref": "1"}, "members": []}
-        ]
+        "elements": [{"type": "relation", "id": 1, "tags": {"ref": "1"}, "members": []}]
     }
 
     with pytest.raises(MetroDataError, match="два направления"):
