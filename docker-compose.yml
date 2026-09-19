@@ -40,6 +40,12 @@ services:
       build_admins: "False"
       # маршрутизация с учётом времени суток нам не нужна, экономим на сборке
       build_time_zones: "False"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8002/status > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 10m
 
   r5-osm:
     profiles: ["transit"]

@@ -96,6 +96,33 @@ def test_solver_matrices_exclude_requests_not_sent_to_cuopt():
     assert inputs.cost_matrices[CAR].shape == (4, 4)
 
 
+@pytest.mark.parametrize(
+    ("matrix_kind", "invalid", "message"),
+    [
+        ("travel_min", np.nan, "недопустимые значения"),
+        ("travel_min", -1, "недопустимые значения"),
+        ("distance_km", np.inf, "недопустимые значения"),
+        ("distance_km", 1e40, "float32"),
+    ],
+)
+def test_invalid_matrices_are_rejected_before_cuopt(matrix_kind, invalid, message):
+    instance = sample_instance()
+    if np.isnan(invalid):
+        getattr(instance, matrix_kind)[CAR] = getattr(instance, matrix_kind)[CAR].astype(float)
+    getattr(instance, matrix_kind)[CAR][0, 1] = invalid
+
+    with pytest.raises(ValueError, match=message):
+        build_solver_inputs(instance, [0, 1])
+
+
+def test_missing_transport_matrix_is_rejected_before_cuopt():
+    instance = sample_instance()
+    del instance.travel_min[WALK]
+
+    with pytest.raises(ValueError, match="неверный размер"):
+        build_solver_inputs(instance, [0, 1])
+
+
 def test_compact_order_locations_keep_original_request_mapping():
     instance = sample_instance()
     inputs = build_solver_inputs(instance, [0, 2])
