@@ -13,6 +13,7 @@ class Settings:
     source_wait_seconds: int
     metro_entry_seconds: int
     metro_exit_seconds: int
+    walking_speed_kmh: float
     reliability_buffer_ratio: float
     matrix_max_points: int
     matrix_time_window_minutes: int
@@ -33,6 +34,7 @@ class Settings:
             source_wait_seconds=int(os.getenv("R5_SOURCE_WAIT_SECONDS", "900")),
             metro_entry_seconds=int(os.getenv("R5_METRO_ENTRY_SECONDS", "240")),
             metro_exit_seconds=int(os.getenv("R5_METRO_EXIT_SECONDS", "240")),
+            walking_speed_kmh=float(os.getenv("R5_WALKING_SPEED_KMH", "4.8")),
             reliability_buffer_ratio=float(
                 os.getenv("R5_RELIABILITY_BUFFER_RATIO", "0.10")
             ),
@@ -46,6 +48,10 @@ class Settings:
             raise ValueError("R5_SOURCE_WAIT_SECONDS не может быть отрицательным")
         if settings.metro_entry_seconds < 0 or settings.metro_exit_seconds < 0:
             raise ValueError("штрафы входа и выхода не могут быть отрицательными")
+        if not math.isfinite(settings.walking_speed_kmh) or not (
+            1 <= settings.walking_speed_kmh <= 10
+        ):
+            raise ValueError("R5_WALKING_SPEED_KMH должен быть от 1 до 10 км/ч")
         if not math.isfinite(settings.reliability_buffer_ratio) or not (
             0 <= settings.reliability_buffer_ratio <= 1
         ):

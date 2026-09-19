@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
 from app.config import Settings
 from app.models import MatrixPoint
 from app.routing import build_matrix_response, build_route_response, local_departure
@@ -15,11 +16,20 @@ def settings() -> Settings:
         source_wait_seconds=0,
         metro_entry_seconds=240,
         metro_exit_seconds=240,
+        walking_speed_kmh=4.8,
         reliability_buffer_ratio=0.1,
         matrix_max_points=100,
         matrix_time_window_minutes=10,
         max_travel_minutes=240,
     )
+
+
+@pytest.mark.parametrize("speed", ["0", "nan", "11"])
+def test_invalid_walking_speed_is_rejected(monkeypatch, speed: str) -> None:
+    monkeypatch.setenv("R5_WALKING_SPEED_KMH", speed)
+
+    with pytest.raises(ValueError, match="R5_WALKING_SPEED_KMH"):
+        Settings.from_env()
 
 
 def test_route_summary_includes_wait_and_metro_penalties() -> None:
@@ -71,6 +81,35 @@ def test_bus_route_does_not_receive_metro_entry_penalty() -> None:
     assert result.entry_exit_penalty_seconds == 0
     assert result.total_duration_seconds == 792
     assert result.transit_duration_seconds == 600
+
+
+def test_same_metro_line_split_into_segments_is_not_an_extra_transfer() -> None:
+    departure = datetime(2026, 9, 18, 9, 0, tzinfo=timezone.utc)
+    rows = [
+        {
+            "segment": 0,
+            "transport_mode": "TransportMode.SUBWAY",
+            "route_id": "metro-1",
+            "travel_time": 180,
+        },
+        {"segment": 1, "transport_mode": "TransportMode.WALK", "travel_time": 120},
+        {
+            "segment": 2,
+            "transport_mode": "TransportMode.SUBWAY",
+            "route_id": "metro-5",
+            "travel_time": 300,
+        },
+        {
+            "segment": 3,
+            "transport_mode": "TransportMode.SUBWAY",
+            "route_id": "metro-5",
+            "travel_time": 240,
+        },
+    ]
+
+    result = build_route_response(rows, departure, settings())
+
+    assert result.transfers == 1
 
 
 def test_departure_is_converted_to_moscow_local_time() -> None:

@@ -91,7 +91,7 @@ def build_route_response(
     walking = 0
     waiting = 0
     transit = 0
-    transit_legs = 0
+    transit_routes: list[str] = []
     uses_metro = False
     for row in sorted(rows, key=lambda item: int(item.get("segment", 0))):
         mode = str(row.get("transport_mode", "UNKNOWN")).rsplit(".", 1)[-1]
@@ -109,7 +109,8 @@ def build_route_response(
             walking += duration
         elif is_transit:
             transit += duration
-            transit_legs += 1
+            if not transit_routes or route_id != transit_routes[-1]:
+                transit_routes.append(route_id)
             uses_metro |= route_id.startswith("metro-")
         waiting += wait
         distance = row.get("distance")
@@ -145,7 +146,7 @@ def build_route_response(
         walking_duration_seconds=walking,
         waiting_duration_seconds=waiting,
         transit_duration_seconds=transit,
-        transfers=max(0, transit_legs - 1),
+        transfers=max(0, len(transit_routes) - 1),
         legs=legs,
     )
 
@@ -178,6 +179,7 @@ def route(
         destinations=destinations,
         departure=local_departure(departure),
         transport_modes=[r5py.TransportMode.TRANSIT, r5py.TransportMode.WALK],
+        speed_walking=settings.walking_speed_kmh,
         snap_to_network=True,
     )
     if result.empty:
@@ -214,11 +216,10 @@ def travel_time_matrix(
         origins=locations,
         destinations=locations,
         departure=local_departure(departure),
-        departure_time_window=timedelta(
-            minutes=settings.matrix_time_window_minutes
-        ),
+        departure_time_window=timedelta(minutes=settings.matrix_time_window_minutes),
         percentiles=[50],
         transport_modes=[r5py.TransportMode.TRANSIT, r5py.TransportMode.WALK],
+        speed_walking=settings.walking_speed_kmh,
         max_time=timedelta(minutes=settings.max_travel_minutes),
         snap_to_network=True,
     )
