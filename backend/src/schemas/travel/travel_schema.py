@@ -78,7 +78,7 @@ class TravelMatrix(BaseModel):
 
 
 class TravelLeg(BaseModel):
-    """Один переезд между соседними точками маршрута: из них собирается TravelRoute."""
+    """Один участок пути; R5 может вернуть несколько участков до одного визита."""
 
     distance_km: float
     duration_min: float
@@ -89,6 +89,7 @@ class TravelLeg(BaseModel):
     route_id: str | None = None
     from_stop_id: str | None = None
     to_stop_id: str | None = None
+    visit_index: int | None = None  # номер следующей точки в points, начиная с нуля
 
 
 class TravelRoute(BaseModel):

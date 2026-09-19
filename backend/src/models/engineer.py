@@ -3,11 +3,13 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
     FetchedValue,
     ForeignKey,
+    Integer,
     Numeric,
     SmallInteger,
     Table,
@@ -16,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
+from src.models.equipment import Equipment
 from src.models.reference import Skill, Transport
 
 engineer_skill = Table(
@@ -26,6 +29,22 @@ engineer_skill = Table(
     ),
     Column("skill_id", SmallInteger, ForeignKey("skill.id"), primary_key=True),
 )
+
+
+class EngineerEquipment(Base):
+    """Сколько штук оборудования одного типа везёт бригада (db/init/020_engineer_equipment.sql)."""
+
+    __tablename__ = "engineer_equipment"
+
+    engineer_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("engineer.id", ondelete="CASCADE"), primary_key=True
+    )
+    equipment_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("equipment.id"), primary_key=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer)
+
+    equipment: Mapped["Equipment"] = relationship()
 
 
 class Engineer(Base):
@@ -40,6 +59,16 @@ class Engineer(Base):
     shift_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     shift_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     transport_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("transport.id"))
+    # чья бригада; с другими офисами она не работает
+    office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
+    # чья это смена: бригада из справочника; name — копия её названия (030)
+    brigade_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("brigade.id"))
+    # выезжает из своего офиса: старт = точка офиса, иначе — своя точка
+    start_at_office: Mapped[bool] = mapped_column(Boolean, default=False)
 
     transport: Mapped["Transport"] = relationship()
     skills: Mapped[list["Skill"]] = relationship(secondary=engineer_skill)
+    # запас оборудования грузится сразу с бригадой: «догрузить потом» в async-сессии нельзя
+    equipment_items: Mapped[list["EngineerEquipment"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="EngineerEquipment.equipment_id"
+    )

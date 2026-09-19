@@ -5,41 +5,48 @@ import { computed, reactive, ref, watch } from 'vue'
 
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
+import { statusRank } from '../utils/requestStatuses.js'
 
 // значение фильтра транспорта «транспорт не важен» (в заявке transport_id = null)
 export const NO_TRANSPORT = 'none'
 
 export const PAGE_SIZES = [10, 25, 50, 100]
 
+// значение фильтра оборудования «нужно хоть какое-то»
+export const EQUIPMENT_ANY = 'any'
+
 // '' — сортировка не выбрана: строки идут в порядке бэкенда
 const DEFAULT_SORT = ''
 
-// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
-// width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки.
-// Ширины подобраны по самому длинному значению колонки («Общественный транспорт»,
-// «Локальная заявка / ремонт у клиента»): лишнее место здесь — это адреса в три строки,
-// когда боковое меню раскрыто. Адрес остаётся резиновым и забирает всё, что осталось.
+// sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой.
+// width — компактная колонка своей ширины (номер, время, кнопки); grow и minWidth —
+// колонка с переносом по словам, забирает остаток ширины по весу; floor — до какой ширины
+// колонку можно сузить без обрезки (useColumnWidths.js). Колонки при этом не прыгают.
 export const REQUEST_COLUMNS = [
-  { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'is_active', label: 'Активна', sortKey: 'is_active', width: '100px' },
-  { key: 'address', label: 'Адрес', sortKey: 'address', width: '' },
-  { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px' },
-  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', width: '265px' },
-  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '105px' },
+  { key: 'id', label: '№', sortKey: 'id', width: '100px' },
+  // плашка статуса одной ширины и значок истории рядом
+  { key: 'status', label: 'Статус', sortKey: 'status', width: '150px' },
+  { key: 'address', label: 'Адрес', sortKey: 'address', grow: 3, minWidth: 180, floor: 125 },
+  // «55.7065, 37.7395» на узком экране уходит в две строки по запятой
+  { key: 'coordinates', label: 'Координаты', sortKey: null, width: '140px', floor: 95 },
+  { key: 'work_type', label: 'Тип работ', sortKey: 'work_type', grow: 2, minWidth: 150, floor: 115 },
+  { key: 'duration', label: 'Работа, мин', sortKey: 'duration_minutes', width: '115px' },
   { key: 'window', label: 'Окно (МСК)', sortKey: 'window_start', width: '130px' },
-  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '120px' },
-  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '180px' },
-  { key: 'actions', label: '', sortKey: null, width: '130px' },
+  { key: 'priority', label: 'Приоритет', sortKey: 'priority', width: '120px', floor: 105 },
+  { key: 'transport', label: 'Транспорт', sortKey: 'transport', grow: 1, minWidth: 125 },
+  // кнопки правки и удаления не сужаются: той же ширины, что выгрузка и синхронизация над ними
+  { key: 'actions', label: '', sortKey: null, width: '130px', fixed: true },
 ]
 
 // по фильтру на каждую колонку таблицы
 function emptyFilters() {
   return {
     idText: '', // часть номера заявки
-    activity: '', // '' — все, 'active' — только активные, 'inactive' — только выключенные
+    statusId: '', // '' — любой статус, иначе номер статуса
     text: '', // часть адреса
     coordinates: '', // часть координат, как они показаны в таблице
     workTypeId: '', // '' — любой тип работ
+    equipmentId: '', // '' — неважно, EQUIPMENT_ANY — нужно любое, иначе номер оборудования
     durationFrom: '', // минуты работы на месте, не меньше
     durationTo: '', // минуты работы на месте, не больше
     timeFrom: '', // 'HH:MM' — окно начинается не раньше
@@ -64,8 +71,7 @@ export function useRequestsView(requests, references) {
   )
 
   function matchesFilters(request) {
-    if (filters.activity === 'active' && !request.is_active) return false
-    if (filters.activity === 'inactive' && request.is_active) return false
+    if (filters.statusId !== '' && request.status_id !== filters.statusId) return false
 
     if (filters.idText && !String(request.id).includes(filters.idText.trim())) return false
 
@@ -82,6 +88,12 @@ export function useRequestsView(requests, references) {
 
     if (filters.priorityId !== '' && request.priority_id !== filters.priorityId) return false
     if (filters.workTypeId !== '' && request.work_type_id !== filters.workTypeId) return false
+    const equipmentIds = (request.equipment ?? []).map((item) => item.equipment_id)
+    if (filters.equipmentId === EQUIPMENT_ANY) {
+      if (equipmentIds.length === 0) return false
+    } else if (filters.equipmentId !== '' && !equipmentIds.includes(filters.equipmentId)) {
+      return false
+    }
 
     if (filters.transportId === NO_TRANSPORT) {
       if (request.transport_id !== null) return false
@@ -108,8 +120,8 @@ export function useRequestsView(requests, references) {
     switch (sortKey.value) {
       case 'id':
         return request.id
-      case 'is_active':
-        return request.is_active ? 0 : 1 // по возрастанию — сначала активные
+      case 'status':
+        return statusRank(references.value, request.status_id) // в порядке работы: новые первыми
       case 'address':
         return request.address
       case 'duration_minutes':

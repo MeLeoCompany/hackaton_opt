@@ -52,6 +52,8 @@ def test_visit_keeps_facts_of_its_own_place_in_route():
             window_end=day + timedelta(hours=12),  # запас до закрытия окна 2 часа
             duration_minutes=60,
             priority_id=1,
+            status_id=2,
+            approved_plan_id=None,
             transport_id=None,
         ),
     )

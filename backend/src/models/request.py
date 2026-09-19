@@ -3,7 +3,6 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     CheckConstraint,
     DateTime,
     FetchedValue,
@@ -12,12 +11,26 @@ from sqlalchemy import (
     Numeric,
     SmallInteger,
     Text,
-    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
 from src.models.reference import Priority, Skill, Transport, WorkType
+from src.models.request_status import RequestStatus
+
+
+class RequestEquipment(Base):
+    """Сколько штук оборудования одного типа нужно на заявку (db/init/019, 021)."""
+
+    __tablename__ = "request_equipment"
+
+    request_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("request.id", ondelete="CASCADE"), primary_key=True
+    )
+    equipment_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("equipment.id"), primary_key=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class Request(Base):
@@ -39,10 +52,24 @@ class Request(Base):
     work_type_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("work_type.id"))
     # заявка закреплена за утверждённым планом: другие дни её не берут (окна через полночь)
     approved_plan_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("plan.id"))
-    # выключенная заявка хранится, но в сборку задачи планирования не попадает
-    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # чья заявка: её видит и планирует только этот офис
+    office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
+    # статус заявки: новая, в плане, выполнена, отменена (db/init/022_request_status.sql)
+    status_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("request_status.id"))
 
     priority: Mapped["Priority"] = relationship()
     skill: Mapped["Skill"] = relationship()
     transport: Mapped["Transport | None"] = relationship()
     work_type: Mapped["WorkType | None"] = relationship()
+    # статус грузится сразу с заявкой: из него видно, идёт ли она в планирование
+    status: Mapped["RequestStatus"] = relationship(lazy="selectin")
+    # требуемое оборудование грузится сразу вместе с заявкой: в асинхронной сессии
+    # «догрузить потом» при обращении к полю нельзя
+    equipment: Mapped[list["RequestEquipment"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="RequestEquipment.equipment_id"
+    )
+
+    @property
+    def is_active(self) -> bool:
+        """Попадает ли заявка в планирование — по её статусу (раньше это был флаг)."""
+        return self.status.plannable

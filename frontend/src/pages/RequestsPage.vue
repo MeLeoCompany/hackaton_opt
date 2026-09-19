@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
+import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import RequestDetailsCard from '../components/RequestDetailsCard.vue'
+import RequestHistoryDialog from '../components/RequestHistoryDialog.vue'
 import RequestsFilters from '../components/RequestsFilters.vue'
 import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
@@ -31,7 +33,8 @@ const {
   cancelEdit,
   saveForm,
   remove,
-  setActive,
+  duplicate,
+  setStatus,
   showNotice,
 } = useRequestsTable()
 
@@ -53,24 +56,32 @@ const {
   selectRequest,
 } = useRequestsView(requests, references)
 
-// пришли из маршрута плана — показываем ту самую заявку
-const { takeRequestId } = usePlanFocus()
+// пришли из маршрута плана — показываем ту самую заявку; обратно — «Открыть в плане»
+const { takeRequestId, openPlan } = usePlanFocus()
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
 
-// карточка справа от карты занимает ровно две последние колонки таблицы: её левый край
+// карточка справа от карты занимает ровно три последние колонки таблицы (приоритет,
+// транспорт, кнопки) — двух уже мало под её кнопки. Её левый край
 // совпадает с линией колонки в шапке фильтров, а карта заканчивается перед ней
-// +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
-const DETAILS_WIDTH = REQUEST_COLUMNS.slice(-2).reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 1
+// ширины колонок шапки фильтров над картой — приходят от неё самой
+const filterWidths = ref({})
+const detailsWidth = computed(() => {
+  const total = REQUEST_COLUMNS.slice(-3).reduce((sum, column) => sum + (filterWidths.value[column.key] ?? 0), 0)
+  // +1 — правая рамка блока с таблицей: колонки начинаются внутри неё
+  return total ? `${total + 1}px` : undefined
+})
 
 const selectedRequest = computed(
   () => filteredRequests.value.find((request) => request.id === selectedId.value) ?? null,
 )
 
+// сколько заявок пойдёт в расчёт плана: статусы Новая и В плане
 const activeTotal = computed(() => requests.value.filter((request) => request.is_active).length)
-const activeShown = computed(() => filteredRequests.value.filter((request) => request.is_active).length)
-const inactiveShown = computed(() => filteredRequests.value.length - activeShown.value)
+
+// заявка, чья история открыта в окне
+const historyRequestId = ref(null)
 
 function addRequest() {
   viewMode.value = 'table'
@@ -88,20 +99,16 @@ function showOnMap(requestId) {
   viewMode.value = 'map'
 }
 
-function toggleActive(request) {
-  setActive([request.id], !request.is_active)
+// копия отменённой — сразу строкой правки; фильтры могут её скрыть, тогда снимаем их
+async function duplicateAndShow(request) {
+  const copyId = await duplicate(request)
+  if (copyId === null) return
+  if (!filteredRequests.value.some((item) => item.id === copyId)) resetFilters()
+  selectRequest(copyId)
 }
 
-// включить или выключить разом все заявки, которые сейчас показаны по фильтрам
-function setActiveForShown(isActive) {
-  const targetIds = filteredRequests.value
-    .filter((request) => request.is_active !== isActive)
-    .map((request) => request.id)
-  if (targetIds.length === 0) return
-
-  const action = isActive ? 'Включить' : 'Выключить'
-  if (targetIds.length > 1 && !window.confirm(`${action} показанные заявки: ${targetIds.length} шт.?`)) return
-  setActive(targetIds, isActive)
+function changeStatus(request, statusId) {
+  setStatus([request.id], statusId)
 }
 
 // заявка из плана может быть скрыта фильтрами прошлой работы — тогда фильтры снимаем,
@@ -128,7 +135,7 @@ onMounted(async () => {
     <header class="workspace-title">
       <h1>Заявки</h1>
       <p>
-        Всего {{ requests.length }} · активных {{ activeTotal }}<template v-if="activeFilterCount">
+        Всего {{ requests.length }} · к планированию {{ activeTotal }}<template v-if="activeFilterCount">
           · по фильтрам {{ filteredRequests.length }}</template
         >
         · время московское
@@ -136,7 +143,7 @@ onMounted(async () => {
     </header>
 
     <DayPanel
-      :summary="`заявок на этот день ${requests.length}, активных ${activeTotal}`"
+      :summary="`заявок на этот день ${requests.length}, к планированию ${activeTotal}`"
       transfer="заявки"
       :disabled="saving"
       @export-day="exportDay"
@@ -144,12 +151,7 @@ onMounted(async () => {
     />
 
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="loading" class="muted">Загружаю заявки…</p>
 
@@ -178,15 +180,6 @@ onMounted(async () => {
           </button>
         </div>
 
-        <div class="list-bar-group">
-          <span class="list-bar-note">Активных {{ activeShown }} из {{ filteredRequests.length }} показанных</span>
-          <button :disabled="editingId !== null || activeShown === 0" @click="setActiveForShown(false)">
-            Выключить показанные
-          </button>
-          <button :disabled="editingId !== null || inactiveShown === 0" @click="setActiveForShown(true)">
-            Включить показанные
-          </button>
-        </div>
       </div>
 
       <div v-if="viewMode === 'table'" class="table-view">
@@ -204,11 +197,14 @@ onMounted(async () => {
           :active-filter-count="activeFilterCount"
           @sort="toggleSort"
           @select="selectRequest"
-          @toggle-active="toggleActive"
+          @change-status="changeStatus"
+          @history="historyRequestId = $event.id"
+          @open-plan="openPlan($event.approved_plan_id, $event.id)"
           @edit="startEdit"
           @cancel="cancelEdit"
           @save="saveForm"
           @remove="remove"
+          @duplicate="duplicateAndShow"
           @work-type-picked="applyWorkTypeNorms"
           @reset-filters="resetFilters"
           @show-on-map="showOnMap"
@@ -222,8 +218,9 @@ onMounted(async () => {
         />
       </div>
 
-      <div v-else class="map-view" :style="{ '--details-width': `${DETAILS_WIDTH}px` }">
+      <div v-else class="map-view" :style="{ '--details-width': detailsWidth }">
         <RequestsFilters
+          @widths="filterWidths = $event"
           :filters="filters"
           :references="references"
           :active-count="activeFilterCount"
@@ -242,11 +239,20 @@ onMounted(async () => {
           :request="selectedRequest"
           :references="references"
           @show-in-table="showInTable(selectedRequest.id)"
-          @toggle-active="toggleActive(selectedRequest)"
+          @change-status="changeStatus(selectedRequest, $event)"
+          @history="historyRequestId = selectedRequest.id"
+          @open-plan="openPlan(selectedRequest.approved_plan_id, selectedRequest.id)"
           @close="selectedId = null"
         />
       </div>
     </template>
+
+    <RequestHistoryDialog
+      v-if="historyRequestId !== null"
+      :request-id="historyRequestId"
+      :references="references"
+      @close="historyRequestId = null"
+    />
 
     <Transition name="toast">
       <div v-if="noticeMessage" class="toast" role="status">{{ noticeMessage }}</div>

@@ -1,4 +1,4 @@
-// Заявки: загрузка, добавление, изменение, удаление, включение/выключение.
+// Заявки: загрузка, добавление, изменение, удаление, смена статуса.
 // Фильтры, сортировка и страницы — в useRequestsView, загрузка из CSV — в useRequestsImport.
 
 import { ref, watch } from 'vue'
@@ -7,23 +7,26 @@ import { fetchReferences } from '../api/referencesApi.js'
 import {
   createRequest,
   deleteRequest,
+  duplicateRequest,
   exportRequestsCsv,
   importRequestsCsv,
   listRequests,
-  setRequestsActive,
+  setRequestsStatus,
   updateRequest,
 } from '../api/requestsApi.js'
 import { downloadBlob } from '../utils/downloadFile.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
+import { equipmentPayload } from '../utils/equipment.js'
+import { referenceName } from '../utils/referenceNames.js'
 
 export const NEW_REQUEST = 'new'
 
 export function useRequestsTable() {
   const { selectedDay, refreshDaysWithRequests } = useSelectedDay()
   const requests = ref([])
-  const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
+  const references = ref({ skills: [], priorities: [], transports: [], work_types: [], offices: [], equipment: [] })
 
   const loading = ref(false)
   const saving = ref(false)
@@ -70,7 +73,8 @@ export function useRequestsTable() {
       skill_id: references.value.work_types[0]?.skill_id ?? '',
       transport_id: '',
       work_type_id: references.value.work_types[0]?.id ?? '',
-      is_active: true,
+      equipment: {}, // { номер оборудования: сколько штук }
+      status_id: null, // появится «Новой»
     }
   }
 
@@ -98,7 +102,8 @@ export function useRequestsTable() {
       skill_id: request.skill_id,
       transport_id: request.transport_id ?? '',
       work_type_id: request.work_type_id ?? '',
-      is_active: request.is_active,
+      equipment: Object.fromEntries((request.equipment ?? []).map((item) => [item.equipment_id, item.quantity])),
+      status_id: request.status_id,
     }
   }
 
@@ -125,7 +130,7 @@ export function useRequestsTable() {
       skill_id: numberOrNull(values.skill_id),
       transport_id: numberOrNull(values.transport_id),
       work_type_id: numberOrNull(values.work_type_id),
-      is_active: values.is_active,
+      equipment: equipmentPayload(values.equipment),
     }
   }
 
@@ -165,24 +170,49 @@ export function useRequestsTable() {
     }
   }
 
-  // включить или выключить заявки для планирования.
+  // перевести заявки в статус. Бэкенд меняет все или ни одной и объясняет, почему нельзя:
+  // перехода нет в таблице или в маршруте бригады раньше стоит незакрытая заявка.
   // Заменяем объекты заявок целиком, чтобы отфильтрованный список и карта пересчитались.
-  async function setActive(requestIds, isActive) {
+  async function setStatus(requestIds, statusId) {
     clearMessages()
     try {
-      await setRequestsActive(requestIds, isActive)
+      await setRequestsStatus(requestIds, statusId)
       const changedIds = new Set(requestIds)
+      const status = references.value.request_statuses?.find((item) => item.id === statusId)
+      // «Новая» ждёт нового расчёта — от прежнего плана бэкенд её отвязал
+      const detached = status?.code === 'new'
       requests.value = requests.value.map((request) =>
-        changedIds.has(request.id) ? { ...request, is_active: isActive } : request,
+        changedIds.has(request.id)
+          ? {
+              ...request,
+              status_id: statusId,
+              is_active: status?.plannable ?? request.is_active,
+              approved_plan_id: detached ? null : request.approved_plan_id,
+            }
+          : request,
       )
       await refreshDaysWithRequests()
-      if (requestIds.length === 1) {
-        showNotice(`Заявка №${requestIds[0]} ${isActive ? 'включена' : 'выключена'}`)
-      } else {
-        showNotice(`${isActive ? 'Включено' : 'Выключено'} заявок: ${requestIds.length}`)
-      }
+      const name = referenceName(references.value, 'request_statuses', statusId)
+      if (requestIds.length === 1) showNotice(`Заявка №${requestIds[0]}: «${name}»`)
+      else showNotice(`Переведено в «${name}» заявок: ${requestIds.length}`)
     } catch (error) {
       showError(error)
+    }
+  }
+
+  // копия отменённой заявки: создаём, перезагружаем список и сразу открываем копию на правку
+  async function duplicate(request) {
+    clearMessages()
+    try {
+      const copy = await duplicateRequest(request.id)
+      await Promise.all([load(), refreshDaysWithRequests()])
+      const loaded = requests.value.find((item) => item.id === copy.id)
+      if (loaded) startEdit(loaded)
+      showNotice(`Создана заявка №${copy.id} — копия отменённой №${request.id}. Поправьте её и сохраните`)
+      return copy.id
+    } catch (error) {
+      showError(error)
+      return null
     }
   }
 
@@ -249,7 +279,8 @@ export function useRequestsTable() {
     cancelEdit,
     saveForm,
     remove,
-    setActive,
+    duplicate,
+    setStatus,
     showNotice,
   }
 }

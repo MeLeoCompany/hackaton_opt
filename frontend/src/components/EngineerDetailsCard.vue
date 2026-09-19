@@ -46,8 +46,24 @@ defineEmits(['show-in-table', 'close'])
           </dd>
         </div>
         <div>
+          <dt>Оборудование</dt>
+          <dd>
+            <template v-if="engineer.equipment?.length">
+              <span v-for="item in engineer.equipment" :key="item.equipment_id" class="equipment-badge">
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
+              </span>
+            </template>
+            <template v-else>нет</template>
+          </dd>
+        </div>
+        <div>
           <dt>Старт</dt>
-          <dd>{{ engineer.start_latitude.toFixed(4) }}, {{ engineer.start_longitude.toFixed(4) }}</dd>
+          <dd>
+            <template v-if="engineer.start_at_office">
+              Офис «{{ referenceName(references, 'offices', engineer.office_id) }}» ·
+            </template>
+            {{ engineer.start_latitude.toFixed(4) }}, {{ engineer.start_longitude.toFixed(4) }}
+          </dd>
         </div>
       </dl>
 

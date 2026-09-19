@@ -34,15 +34,20 @@ watch(
 
 const suggestions = computed(() => {
   const typed = text.value.replace(':', '')
-  if (!typed) return SUGGESTIONS
+  // время набрано или выбрано целиком — показываем весь список (текущее подсвечено), иначе
+  // выбранное однажды время из списка было бы уже не поменять
+  if (!typed || /^\d\d:\d\d$/.test(text.value)) return SUGGESTIONS
   const matching = SUGGESTIONS.filter((time) => time.replace(':', '').startsWith(typed))
   return matching.length ? matching : SUGGESTIONS
 })
 
 function onInput(event) {
-  text.value = maskTimeInput(event.target.value)
+  text.value = maskTimeInput(event.target.value, { deleting: event.inputType?.startsWith('delete') })
   event.target.value = text.value
   open.value = true
+  // время набрано целиком — отдаём сразу, не дожидаясь ухода из поля: фильтр и предпросмотр
+  // синхронизации обновляются по ходу набора
+  if (/^\d\d:\d\d$/.test(text.value)) emit('update:modelValue', text.value)
 }
 
 async function openDropdown() {

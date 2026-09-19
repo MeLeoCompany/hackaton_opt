@@ -12,7 +12,7 @@ function harness() {
   const dayCheck = { respond: async () => ({ plan_date: day.value, active_requests: 0, held_requests: [] }) }
   const make = new Function(
     'ref', 'watch', 'approvePlan', 'buildPlan', 'cancelPlanApproval', 'checkPlanningDay',
-    'deletePlan', 'getPlan', 'listPlans', 'fetchReferences', 'useMessages', 'useSelectedDay',
+    'deletePlan', 'getPlan', 'listPlans', 'fetchReferences', 'useMessages', 'useSelectedDay', 'replanPlan',
     source + '; return usePlans()')
   const plans = make(
     value => ({ value }), () => {},
@@ -29,7 +29,11 @@ function harness() {
       showNotice: notice => notices.push(notice),
       clearMessages() {},
     }),
-    () => ({ selectedDay: day }))
+    () => ({ selectedDay: day }),
+    async (id, params) => {
+      approvals.push(['replan', id, params.at])
+      return { id: 41, assigned_count: 4, unassigned_count: 2 }
+    })
   return { plans, details, lists, builds, notices, errors, approvals, dayCheck }
 }
 
@@ -70,12 +74,10 @@ test('switching day ignores a completed build for the previous day', async () =>
 })
 
 test('plans load even if the day check fails', async () => {
-  const { plans, lists, details, dayCheck, errors } = harness()
+  const { plans, lists, dayCheck, errors } = harness()
   dayCheck.respond = async () => { throw new Error('day-check недоступен') }
   const load = plans.loadPlans()
   lists['2026-08-17']([{ id: 1 }])
-  await Promise.resolve()
-  details[1]({ id: 1 })
   await load
 
   assert.deepEqual(plans.plans.value.map(summary => summary.id), [1])
@@ -109,4 +111,65 @@ test('a late day check of the previous day is dropped', async () => {
   await Promise.resolve()
 
   assert.equal(plans.dayCheck.value, null)
+})
+
+test('список планов дня открывается без выбранного плана', async () => {
+  const { plans, lists } = harness()
+  const load = plans.loadPlans()
+  lists['2026-08-17']([{ id: 3 }, { id: 1 }])
+  await load
+
+  // сначала список: маршруты плана открываются только по клику
+  assert.equal(plans.selectedPlanId.value, null)
+  assert.equal(plans.plan.value, null)
+})
+
+test('назад к списку: поздний ответ открывавшегося плана не показывается', async () => {
+  const { plans, details } = harness()
+  const opening = plans.selectPlan(7)
+
+  plans.closePlan()
+  details[7]({ id: 7 })
+  await opening
+
+  assert.equal(plans.selectedPlanId.value, null)
+  assert.equal(plans.plan.value, null)
+  assert.equal(plans.loadingPlan.value, false)
+})
+
+test('сменённый в маршруте статус виден у визита без перезагрузки плана', async () => {
+  const { plans, details } = harness()
+  const opening = plans.selectPlan(22)
+  details[22]({ id: 22, routes: [{ visits: [{ request_id: 1, status_id: 2 }, { request_id: 2, status_id: 2 }] }] })
+  await opening
+
+  plans.markVisitStatus(1, 5)
+
+  assert.deepEqual(plans.plan.value.routes[0].visits.map((visit) => visit.status_id), [5, 2])
+})
+
+test('возвращённая в «Новая» заявка снимается с плана, возврат «В план» закрепляет снова', async () => {
+  const { plans, details } = harness()
+  plans.references.value = { request_statuses: [{ id: 1, code: 'new' }, { id: 2, code: 'planned' }] }
+  const opening = plans.selectPlan(22)
+  details[22]({ id: 22, routes: [{ visits: [{ request_id: 1, status_id: 4, approved_plan_id: 22 }] }] })
+  await opening
+
+  plans.markVisitStatus(1, 1)
+  assert.equal(plans.plan.value.routes[0].visits[0].approved_plan_id, null)
+  plans.markVisitStatus(1, 2)
+  assert.equal(plans.plan.value.routes[0].visits[0].approved_plan_id, 22)
+})
+
+test('пересчёт утверждённого плана: новый план в списке и подсказка утвердить', async () => {
+  const { plans, lists, approvals, notices } = harness()
+  const replanning = plans.replan({ id: 22 }, { solver: 'cuopt', at: '2026-08-17T18:40:00+03:00' })
+  await Promise.resolve()
+  await Promise.resolve()
+  lists['2026-08-17']([{ id: 41, parent_plan_id: 22 }, { id: 22 }])
+  await replanning
+
+  assert.deepEqual(approvals, [['replan', 22, '2026-08-17T18:40:00+03:00']])
+  assert.deepEqual(plans.plans.value.map((plan) => plan.id), [41, 22])
+  assert.match(notices.at(-1), /Пересчёт №41 плана №22 готов.*заменить план №22/)
 })

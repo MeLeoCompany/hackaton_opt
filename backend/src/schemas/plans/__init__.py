@@ -5,10 +5,15 @@ from src.schemas.plans.plans_schema import (
     PlanDayCheck,
     PlanDetail,
     PlanningDayOption,
+    PlanReplanRequest,
     PlanSummary,
     PlanVisit,
+    ReplanDecision,
+    ReplanPreview,
+    ReplanProblem,
     SolverName,
     UnassignedRequest,
+    WithdrawnRequest,
 )
 
 __all__ = [
@@ -17,9 +22,14 @@ __all__ = [
     "PlanBuildRequest",
     "PlanDayCheck",
     "PlanDetail",
+    "PlanReplanRequest",
     "PlanSummary",
     "PlanVisit",
     "PlanningDayOption",
+    "ReplanDecision",
+    "ReplanPreview",
+    "ReplanProblem",
     "SolverName",
     "UnassignedRequest",
+    "WithdrawnRequest",
 ]

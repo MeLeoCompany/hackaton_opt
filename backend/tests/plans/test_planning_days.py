@@ -24,7 +24,7 @@ async def test_planning_days_include_every_day_touched_by_request_window():
         "list_active_requests",
         AsyncMock(return_value=requests),
     ):
-        days = await planning_service.list_planning_days(SimpleNamespace())
+        days = await planning_service.list_planning_days(SimpleNamespace(), office_id=1)
 
     assert [(str(day.plan_date), day.active_requests) for day in days] == [
         ("2026-08-17", 1),
@@ -45,6 +45,6 @@ async def test_window_ending_at_midnight_does_not_add_empty_next_day():
         "list_active_requests",
         AsyncMock(return_value=requests),
     ):
-        days = await planning_service.list_planning_days(SimpleNamespace())
+        days = await planning_service.list_planning_days(SimpleNamespace(), office_id=1)
 
     assert [(str(day.plan_date), day.active_requests) for day in days] == [("2026-08-17", 1)]

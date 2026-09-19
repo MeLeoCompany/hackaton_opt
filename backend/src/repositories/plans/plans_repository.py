@@ -3,11 +3,11 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models import Assignment, Plan, PlanRunType, Request
+from src.models import Assignment, Plan, PlanRunType, Request, RequestStatusId
 
 
 def add_plan(
@@ -16,10 +16,12 @@ def add_plan(
     plan_date: date,
     solver: str,
     *,
+    office_id: int,
     solve_duration_ms: Decimal | None = None,
     objective_policy: dict | None = None,
 ) -> Plan:
     plan = Plan(
+        office_id=office_id,
         run_type=run_type,
         plan_date=plan_date,
         solver=solver,
@@ -45,32 +47,49 @@ async def delete_plan(session: AsyncSession, plan: Plan) -> None:
     await session.delete(plan)
 
 
-async def list_plans(session: AsyncSession, plan_date: date | None) -> list[Plan]:
-    """Планы, новые первыми; если указан день — только на этот день."""
-    query = select(Plan).order_by(Plan.created_at.desc(), Plan.id.desc())
+async def list_plans(
+    session: AsyncSession, plan_date: date | None, *, office_id: int
+) -> list[Plan]:
+    """Планы офиса, новые первыми; если указан день — только на этот день."""
+    query = (
+        select(Plan)
+        .where(Plan.office_id == office_id)
+        .order_by(Plan.created_at.desc(), Plan.id.desc())
+    )
     if plan_date is not None:
         query = query.where(Plan.plan_date == plan_date)
     result = await session.execute(query)
     return list(result.scalars().all())
 
 
-async def get_approved_plan(session: AsyncSession, plan_date: date) -> Plan | None:
-    """Утверждённый план дня; на день он может быть только один."""
+async def get_approved_plan(
+    session: AsyncSession, plan_date: date, *, office_id: int
+) -> Plan | None:
+    """Утверждённый план офиса на день; у офиса на день он может быть только один."""
     result = await session.execute(
-        select(Plan).where(Plan.plan_date == plan_date, Plan.approved_at.is_not(None))
+        select(Plan).where(
+            Plan.office_id == office_id,
+            Plan.plan_date == plan_date,
+            Plan.approved_at.is_not(None),
+            # заменённый утверждённым пересчётом — уже не действующий план дня
+            Plan.superseded_at.is_(None),
+        )
     )
     return result.scalar_one_or_none()
 
 
 async def hold_plan_requests(
     session: AsyncSession, plan: Plan, approved_at: datetime
-) -> tuple[int, int]:
-    """Утверждает план и закрепляет за ним назначенные заявки.
+) -> tuple[int, int, list[int]]:
+    """Утверждает план и закрепляет за ним назначенные заявки: «Новая» -> «В плане».
 
     Закреплённую заявку не возьмут планы других дней: иначе заявка с окном через полночь
-    выполнялась бы дважды — в плане вчерашнего и в плане сегодняшнего дня. Уже закреплённые
-    другим планом заявки не перезаписываются; вызывающий код сравнивает два счётчика и при
-    расхождении откатывает всю транзакцию.
+    выполнялась бы дважды — в плане вчерашнего и в плане сегодняшнего дня. Выполненные,
+    отменённые, взятые в работу и занятые другим планом заявки не трогаются; вызывающий код
+    сравнивает счётчики и при расхождении откатывает всю транзакцию.
+
+    Возвращает: сколько заявок закреплено, сколько назначено в плане, какие перешли
+    в «В плане» сейчас (для истории статусов).
     """
     assigned = (
         select(Assignment.request_id)
@@ -88,27 +107,55 @@ async def hold_plan_requests(
         )
         or 0
     )
+    already_held = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Request)
+            .where(
+                Request.id.in_(assigned),
+                Request.approved_plan_id == plan.id,
+                Request.status_id == RequestStatusId.PLANNED,
+            )
+        )
+        or 0
+    )
     result = await session.execute(
         update(Request)
         .where(
             Request.id.in_(assigned),
-            or_(Request.approved_plan_id.is_(None), Request.approved_plan_id == plan.id),
+            Request.approved_plan_id.is_(None),
+            Request.status_id == RequestStatusId.NEW,
         )
-        .values(approved_plan_id=plan.id)
+        .values(approved_plan_id=plan.id, status_id=RequestStatusId.PLANNED)
+        .returning(Request.id)
+        .execution_options(synchronize_session=False)
     )
-    held_count = result.rowcount or 0
+    planned_ids = list(result.scalars().all())
+    held_count = already_held + len(planned_ids)
     if held_count == assigned_count:
         plan.approved_at = approved_at
-    return held_count, assigned_count
+    return held_count, assigned_count, planned_ids
 
 
-async def release_plan_requests(session: AsyncSession, plan: Plan) -> int:
-    """Снимает утверждение плана и отпускает его заявки другим дням."""
+async def release_plan_requests(session: AsyncSession, plan: Plan) -> list[int]:
+    """Снимает утверждение плана: заявки «В плане» снова «Новые» и свободны для других дней.
+
+    Взятые в работу, выполненные и отменённые остаются как есть и сохраняют ссылку на план:
+    по ней видно, по какому плану бригада их выполняет или выполнила.
+    Возвращает заявки, вернувшиеся в «Новые» (для истории статусов).
+    """
     plan.approved_at = None
     result = await session.execute(
-        update(Request).where(Request.approved_plan_id == plan.id).values(approved_plan_id=None)
+        update(Request)
+        .where(
+            Request.approved_plan_id == plan.id,
+            Request.status_id == RequestStatusId.PLANNED,
+        )
+        .values(approved_plan_id=None, status_id=RequestStatusId.NEW)
+        .returning(Request.id)
+        .execution_options(synchronize_session=False)
     )
-    return result.rowcount or 0
+    return list(result.scalars().all())
 
 
 async def list_plan_assignments(session: AsyncSession, plan_id: int) -> list[Assignment]:
@@ -158,3 +205,36 @@ async def assigned_request_ids_by_plan(
     for plan_id, request_id in rows:
         result.setdefault(plan_id, set()).add(request_id)
     return result
+
+
+async def list_withdrawn_requests(session: AsyncSession, plan_id: int) -> list[tuple[int, int]]:
+    """Заявки из маршрутов утверждённого плана, которых в нём больше нет: отменены или
+    возвращены в «Новая» (тогда за планом они уже не закреплены). [(номер, статус)]"""
+    result = await session.execute(
+        select(Assignment.request_id, Request.status_id)
+        .join(Request, Request.id == Assignment.request_id)
+        .where(
+            Assignment.plan_id == plan_id,
+            Assignment.engineer_id.is_not(None),
+            (Request.status_id == RequestStatusId.CANCELLED)
+            | Request.approved_plan_id.is_distinct_from(plan_id),
+        )
+        .order_by(Assignment.request_id)
+    )
+    return [(request_id, status_id) for request_id, status_id in result.all()]
+
+
+async def plan_request_ids(session: AsyncSession, plan_id: int) -> set[int]:
+    """Все заявки, которые видел расчёт плана: назначенные и неназначенные."""
+    result = await session.execute(
+        select(Assignment.request_id).where(Assignment.plan_id == plan_id)
+    )
+    return set(result.scalars().all())
+
+
+async def list_bound_requests(session: AsyncSession, plan_id: int) -> list[Request]:
+    """Заявки, закреплённые за утверждённым планом (request.approved_plan_id)."""
+    result = await session.execute(
+        select(Request).where(Request.approved_plan_id == plan_id).order_by(Request.id)
+    )
+    return list(result.scalars().all())

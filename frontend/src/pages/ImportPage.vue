@@ -1,5 +1,6 @@
 <script setup>
 // Вкладка загрузки заявок из CSV: файл, шаблон и разбор ошибок по строкам.
+import ErrorMessage from '../components/ErrorMessage.vue'
 import RequestsCsvImport from '../components/RequestsCsvImport.vue'
 import { useRequestsImport } from '../composables/useRequestsImport.js'
 
@@ -16,12 +17,7 @@ const { saving, lastReport, errorMessage, errorDetails, noticeMessage, importCsv
 
     <RequestsCsvImport :busy="saving" @import="importCsv" @download-template="downloadTemplate" />
 
-    <div v-if="errorMessage" class="message error">
-      <strong>{{ errorMessage }}</strong>
-      <ul v-if="errorDetails.length">
-        <li v-for="(detail, index) in errorDetails" :key="index">{{ detail }}</li>
-      </ul>
-    </div>
+    <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
     <p v-if="lastReport" class="muted">
       Последняя загрузка: добавлено {{ lastReport.created }}, обновлено {{ lastReport.updated }}.
@@ -38,6 +34,8 @@ const { saving, lastReport, errorMessage, errorDetails, noticeMessage, importCsv
         <li><strong>приоритет</strong> — «Обычная» или «Срочная» (можно номером);</li>
         <li><strong>транспорт</strong> — если для заявки нужен конкретный, иначе пусто;</li>
         <li><strong>активна</strong> — «да» или «нет»; пусто у новой заявки значит «да»;</li>
+        <li><strong>оборудование</strong> — что и сколько привезти: «Роутер: 2, ТВ-приставка» (без количества —
+          одна штука), пусто — ничего; нет колонки — у существующих заявок требование не меняется;</li>
         <li><strong>id</strong> — номер заявки из внешней системы; пусто — номер присвоится сам.</li>
       </ul>
       <p class="muted">Скачайте шаблон — в нём есть все колонки и две строки-примера.</p>

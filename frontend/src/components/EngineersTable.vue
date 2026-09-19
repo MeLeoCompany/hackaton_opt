@@ -2,10 +2,12 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { NEW_ENGINEER } from '../composables/useEngineersTable.js'
+import { useColumnWidths } from '../composables/useColumnWidths.js'
 import { ENGINEER_COLUMNS as COLUMNS } from '../composables/useEngineersView.js'
 import { referenceName } from '../utils/referenceNames.js'
 import { transportColor } from '../utils/transportColors.js'
 import IconButton from './IconButton.vue'
+import StartPointIcon from './StartPointIcon.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
 import EngineerEditCells from './EngineerEditCells.vue'
 import EngineersFilterControl from './EngineersFilterControl.vue'
@@ -36,6 +38,7 @@ const contextPoints = computed(() =>
     })),
 )
 
+
 function sortArrow(columnSortKey) {
   if (props.sortKey !== columnSortKey) return '↕'
   return props.sortDirection === 'asc' ? '↑' : '↓'
@@ -49,6 +52,8 @@ function ariaSort(columnSortKey) {
 
 // исполнителя выбрали на карте — прокручиваем таблицу к его строке
 const tableRoot = ref(null)
+// ширины колонок — от ширины таблицы: компактные своей ширины, остальное — растущим
+const { widths } = useColumnWidths(COLUMNS, tableRoot)
 
 async function scrollToSelected() {
   if (props.selectedId === null) return
@@ -64,9 +69,9 @@ onMounted(scrollToSelected)
 
 <template>
   <div ref="tableRoot" class="table-scroll">
-    <table class="data-table fixed-columns">
+    <table class="data-table fixed-columns fluid">
       <colgroup>
-        <col v-for="column in COLUMNS" :key="column.key" :style="column.width ? { width: column.width } : null" />
+        <col v-for="column in COLUMNS" :key="column.key" :style="{ width: `${widths[column.key]}px` }" />
       </colgroup>
       <thead>
         <tr>
@@ -143,11 +148,31 @@ onMounted(scrollToSelected)
                 </span>
               </div>
             </td>
+            <td>
+              <!-- что бригада везёт: тип и количество, каждое своей строкой; пусто — «нет»,
+                   как в карточке бригады, чтобы было видно, что оборудования нет -->
+              <span v-if="!engineer.equipment?.length" class="muted" title="Бригада не везёт оборудования">нет</span>
+              <span
+                v-for="item in engineer.equipment ?? []"
+                :key="item.equipment_id"
+                class="equipment-badge"
+                title="Что бригада везёт с собой"
+              >
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
+              </span>
+            </td>
             <td class="range-cell">
               <TimeRangeValue :start="engineer.shift_start" :end="engineer.shift_end" />
             </td>
-            <td class="number-cell">
-              {{ engineer.start_latitude.toFixed(4) }}, {{ engineer.start_longitude.toFixed(4) }}
+            <td
+              class="start-cell"
+              :title="
+                engineer.start_at_office
+                  ? `Из офиса «${referenceName(references, 'offices', engineer.office_id)}»`
+                  : `Своя точка: ${engineer.start_latitude.toFixed(4)}, ${engineer.start_longitude.toFixed(4)}`
+              "
+            >
+              <StartPointIcon :at-office="engineer.start_at_office" />
             </td>
             <td>
               <div class="row-actions" @dblclick.stop>

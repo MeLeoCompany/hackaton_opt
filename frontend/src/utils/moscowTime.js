@@ -37,7 +37,9 @@ export function fromMoscowInputValue(inputValue) {
 // Набранное в поле времени -> то, что вообще может быть временем.
 // Лишние цифры не принимаются: "18:90" набрать нельзя, а "9" превращается в "09:",
 // потому что часа, начинающегося на девятку, не бывает.
-export function maskTimeInput(rawValue) {
+// deleting — оператор стирает: двоеточие после часа сам не дописываем, иначе «18:» не стереть —
+// стёртое двоеточие тут же возвращалось бы.
+export function maskTimeInput(rawValue, { deleting = false } = {}) {
   let masked = ''
   for (const digit of rawValue.replace(/[^0-9]/g, '')) {
     const position = masked.replace(':', '').length
@@ -53,6 +55,7 @@ export function maskTimeInput(rawValue) {
       masked = `${masked}${digit}`
     }
   }
+  if (deleting && masked.endsWith(':') && !rawValue.endsWith(':')) return masked.slice(0, -1)
   return masked
 }
 

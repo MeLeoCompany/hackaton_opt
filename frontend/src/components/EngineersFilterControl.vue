@@ -24,8 +24,8 @@ defineEmits(['reset'])
   <input
     v-else-if="column === 'name'"
     v-model="filters.text"
-    placeholder="имя"
-    aria-label="фильтр по имени"
+    placeholder="бригада"
+    aria-label="фильтр по бригаде"
   />
 
   <select v-else-if="column === 'transport'" v-model="filters.transportId" aria-label="фильтр по транспорту">
@@ -38,18 +38,23 @@ defineEmits(['reset'])
     <option v-for="item in references.skills" :key="item.id" :value="item.id">{{ item.name }}</option>
   </select>
 
+  <select v-else-if="column === 'equipment'" v-model="filters.equipmentId" aria-label="фильтр по оборудованию">
+    <option value="">любое</option>
+    <option v-for="item in references.equipment ?? []" :key="item.id" :value="item.id">{{ item.name }}</option>
+  </select>
+
+  <select v-else-if="column === 'start'" v-model="filters.startKind" aria-label="фильтр по старту">
+    <option value="">все</option>
+    <option value="office">офис</option>
+    <option value="own">своя</option>
+  </select>
+
   <div v-else-if="column === 'shift'" class="time-range">
     <TimeInput v-model="filters.shiftFrom" aria-label="смена начинается не раньше" />
     <span>–</span>
     <TimeInput v-model="filters.shiftTo" aria-label="смена начинается не позже" />
   </div>
 
-  <input
-    v-else-if="column === 'start'"
-    v-model="filters.startText"
-    placeholder="55.74"
-    aria-label="фильтр по координатам старта"
-  />
 
   <button
     v-else-if="column === 'actions'"

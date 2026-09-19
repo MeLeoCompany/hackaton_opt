@@ -10,12 +10,16 @@ import { referenceName } from '../utils/referenceNames.js'
 // width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
 export const ENGINEER_COLUMNS = [
   { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'name', label: 'Имя', sortKey: 'name', width: '260px' },
-  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '220px' },
-  { key: 'skills', label: 'Навыки', sortKey: 'skills', width: '' },
+  { key: 'name', label: 'Бригада', sortKey: 'name', grow: 1, minWidth: 170, floor: 130 },
+  { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '215px', floor: 170 },
+  { key: 'skills', label: 'Навыки', sortKey: 'skills', grow: 2, minWidth: 230, floor: 170 },
+  // что бригада везёт с собой: тип и количество, отдельно от навыков
+  { key: 'equipment', label: 'Оборудование', sortKey: null, grow: 1, minWidth: 160, floor: 130 },
   { key: 'shift', label: 'Смена (МСК)', sortKey: 'shift_start', width: '130px' },
-  { key: 'start', label: 'Старт', sortKey: null, width: '150px' },
-  { key: 'actions', label: '', sortKey: null, width: '130px' },
+  // откуда выезжает: значок офиса или своей точки; в правке по значку открывается карта
+  { key: 'start', label: 'Старт', sortKey: null, width: '72px' },
+  // кнопки правки и удаления не сужаются — как у заявок
+  { key: 'actions', label: '', sortKey: null, width: '130px', fixed: true },
 ]
 
 // '' — сортировка не выбрана: строки идут в порядке бэкенда
@@ -28,9 +32,10 @@ function emptyFilters() {
     text: '', // часть имени
     transportId: '', // '' — любой
     skillId: '', // '' — любой; иначе исполнитель должен уметь этот навык
+    equipmentId: '', // '' — неважно, иначе номер оборудования, которое бригада везёт
     shiftFrom: '', // 'HH:MM' — смена начинается не раньше
     shiftTo: '', // 'HH:MM' — смена начинается не позже
-    startText: '', // часть координат старта, как они показаны в таблице
+    startKind: '', // '' — любой старт, 'office' — из офиса, 'own' — из своей точки
   }
 }
 
@@ -53,17 +58,18 @@ export function useEngineersView(engineers, references) {
     if (filters.transportId !== '' && engineer.transport_id !== filters.transportId) return false
     if (filters.skillId !== '' && !engineer.skill_ids.includes(filters.skillId)) return false
 
+    const carried = (engineer.equipment ?? []).map((item) => item.equipment_id)
+    if (filters.equipmentId !== '' && !carried.includes(filters.equipmentId)) {
+      return false
+    }
+
+    if (filters.startKind === 'office' && !engineer.start_at_office) return false
+    if (filters.startKind === 'own' && engineer.start_at_office) return false
+
     const shiftStart = moscowTimeOf(engineer.shift_start)
     if (filters.shiftFrom && shiftStart < filters.shiftFrom) return false
     if (filters.shiftTo && shiftStart > filters.shiftTo) return false
 
-    const start = filters.startText.trim().replace(',', '').toLowerCase()
-    if (
-      start &&
-      !`${engineer.start_latitude.toFixed(4)} ${engineer.start_longitude.toFixed(4)}`.includes(start)
-    ) {
-      return false
-    }
 
     return true
   }

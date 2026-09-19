@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from src.schemas.engineers import EngineerCreate
 
 VALID = {
-    "name": "Бригада Тестовая",
+    "brigade_id": 3,
     "start_latitude": 55.75,
     "start_longitude": 37.62,
     "shift_start": "2026-08-17T09:00:00+03:00",
@@ -29,9 +29,12 @@ def test_valid_engineer_without_id():
     assert engineer.skill_ids == [1, 2]
 
 
-def test_name_is_trimmed_and_cannot_be_only_spaces():
-    assert EngineerCreate(**{**VALID, "name": "  Бригада  "}).name == "Бригада"
-    assert "name" in errors_for(name="   ")
+def test_shift_needs_brigade_from_reference():
+    # смена — это смена бригады из справочника: без бригады её не завести
+    assert "brigade_id" in errors_for(brigade_id=0)
+    without_brigade = {key: value for key, value in VALID.items() if key != "brigade_id"}
+    with pytest.raises(ValidationError, match="brigade_id"):
+        EngineerCreate(**without_brigade)
 
 
 def test_needs_at_least_one_skill():

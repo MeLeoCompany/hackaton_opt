@@ -11,18 +11,21 @@ import {
   listEngineers,
   updateEngineer,
 } from '../api/engineersApi.js'
+import { listBrigades } from '../api/brigadesApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
 import { downloadBlob } from '../utils/downloadFile.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
+import { isAtOffice } from '../utils/officePoint.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
+import { equipmentPayload } from '../utils/equipment.js'
 
 export const NEW_ENGINEER = 'new'
 
 export function useEngineersTable() {
   const { selectedDay } = useSelectedDay()
   const engineers = ref([])
-  const references = ref({ skills: [], priorities: [], transports: [], work_types: [] })
+  const references = ref({ skills: [], priorities: [], transports: [], work_types: [], offices: [] })
 
   const loading = ref(false)
   const saving = ref(false)
@@ -40,12 +43,14 @@ export function useEngineersTable() {
     loading.value = true
     clearMessages()
     try {
-      const [loadedReferences, loadedEngineers] = await Promise.all([
+      const [loadedReferences, loadedEngineers, loadedBrigades] = await Promise.all([
         fetchReferences(),
         listEngineers(day),
+        listBrigades(),
       ])
       if (request !== loadRequest) return
-      references.value = loadedReferences
+      // бригады офиса — из них выбирают, чья это смена
+      references.value = { ...loadedReferences, brigades: loadedBrigades }
       engineers.value = loadedEngineers
     } catch (error) {
       if (request === loadRequest) showError(error)
@@ -57,15 +62,18 @@ export function useEngineersTable() {
   function startCreate() {
     clearMessages()
     editingId.value = NEW_ENGINEER
+    // как правило бригады выезжают из офиса — новая сразу стоит в своём офисе
+    const office = references.value.offices?.[0] ?? null
     form.value = {
       id: '',
-      name: '',
+      brigade_id: '',
       transport_id: references.value.transports[0]?.id ?? '',
       skill_ids: [],
+      equipment: {}, // { номер оборудования: сколько штук }
       shift_start: '',
       shift_end: '',
-      start_latitude: '',
-      start_longitude: '',
+      start_latitude: office?.latitude ?? '',
+      start_longitude: office?.longitude ?? '',
     }
   }
 
@@ -74,9 +82,10 @@ export function useEngineersTable() {
     editingId.value = engineer.id
     form.value = {
       id: engineer.id,
-      name: engineer.name,
+      brigade_id: engineer.brigade_id,
       transport_id: engineer.transport_id,
       skill_ids: [...engineer.skill_ids],
+      equipment: Object.fromEntries((engineer.equipment ?? []).map((item) => [item.equipment_id, item.quantity])),
       shift_start: toMoscowInputValue(engineer.shift_start),
       shift_end: toMoscowInputValue(engineer.shift_end),
       start_latitude: engineer.start_latitude,
@@ -97,11 +106,14 @@ export function useEngineersTable() {
   function formToPayload() {
     const values = form.value
     return {
-      name: values.name.trim(),
+      brigade_id: numberOrNull(values.brigade_id),
       transport_id: numberOrNull(values.transport_id),
       skill_ids: values.skill_ids.map(Number),
+      equipment: equipmentPayload(values.equipment),
       shift_start: values.shift_start ? fromMoscowInputValue(values.shift_start) : null,
       shift_end: values.shift_end ? fromMoscowInputValue(values.shift_end) : null,
+      // координаты совпали с офисом — бригада выезжает из офиса и переедет вместе с ним
+      start_at_office: isAtOffice(values.start_latitude, values.start_longitude, references.value.offices?.[0]),
       start_latitude: numberOrNull(values.start_latitude),
       start_longitude: numberOrNull(values.start_longitude),
     }

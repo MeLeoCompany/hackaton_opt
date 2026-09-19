@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     valhalla_url: str = "http://localhost:8002"
     r5_url: str = "http://localhost:8003"
     r5_timeout_seconds: float = Field(default=180.0, gt=0.0, allow_inf_nan=False)
+    # подпись токенов входа; в любом общем окружении задайте свой AUTH_SECRET
+    auth_secret: str = "dev-secret-change-me"
+    auth_token_hours: int = Field(default=12, gt=0)
     # минимум времени поиска; для больших задач лимит растёт до cuopt_max_time_limit_seconds
     cuopt_time_limit_seconds: float = Field(default=1.0, gt=0.0, allow_inf_nan=False)
     cuopt_max_time_limit_seconds: float = Field(default=120.0, gt=0.0, allow_inf_nan=False)

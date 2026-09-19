@@ -102,6 +102,8 @@ services:
       CUOPT_TIME_LIMIT_SECONDS: ${CUOPT_TIME_LIMIT_SECONDS:-1.0}
       CUOPT_MAX_TIME_LIMIT_SECONDS: ${CUOPT_MAX_TIME_LIMIT_SECONDS:-120.0}
       CUOPT_DISTANCE_WEIGHT: ${CUOPT_DISTANCE_WEIGHT:-1.0}
+      # подпись токенов входа: в общем окружении задайте свою строку
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me}
     # решатель cuOpt работает внутри бэкенда и считает на видеокарте NVIDIA
     deploy:
       resources:
@@ -137,9 +139,26 @@ services:
       - "host.docker.internal:host-gateway"
     command: sh -c "npm install && npm run dev"
 
+  # мобильное приложение бригады — отдельный фронтенд рядом с диспетчерским, тот же бэкенд
+  mobile:
+    image: node:22-alpine
+    container_name: routing_mobile
+    working_dir: /app
+    ports:
+      - "5175:5175"
+    volumes:
+      - ./mobile:/app
+      - mobile_node_modules:/app/node_modules
+    environment:
+      VITE_API_TARGET: ${VITE_API_TARGET:-http://backend:8000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: sh -c "npm install && npm run dev"
+
 volumes:
   db_data:
   valhalla_tiles:
   frontend_node_modules:
   r5_cache:
   r5_osm:
+  mobile_node_modules:

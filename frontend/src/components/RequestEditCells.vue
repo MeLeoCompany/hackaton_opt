@@ -2,8 +2,11 @@
 // Ячейки строки таблицы заявок в режиме редактирования (всё, кроме номера заявки).
 // form — объект формы из useRequestsTable, поля ввода меняют его напрямую.
 import DayTimeRange from './DayTimeRange.vue'
+import EquipmentPicker from './EquipmentPicker.vue'
 import IconButton from './IconButton.vue'
 import PointPickerButton from './PointPickerButton.vue'
+import RequestStatusMenu from './RequestStatusMenu.vue'
+import { statusIdByCode } from '../utils/requestStatuses.js'
 
 const props = defineProps({
   form: { type: Object, required: true },
@@ -22,11 +25,13 @@ function applyPickedPoint(latitude, longitude) {
 
 <template>
   <td>
-    <!-- тот же переключатель, что в обычной строке: при переходе в правку он не должен пропадать -->
-    <label class="switch" :title="form.is_active ? 'Учитывается при планировании' : 'Не учитывается при планировании'">
-      <input v-model="form.is_active" type="checkbox" />
-      <span class="slider"></span>
-    </label>
+    <!-- статус правкой не меняется — только переходами (плашка в строке таблицы) и
+         утверждением плана; новая заявка появляется «Новой» -->
+    <RequestStatusMenu
+      :status-id="form.status_id ?? statusIdByCode(references, 'new')"
+      :references="references"
+      readonly
+    />
   </td>
   <td>
     <input v-model="form.address" class="wide-input" placeholder="Город Москва, ул. …" />
@@ -48,10 +53,16 @@ function applyPickedPoint(latitude, longitude) {
     </div>
   </td>
   <td>
-    <select v-model="form.work_type_id" @change="emit('work-type-picked', form.work_type_id)">
-      <option value="">не указан</option>
-      <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
-    </select>
+    <!-- оборудование живёт под типом работ: оно следует из работы, а своя колонка съела бы
+         место у адреса -->
+    <div class="work-type-cell">
+      <select v-model="form.work_type_id" aria-label="тип работ" @change="emit('work-type-picked', form.work_type_id)">
+        <option value="">не указан</option>
+        <option v-for="item in references.work_types" :key="item.id" :value="item.id">{{ item.name }}</option>
+      </select>
+      <!-- что техник должен привезти и сколько: список с галочками, под ним количество -->
+      <EquipmentPicker v-model="form.equipment" :options="references.equipment ?? []" empty-label="без оборудования" />
+    </div>
   </td>
   <td>
     <input v-model="form.duration_minutes" type="number" min="1" class="short-input" />
@@ -85,6 +96,15 @@ function applyPickedPoint(latitude, longitude) {
 </template>
 
 <style scoped>
+
+
+
+.work-type-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .coordinates-cell {
   display: flex;
   align-items: center;

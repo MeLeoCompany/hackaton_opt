@@ -46,3 +46,23 @@ test('переходы к плану и к заявке не мешают дру
   assert.equal(focus.takePlanId(), 5)
   assert.equal(focus.takeRequestId(), 17)
 })
+
+test('из заявки: открывается план и заявка для карты, оба читаются один раз', () => {
+  const focus = harness()
+
+  focus.openPlan(22, 50104)
+
+  assert.equal(focus.activeTab.value, 'plans')
+  assert.equal(focus.takePlanId(), 22)
+  assert.equal(focus.takePlanRequestId(), 50104)
+  assert.equal(focus.takePlanRequestId(), null)
+})
+
+test('из сравнения: план без выделенной заявки', () => {
+  const focus = harness()
+
+  focus.openPlan(7)
+
+  assert.equal(focus.takePlanId(), 7)
+  assert.equal(focus.takePlanRequestId(), null)
+})

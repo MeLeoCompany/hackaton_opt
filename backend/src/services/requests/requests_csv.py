@@ -2,7 +2,7 @@
 
 Формат файла (шаблон отдаёт GET /api/v1/requests/csv-template):
 
-    id;адрес;широта;долгота;тип_работ;длительность_мин;окно_начало;окно_конец;приоритет;навык;транспорт;активна
+    id;адрес;широта;долгота;тип_работ;длительность_мин;окно_начало;окно_конец;приоритет;навык;транспорт;активна;оборудование
 
 - разделитель «;»; подойдут также «,» и табуляция — определяется по строке заголовка;
 - «тип_работ» — из справочника нормативов; он задаёт нужный навык, а «длительность_мин»
@@ -15,6 +15,10 @@
   она будет обновлена;
 - приоритет, навык и транспорт — названием из справочника (регистр не важен) или номером;
   транспорт можно оставить пустым;
+- «оборудование» — что и сколько нужно привезти: названия или номера из справочника
+  оборудования через запятую, с количеством через двоеточие («Роутер: 2, ТВ-приставка»;
+  без количества — одна штука), пусто — ничего. Колонки нет в файле — у существующей
+  заявки требование не меняется;
 - время — «17.08.2026 10:00» или «2026-08-17T10:00»; без часового пояса считается московским.
 """
 
@@ -36,9 +40,18 @@ COLUMNS = [
     "навык",
     "транспорт",
     "активна",
+    "оборудование",
 ]
 # «длительность_мин» и «навык» необязательны, если указан «тип_работ»
-OPTIONAL_COLUMNS = {"id", "тип_работ", "длительность_мин", "навык", "транспорт", "активна"}
+OPTIONAL_COLUMNS = {
+    "id",
+    "тип_работ",
+    "длительность_мин",
+    "навык",
+    "транспорт",
+    "активна",
+    "оборудование",
+}
 
 DATETIME_FORMATS = ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S")
 
@@ -69,6 +82,10 @@ class ReferenceLookup:
     transports: ReferenceOptions
     work_types: ReferenceOptions
     work_type_norms: dict[int, WorkTypeNorm]
+    # оборудование появилось позже: старые вызовы и тесты без него по-прежнему работают
+    equipment: ReferenceOptions = field(
+        default_factory=lambda: ReferenceOptions(id_by_key={}, names=[])
+    )
 
 
 @dataclass
@@ -92,9 +109,9 @@ def build_csv_template() -> str:
         ";".join(COLUMNS),
         # длительность и навык не заполнены: возьмутся из типа работ
         ";Город Москва, пер.Маяковского, д. 2;55.7400;37.6580;Подключение клиентов, базовая;;"
-        "17.08.2026 18:00;17.08.2026 20:00;Обычная;;;да",
+        '17.08.2026 18:00;17.08.2026 20:00;Обычная;;;да;"Роутер: 2, ТВ-приставка"',
         "400000001;Город Москва, ул.Саратовская, д. 16;55.7090;37.7368;Авария на ТКД;90;"
-        "17.08.2026 20:00;17.08.2026 22:00;Срочная;Аварийные работы;Автомобиль;нет",
+        "17.08.2026 20:00;17.08.2026 22:00;Срочная;Аварийные работы;Автомобиль;нет;",
     ]
     return "\n".join(lines) + "\n"
 
@@ -246,7 +263,7 @@ def parse_row(
     )
     is_active = parse_active(cell(raw_row, "активна"), errors)
 
-    return {
+    fields = {
         "id": request_id,
         "address": address,
         "latitude": latitude,
@@ -260,6 +277,43 @@ def parse_row(
         "work_type_id": work_type_id,
         "is_active": is_active,
     }
+    # нет колонки — поле не трогаем, как с «активна»: повторная загрузка старого файла
+    # не должна молча снимать требование оборудования у существующих заявок
+    if "оборудование" in raw_row:
+        fields["equipment"] = parse_equipment(
+            cell(raw_row, "оборудование"), references.equipment, errors
+        )
+    return fields
+
+
+def parse_equipment(
+    raw_value: str, equipment: ReferenceOptions, errors: list[str]
+) -> dict[int, int]:
+    """«Роутер: 2, ТВ-приставка» -> {1: 2, 2: 1}: без количества — одна штука.
+
+    Одинаково для требования заявки и запаса бригады.
+    """
+    quantities: dict[int, int] = {}
+    for part in (piece.strip() for piece in raw_value.split(",")):
+        if not part:
+            continue
+        name, _, raw_quantity = part.partition(":")
+        equipment_id = parse_reference(
+            name.strip(), "оборудование", equipment, errors, required=True
+        )
+        quantity = 1
+        if raw_quantity.strip():
+            if not raw_quantity.strip().isdigit() or int(raw_quantity) < 1:
+                errors.append(f"«{part}» в поле «оборудование» — количество должно быть целым от 1")
+                continue
+            quantity = int(raw_quantity)
+        if equipment_id is None:
+            continue
+        if equipment_id in quantities:
+            errors.append(f"оборудование «{name.strip()}» указано дважды")
+            continue
+        quantities[equipment_id] = quantity
+    return quantities
 
 
 def parse_active(raw_value: str, errors: list[str]) -> bool | None:

@@ -152,6 +152,7 @@ async def test_public_transport_route_uses_each_planned_departure():
     assert route.distance_km == 4
     assert route.waiting_duration_min == 4
     assert route.geometry == ["shape", "shape"]
+    assert [leg.visit_index for leg in route.legs] == [0, 1]
     assert r5_route.await_args_list[0].args == (points[0], points[1], first_departure)
     assert r5_route.await_args_list[1].args == (points[1], points[2], second_departure)
 

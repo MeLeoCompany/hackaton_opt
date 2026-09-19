@@ -452,6 +452,12 @@ button.link:disabled {
   padding: 4px 6px;
 }
 
+/* значок старта бригады высотой 24 — в той же полосе, что поля и кнопки, по центру колонки */
+.data-table.fixed-columns tbody td.start-cell {
+  padding: 4px 6px;
+  text-align: center;
+}
+
 /* переключатель высотой 18 — по центру той же полосы в 24 пикселя */
 .data-table.fixed-columns tbody td:has(.switch) {
   padding: 7px 13px 4px;
@@ -560,6 +566,52 @@ button.link:disabled {
   overflow-wrap: break-word;
 }
 
+/* ---- таблицы, которые сжимаются вместе с окном (заявки, исполнители) ----
+   Ширины колонок там заданы долями (utils/tableWidth.js), прокрутки нет. Чтобы при сжатии
+   ничего не вылезало за границы ячеек и оставалось ровно:
+   - ячейка обрезает всё, что шире неё; текст без переноса и значки — с многоточием;
+   - поля не держат свою минимальную ширину, а занимают ячейку целиком;
+   - фильтр «чч:мм – чч:мм» и значение окна или смены под ним ужимаются одинаково
+     и остаются друг под другом. */
+.data-table.fixed-columns.fluid {
+  min-width: 0;
+}
+
+.data-table.fixed-columns.fluid th,
+.data-table.fixed-columns.fluid td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-table.fixed-columns.fluid .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
+.data-table.fixed-columns.fluid td input.short-input,
+.data-table.fixed-columns.fluid td input.wide-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.data-table.fixed-columns.fluid .filter-controls .time-range {
+  width: 100%;
+  max-width: 110px;
+}
+
+.data-table.fixed-columns.fluid .range-value {
+  width: 100%;
+  max-width: 108px;
+}
+
+.data-table.fixed-columns.fluid .range-value > span:not(.range-dash) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .data-table td.empty {
   text-align: center;
   color: #94a3b8;
@@ -590,6 +642,27 @@ button.link:disabled {
 .badge.urgent {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+/* оборудование — жёлтая плашка «⚙ Роутер» (у бригады «⚙ Роутер × 3»): каждое отдельной
+   строкой, одинаково в заявках и у исполнителей */
+.equipment-badge {
+  display: table;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 0 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.equipment-badge:first-child {
+  margin-top: 0;
 }
 
 .chips {
@@ -661,16 +734,24 @@ button.link:disabled {
    задаёт суммой двух последних колонок таблицы (--details-width). Небольшой промежуток
    делится поровну по обе стороны линии колонки «Старт» («Транспорт» у заявок): карта не
    доходит до неё на половину промежутка, карточка отступает на ту же половину. */
+/* Вид карты забирает всё место до низа окна (рабочая область — колонка во всю высоту):
+   строка фильтров своей высоты, карта — остаток. Меньше 480 пикселей карта не становится —
+   тогда прокручивается страница. */
 .map-view {
   --map-card-gap: 12px;
   display: grid;
+  flex: 1;
   grid-template-columns: minmax(0, 1fr) var(--details-width, 300px);
+  grid-template-rows: auto minmax(480px, 1fr);
   column-gap: 0;
   row-gap: 14px;
   align-items: start;
 }
 
 .map-view > .map-area {
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
   margin-right: calc(var(--map-card-gap) / 2);
   border-radius: 8px;
   overflow: hidden;
@@ -694,7 +775,9 @@ button.link:disabled {
 
 @media (max-width: 900px) {
   .map-view {
+    flex: none;
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
   }
 
   .map-view > .map-area,
@@ -703,7 +786,8 @@ button.link:disabled {
     margin-right: 0;
   }
 
-  .map-area {
+  .map-area,
+  .map-view > .map-area {
     height: 420px;
   }
 }
@@ -813,18 +897,49 @@ button.link:disabled {
   flex: 1;
 }
 
-.status {
+/* статус заявки: у каждого свой цвет — одинаково в таблице, карточке, плане и истории */
+.status-badge {
   display: inline-block;
   padding: 2px 8px;
+  overflow: hidden;
   border-radius: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-.status.on {
+/* в таблице, меню и окне визита статусы одной ширины — колонка читается ровно */
+.status-badge.status-fixed {
+  box-sizing: border-box;
+  width: 100px;
+  text-align: center;
+}
+
+.status-badge.status-new {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-badge.status-planned {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.status-badge.status-in_progress {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-badge.status-done {
   background: #dcfce7;
   color: #166534;
 }
 
-.status.off {
+.status-badge.status-cancelled {
   background: #f1f5f9;
   color: #64748b;
 }

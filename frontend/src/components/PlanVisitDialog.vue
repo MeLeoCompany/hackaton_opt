@@ -1,19 +1,25 @@
 <script setup>
 // Почему визит стоит здесь: факты этого визита, а не пересказ правил планирования.
 // Открывается по клику на визит в маршруте.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
-import { usePlanFocus } from '../composables/usePlanFocus.js'
+import { setRequestsStatus } from '../api/requestsApi.js'
 import { formatDuration } from '../utils/duration.js'
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
+import ErrorMessage from './ErrorMessage.vue'
+import RequestHistoryDialog from './RequestHistoryDialog.vue'
+import RequestStatusMenu from './RequestStatusMenu.vue'
 
 const props = defineProps({
   visit: { type: Object, required: true },
   route: { type: Object, required: true },
   references: { type: Object, required: true },
+  // статус меняют только у заявок утверждённого плана: бригада работает по нему
+  approved: { type: Boolean, default: false },
+  planId: { type: Number, required: true },
 })
-defineEmits(['close'])
+const emit = defineEmits(['close', 'status-changed'])
 
 const minutesBetween = (from, to) => Math.round((new Date(to) - new Date(from)) / 60000)
 
@@ -26,9 +32,25 @@ const workEnd = computed(() =>
 
 const isFirst = computed(() => props.visit.visit_order === 1)
 
-// заявку в плане видно глазами планировщика; чтобы посмотреть, как её завели,
-// уходим на вкладку «Заявки» прямо на эту строку
-const { openRequest } = usePlanFocus()
+// Смена статуса прямо из маршрута: бригада выехала, выполнила, заявку отменили.
+// Бэкенд не даст закрыть визит, пока раньше в маршруте есть незакрытый, — причину
+// показываем здесь же, в окне.
+const statusError = ref('')
+const changingStatus = ref(false)
+const historyOpen = ref(false)
+
+async function changeStatus(statusId) {
+  statusError.value = ''
+  changingStatus.value = true
+  try {
+    await setRequestsStatus([props.visit.request_id], statusId)
+    emit('status-changed', statusId)
+  } catch (error) {
+    statusError.value = [error.message, ...(error.details ?? [])].join(': ')
+  } finally {
+    changingStatus.value = false
+  }
+}
 </script>
 
 <template>
@@ -40,6 +62,26 @@ const { openRequest } = usePlanFocus()
       </header>
 
       <dl>
+        <div>
+          <dt>Статус</dt>
+          <dd>
+            <RequestStatusMenu
+              :status-id="visit.status_id"
+              :references="references"
+              :readonly="!approved"
+              :plan-id="visit.approved_plan_id ?? null"
+              :with-plan-link="false"
+              :disabled="changingStatus"
+              @change="changeStatus"
+              @history="historyOpen = true"
+            />
+            <span v-if="!approved" class="muted"> · менять статус можно у утверждённого плана</span>
+            <span v-else-if="visit.approved_plan_id !== planId" class="muted">
+              · снята с плана: ждёт нового расчёта</span
+            >
+            <ErrorMessage v-if="statusError" class="status-error" :message="statusError" @close="statusError = ''" />
+          </dd>
+        </div>
         <div>
           <dt>Кто едет</dt>
           <dd>
@@ -89,16 +131,13 @@ const { openRequest } = usePlanFocus()
         </div>
       </dl>
 
-      <footer>
-        <button
-          class="link"
-          title="Открыть эту заявку на вкладке «Заявки»: адрес, окно, тип работ — как их завели"
-          @click="openRequest(visit.request_id)"
-        >
-          Открыть в заявках →
-        </button>
-      </footer>
     </div>
+    <RequestHistoryDialog
+      v-if="historyOpen"
+      :request-id="visit.request_id"
+      :references="references"
+      @close="historyOpen = false"
+    />
   </div>
 </template>
 
@@ -138,13 +177,6 @@ const { openRequest } = usePlanFocus()
   line-height: 26px;
 }
 
-footer {
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid #e2e8f0;
-  padding-top: 10px;
-}
-
 dl {
   display: flex;
   flex-direction: column;
@@ -165,5 +197,9 @@ dt {
 
 dd {
   margin: 0;
+}
+
+.status-error {
+  margin-top: 6px;
 }
 </style>

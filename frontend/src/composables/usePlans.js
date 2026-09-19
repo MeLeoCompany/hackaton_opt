@@ -6,6 +6,7 @@ import {
   approvePlan,
   buildPlan,
   cancelPlanApproval,
+  replanPlan,
   checkPlanningDay,
   deletePlan,
   getPlan,
@@ -61,12 +62,12 @@ export function usePlans() {
       const summaries = await listPlans(day)
       if (request !== listRequest) return
       plans.value = summaries
-      if (plans.value.length) await selectPlan(plans.value[0].id)
     } catch (error) {
       if (request === listRequest) showError(error)
     }
   }
 
+  // Открыть план: страница переходит от списка планов к маршрутам этого плана.
   async function selectPlan(planId) {
     const request = ++detailRequest
     plan.value = null
@@ -84,6 +85,15 @@ export function usePlans() {
     }
   }
 
+  // Назад к списку планов дня. Поздний ответ открывавшегося плана уже ничего не покажет.
+  function closePlan() {
+    ++detailRequest
+    plan.value = null
+    selectedPlanId.value = null
+    selectedEngineerId.value = null
+    loadingPlan.value = false
+  }
+
   async function buildDayPlan(params = {}) {
     if (building.value) return
     const day = selectedDay.value
@@ -98,8 +108,8 @@ export function usePlans() {
       )
       const summaries = await listPlans(day)
       if (day !== selectedDay.value) return
+      // новый план сверху списка: его видно рядом с остальными и можно сразу сравнить
       plans.value = summaries
-      await selectPlan(summary.id)
     } catch (error) {
       showError(error)
     } finally {
@@ -119,9 +129,7 @@ export function usePlans() {
       const summaries = await listPlans(day)
       if (day !== selectedDay.value) return
       plans.value = summaries
-      plan.value = null
-      selectedPlanId.value = null
-      if (plans.value.length) await selectPlan(plans.value[0].id)
+      closePlan()
       showNotice(`План №${summary.id} удалён`)
     } catch (error) {
       showError(error)
@@ -142,14 +150,55 @@ export function usePlans() {
     }
   }
 
+  // пересчёт утверждённого плана с момента: новый план появляется в списке рядом с ним
+  async function replan(summary, params) {
+    if (building.value) return
+    const day = selectedDay.value
+    building.value = true
+    clearMessages()
+    try {
+      const result = await replanPlan(summary.id, params)
+      if (day !== selectedDay.value) return
+      await refreshDay()
+      const decisions = params.decisions ?? []
+      const moved = decisions.filter((decision) => decision.action === 'reschedule').length
+      const cancelled = decisions.filter((decision) => decision.action === 'cancel').length
+      const decided = [moved && `новое окно — ${moved}`, cancelled && `отменено — ${cancelled}`].filter(Boolean)
+      showNotice(
+        `Пересчёт №${result.id} плана №${summary.id} готов: назначено ${result.assigned_count}, ` +
+          `не назначено ${result.unassigned_count}` +
+          (decided.length ? ` (до пересчёта: ${decided.join(', ')})` : '') +
+          `. Утвердите его, чтобы заменить план №${summary.id}`,
+      )
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
   async function approve(summary) {
     if (building.value) return
+    // пересчёт заменяет действующий план: бригады перейдут на новый маршрут
+    if (
+      summary.parent_plan_id &&
+      !window.confirm(
+        `Утвердить пересчёт №${summary.id}? Он заменит план №${summary.parent_plan_id}: бригады ` +
+          'увидят новый маршрут, а заявки, которым не нашлось места, вернутся в «Новые».',
+      )
+    ) {
+      return
+    }
     building.value = true
     clearMessages()
     try {
       await approvePlan(summary.id)
       await refreshDay()
-      showNotice(`План №${summary.id} утверждён: его заявки закреплены за этим днём`)
+      showNotice(
+        summary.parent_plan_id
+          ? `Пересчёт №${summary.id} утверждён и заменил план №${summary.parent_plan_id}`
+          : `План №${summary.id} утверждён: его заявки закреплены за этим днём`,
+      )
     } catch (error) {
       showError(error)
     } finally {
@@ -184,6 +233,20 @@ export function usePlans() {
   // сменили день — показываем планы нового дня
   watch(selectedDay, loadPlans)
 
+  // оператор сменил статус заявки в маршруте — показываем его у визита без перезагрузки плана.
+  // «Новая» бэкенд отвязывает от плана, возврат «В план» — закрепляет за этим планом снова
+  function markVisitStatus(requestId, statusId) {
+    const code = references.value.request_statuses?.find((status) => status.id === statusId)?.code
+    for (const route of plan.value?.routes ?? []) {
+      for (const visit of route.visits) {
+        if (visit.request_id !== requestId) continue
+        visit.status_id = statusId
+        if (code === 'new') visit.approved_plan_id = null
+        if (code === 'planned') visit.approved_plan_id = plan.value.id
+      }
+    }
+  }
+
   // повторный клик по тому же исполнителю снимает подсветку
   function selectEngineer(engineerId) {
     selectedEngineerId.value = selectedEngineerId.value === engineerId ? null : engineerId
@@ -205,11 +268,14 @@ export function usePlans() {
     load,
     loadPlans,
     selectPlan,
+    closePlan,
     buildDayPlan,
     removePlan,
     dayCheck,
+    replan,
     approve,
     cancelApproval,
     selectEngineer,
+    markVisitStatus,
   }
 }

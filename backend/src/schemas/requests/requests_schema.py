@@ -3,6 +3,15 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class RequestEquipmentItem(BaseModel):
+    """Сколько штук оборудования одного типа нужно на заявку."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    equipment_id: int = Field(gt=0)
+    quantity: int = Field(default=1, gt=0, le=999)
+
+
 class RequestWrite(BaseModel):
     """Поля заявки, которые диспетчер заполняет при создании и изменении."""
 
@@ -19,7 +28,8 @@ class RequestWrite(BaseModel):
     skill_id: int | None = None
     transport_id: int | None = None  # пусто — транспорт не важен
     work_type_id: int | None = None  # тип работ из справочника нормативов
-    is_active: bool = True  # выключенная заявка не попадает в сборку задачи планирования
+    # какое оборудование и сколько нужно привезти; пусто — ничего
+    equipment: list[RequestEquipmentItem] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_window(self) -> "RequestWrite":
@@ -29,6 +39,9 @@ class RequestWrite(BaseModel):
             )
         if self.window_end <= self.window_start:
             raise ValueError("конец окна должен быть позже начала")
+        equipment_ids = [item.equipment_id for item in self.equipment]
+        if len(set(equipment_ids)) != len(equipment_ids):
+            raise ValueError("оборудование не должно повторяться")
         return self
 
 
@@ -41,10 +54,37 @@ class RequestRead(RequestWrite):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    office_id: int  # чья заявка; задаётся офисом того, кто её завёл
+    # статус меняется не правкой заявки, а переходами (PATCH /requests/status, утверждение плана)
+    status_id: int
+    # идёт ли заявка в планирование — следует из статуса; для совместимости интерфейса
+    is_active: bool
+    # утверждённый план, за которым закреплена заявка: из заявки можно перейти в её маршрут
+    approved_plan_id: int | None = None
+
+
+class RequestStatusHistoryItem(BaseModel):
+    """Одна смена статуса заявки: из какого в какой, когда, кто, по какому плану."""
+
+    id: int
+    changed_at: datetime
+    from_status_id: int | None  # None — заявка появилась
+    to_status_id: int
+    manual: bool  # True — оператор, False — система (утверждение плана)
+    user_name: str | None
+    plan_id: int | None
+    comment: str
+
+
+class RequestStatusUpdate(BaseModel):
+    """Оператор переводит несколько заявок в статус — по таблице ручных переходов."""
+
+    request_ids: list[int] = Field(min_length=1)
+    status_id: int
 
 
 class RequestActivityUpdate(BaseModel):
-    """Включить или выключить сразу несколько заявок для планирования."""
+    """Прежний переключатель «активна»: включить — «Новая», выключить — «Отменена»."""
 
     request_ids: list[int] = Field(min_length=1)
     is_active: bool

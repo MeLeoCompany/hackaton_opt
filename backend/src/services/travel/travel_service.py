@@ -159,7 +159,11 @@ async def _r5_route(
         results.append(result)
         current_departure += timedelta(minutes=result.total_duration_min)
 
-    legs = [leg for result in results for leg in result.legs]
+    legs = [
+        leg.model_copy(update={"visit_index": index})
+        for index, result in enumerate(results)
+        for leg in result.legs
+    ]
     geometry = [leg.geometry for leg in legs]
     return TravelRoute(
         transport=TransportKind.PUBLIC_TRANSPORT,

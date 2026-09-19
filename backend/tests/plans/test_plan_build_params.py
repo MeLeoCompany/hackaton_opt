@@ -42,7 +42,7 @@ async def test_cuopt_is_used_by_default():
         ) as cuopt,
         patch.object(planning_service.baseline_solver, "solve_day") as baseline,
     ):
-        await planning_service.build_plan_for_day(session, "2026-08-17")
+        await planning_service.build_plan_for_day(session, "2026-08-17", office_id=1)
 
     cuopt.assert_awaited_once_with("задача дня", objective_order=DEFAULT_OBJECTIVE_ORDER)
     baseline.assert_not_called()
@@ -68,7 +68,9 @@ async def test_baseline_is_used_when_chosen():
             planning_service.baseline_solver, "solve_day", return_value=DaySolution()
         ) as baseline,
     ):
-        await planning_service.build_plan_for_day(session, "2026-08-17", SolverName.BASELINE)
+        await planning_service.build_plan_for_day(
+            session, "2026-08-17", SolverName.BASELINE, office_id=1
+        )
 
     baseline.assert_called_once_with("задача дня")
     cuopt.assert_not_awaited()
@@ -101,7 +103,9 @@ async def test_custom_objective_order_is_forwarded_and_saved():
             AsyncMock(return_value=DaySolution()),
         ) as cuopt,
     ):
-        await planning_service.build_plan_for_day(session, "2026-08-17", SolverName.CUOPT, order)
+        await planning_service.build_plan_for_day(
+            session, "2026-08-17", SolverName.CUOPT, order, office_id=1
+        )
 
     expected = tuple(order)
     cuopt.assert_awaited_once_with("задача дня", objective_order=expected)
@@ -125,7 +129,7 @@ async def test_single_plan_without_pair():
             planning_service.cuopt_solver, "solve_day", AsyncMock(return_value=DaySolution())
         ),
     ):
-        await planning_service.build_plan_for_day(session, "2026-08-17")
+        await planning_service.build_plan_for_day(session, "2026-08-17", office_id=1)
 
     assert save_solution.await_count == 1
     assert "comparison_id" not in save_solution.await_args.kwargs

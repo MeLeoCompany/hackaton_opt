@@ -2,12 +2,13 @@
 // Карточка заявки, выбранной на карте.
 import { formatMoscowWindow } from '../utils/moscowTime.js'
 import { isUrgent, referenceName } from '../utils/referenceNames.js'
+import RequestStatusMenu from './RequestStatusMenu.vue'
 
 defineProps({
   request: { type: Object, default: null },
   references: { type: Object, required: true },
 })
-defineEmits(['show-in-table', 'close', 'toggle-active'])
+defineEmits(['show-in-table', 'close', 'change-status', 'history', 'open-plan'])
 </script>
 
 <template>
@@ -22,11 +23,16 @@ defineEmits(['show-in-table', 'close', 'toggle-active'])
 
       <dl>
         <div>
-          <dt>Планирование</dt>
+          <dt>Статус</dt>
           <dd>
-            <span :class="['status', request.is_active ? 'on' : 'off']">
-              {{ request.is_active ? 'Активна' : 'Выключена' }}
-            </span>
+            <RequestStatusMenu
+              :status-id="request.status_id"
+              :references="references"
+              :plan-id="request.approved_plan_id ?? null"
+              @change="$emit('change-status', $event)"
+              @history="$emit('history')"
+              @open-plan="$emit('open-plan')"
+            />
           </dd>
         </div>
         <div>
@@ -50,6 +56,17 @@ defineEmits(['show-in-table', 'close', 'toggle-active'])
           <dd>{{ referenceName(references, 'work_types', request.work_type_id) }}</dd>
         </div>
         <div>
+          <dt>Оборудование</dt>
+          <dd>
+            <template v-if="request.equipment?.length">
+              <span v-for="item in request.equipment" :key="item.equipment_id" class="equipment-badge">
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
+              </span>
+            </template>
+            <template v-else>не нужно</template>
+          </dd>
+        </div>
+        <div>
           <dt>Навык</dt>
           <dd>
             <span class="badge">{{ referenceName(references, 'skills', request.skill_id) }}</span>
@@ -67,7 +84,6 @@ defineEmits(['show-in-table', 'close', 'toggle-active'])
 
       <div class="details-actions">
         <button class="primary" @click="$emit('show-in-table')">Показать в таблице</button>
-        <button @click="$emit('toggle-active')">{{ request.is_active ? 'Выключить' : 'Включить' }}</button>
       </div>
     </template>
 

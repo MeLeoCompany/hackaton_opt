@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Priority, Skill, Transport, WorkType
+from src.models import Equipment, Office, Priority, Skill, Transport, WorkType
 
 
 async def list_skills(session: AsyncSession) -> list[Skill]:
@@ -23,4 +23,18 @@ async def list_transports(session: AsyncSession) -> list[Transport]:
 
 async def list_work_types(session: AsyncSession) -> list[WorkType]:
     result = await session.execute(select(WorkType).order_by(WorkType.id))
+    return list(result.scalars().all())
+
+
+async def get_work_type(session: AsyncSession, work_type_id: int) -> WorkType | None:
+    return await session.get(WorkType, work_type_id)
+
+
+async def list_offices(session: AsyncSession) -> list[Office]:
+    result = await session.execute(select(Office).order_by(Office.id))
+    return list(result.scalars().all())
+
+
+async def list_equipment(session: AsyncSession) -> list[Equipment]:
+    result = await session.execute(select(Equipment).order_by(Equipment.id))
     return list(result.scalars().all())

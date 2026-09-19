@@ -75,3 +75,10 @@ test('окно через полночь помечается следующим
     endsNextDay: true,
   })
 })
+
+test('время можно стереть до конца: двоеточие при стирании не возвращается', () => {
+  assert.equal(maskTimeInput('18', { deleting: true }), '18') // стёрли двоеточие у «18:»
+  assert.equal(maskTimeInput('1', { deleting: true }), '1')
+  assert.equal(maskTimeInput('18:3', { deleting: true }), '18:3')
+  assert.equal(maskTimeInput('18'), '18:') // при наборе двоеточие по-прежнему дописывается
+})

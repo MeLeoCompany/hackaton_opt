@@ -1,6 +1,7 @@
 <script setup>
-// Выбор координаты мышью: клик по карте ставит точку, её же можно перетащить.
-// Нужен, чтобы адрес заявки и старт бригады не приходилось набирать числами.
+// Выбор координаты: клик по карте ставит точку, её можно перетащить, а можно вписать
+// широту и долготу в поля внизу — метка переедет туда же. Нужен, чтобы адрес заявки и старт
+// бригады не приходилось набирать числами вслепую.
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -11,6 +12,10 @@ const props = defineProps({
   longitude: { type: [Number, String], default: '' },
   // уже известные точки — чтобы было видно, куда ставить новую
   contextPoints: { type: Array, default: () => [] },
+  // заметные ориентиры (офисы): клик по такому значку ставит точку прямо в него
+  landmarks: { type: Array, default: () => [] },
+  // точка «по умолчанию»: кнопка в окне сразу выбирает её — { latitude, longitude, label }
+  home: { type: Object, default: null },
 })
 const emit = defineEmits(['pick', 'close'])
 
@@ -19,13 +24,17 @@ const COORDINATE_DIGITS = 6
 
 const container = ref(null)
 const picked = ref(validCoordinates(props.latitude, props.longitude))
+// поля ввода живут своим текстом: пока координата набирается, метка стоит на месте
+const latitudeText = ref(picked.value ? String(picked.value.latitude) : '')
+const longitudeText = ref(picked.value ? String(picked.value.longitude) : '')
 let map = null
 let marker = null
 
 function validCoordinates(latitude, longitude) {
-  const lat = Number(latitude)
-  const lon = Number(longitude)
+  const lat = Number(String(latitude).replace(',', '.'))
+  const lon = Number(String(longitude).replace(',', '.'))
   if (latitude === '' || longitude === '' || Number.isNaN(lat) || Number.isNaN(lon)) return null
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
   return { latitude: lat, longitude: lon }
 }
 
@@ -33,14 +42,51 @@ function round(value) {
   return Number(value.toFixed(COORDINATE_DIGITS))
 }
 
-function movePoint(latlng) {
-  picked.value = { latitude: round(latlng.lat), longitude: round(latlng.lng) }
+function placeMarker(latlng) {
   if (marker) {
     marker.setLatLng(latlng)
     return
   }
   marker = L.marker(latlng, { draggable: true }).addTo(map)
   marker.on('dragend', () => movePoint(marker.getLatLng()))
+}
+
+// точку поставили мышью — поля показывают её координаты
+function movePoint(latlng) {
+  picked.value = { latitude: round(latlng.lat), longitude: round(latlng.lng) }
+  latitudeText.value = String(picked.value.latitude)
+  longitudeText.value = String(picked.value.longitude)
+  placeMarker(latlng)
+}
+
+// координаты вписали руками — метка переезжает, карта подвигается к ней
+function typePoint() {
+  const typed = validCoordinates(latitudeText.value, longitudeText.value)
+  if (!typed) {
+    picked.value = null
+    return
+  }
+  picked.value = typed
+  const latlng = L.latLng(typed.latitude, typed.longitude)
+  placeMarker(latlng)
+  map.panTo(latlng)
+}
+
+// значок офиса: квадрат, чтобы не путать с кружками других точек
+const LANDMARK_ICON = L.divIcon({
+  className: 'landmark-marker',
+  html: '<span></span>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+})
+
+function drawLandmarks() {
+  for (const point of props.landmarks) {
+    L.marker([point.latitude, point.longitude], { icon: LANDMARK_ICON })
+      .bindTooltip(point.label ?? '')
+      .on('click', () => movePoint(L.latLng(point.latitude, point.longitude)))
+      .addTo(map)
+  }
 }
 
 function drawContext() {
@@ -66,13 +112,15 @@ onMounted(async () => {
   }).addTo(map)
 
   drawContext()
+  drawLandmarks()
 
+  const knownPoints = [...props.contextPoints, ...props.landmarks]
   if (picked.value) {
     movePoint(L.latLng(picked.value.latitude, picked.value.longitude))
     map.setView([picked.value.latitude, picked.value.longitude], 15)
-  } else if (props.contextPoints.length) {
+  } else if (knownPoints.length) {
     map.fitBounds(
-      L.latLngBounds(props.contextPoints.map((point) => [point.latitude, point.longitude])),
+      L.latLngBounds(knownPoints.map((point) => [point.latitude, point.longitude])),
       { padding: [40, 40] },
     )
   }
@@ -94,17 +142,30 @@ function confirm() {
     <div class="dialog" role="dialog" :aria-label="title">
       <header>
         <strong>{{ title }}</strong>
-        <span class="hint">Кликните по карте или перетащите метку</span>
+        <span class="hint">
+          Кликните по карте, перетащите метку или впишите координаты<template v-if="landmarks.length">;
+            ■ — офисы, клик ставит точку в офис</template>
+        </span>
       </header>
 
       <div ref="container" class="picker-map"></div>
 
       <footer>
-        <span v-if="picked" class="coordinates">
-          {{ picked.latitude.toFixed(6) }}, {{ picked.longitude.toFixed(6) }}
-        </span>
-        <span v-else class="hint">Точка не выбрана</span>
+        <div class="coordinate-fields">
+          <label>
+            <span>Широта</span>
+            <input v-model="latitudeText" inputmode="decimal" placeholder="55.751244" @input="typePoint" />
+          </label>
+          <label>
+            <span>Долгота</span>
+            <input v-model="longitudeText" inputmode="decimal" placeholder="37.618423" @input="typePoint" />
+          </label>
+          <span v-if="!picked" class="hint">
+            {{ latitudeText || longitudeText ? 'Координаты вне допустимых границ' : 'Точка не выбрана' }}
+          </span>
+        </div>
         <div class="dialog-actions">
+          <button v-if="home" @click="emit('pick', home.latitude, home.longitude)">{{ home.label }}</button>
           <button class="primary" :disabled="!picked" @click="confirm">Готово</button>
           <button @click="emit('close')">Отмена</button>
         </div>
@@ -153,8 +214,35 @@ function confirm() {
   font-size: 13px;
 }
 
-.coordinates {
+.coordinate-fields {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.coordinate-fields label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.coordinate-fields input {
+  width: 110px;
   font-variant-numeric: tabular-nums;
+}
+
+/* значок офиса: синий квадрат с белой рамкой, заметнее серых кружков */
+:deep(.landmark-marker span) {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  background: #1d4ed8;
+  box-shadow: 0 0 0 1px #1d4ed8;
+  cursor: pointer;
 }
 
 .dialog-actions {
