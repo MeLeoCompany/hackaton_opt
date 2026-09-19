@@ -22,13 +22,13 @@ services:
       retries: 10
 
   valhalla:
-    image: ghcr.io/nilsnolde/docker-valhalla/valhalla:latest
+    image: ghcr.io/valhalla/valhalla-scripted:3.9.0
     container_name: routing_valhalla
     restart: unless-stopped
     ports:
       - "8002:8002"
     volumes:
-      - valhalla_tiles:/custom_files
+      - valhalla_tiles_390:/custom_files
     environment:
       # Москва + область: в данных есть Домодедово, компактный экстракт по городу его не покрывает
       tile_urls: https://download.geofabrik.de/russia/central-fed-district-latest.osm.pbf
@@ -51,7 +51,7 @@ services:
       R5_OSM_BBOX: ${R5_OSM_BBOX:-35.0,54.1,41.0,57.0}
       R5_SOURCE_WAIT_SECONDS: ${R5_SOURCE_WAIT_SECONDS:-900}
     volumes:
-      - valhalla_tiles:/source:ro
+      - valhalla_tiles_390:/source:ro
       - r5_osm:/output
     depends_on:
       valhalla:
@@ -157,7 +157,7 @@ services:
 
 volumes:
   db_data:
-  valhalla_tiles:
+  valhalla_tiles_390:
   frontend_node_modules:
   r5_cache:
   r5_osm:
