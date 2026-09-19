@@ -57,11 +57,22 @@ const officeLandmarks = computed(() =>
       ]
     : [],
 )
+
+// бригады для выбора: работающие и та, чья эта смена уже есть (даже если её выключили)
+const brigadeOptions = computed(() =>
+  (props.references.brigades ?? []).filter((brigade) => brigade.is_active || brigade.id === props.form.brigade_id),
+)
 </script>
 
 <template>
   <td>
-    <input v-model="form.name" class="wide-input" placeholder="Бригада …" />
+    <!-- смена — бригады из справочника «Бригады»: новые — только работающим бригадам -->
+    <select v-model="form.brigade_id" class="wide-input" aria-label="бригада">
+      <option value="" disabled>выберите бригаду</option>
+      <option v-for="brigade in brigadeOptions" :key="brigade.id" :value="brigade.id">
+        {{ brigade.name }}{{ brigade.is_active ? '' : ' (выключена)' }}
+      </option>
+    </select>
   </td>
   <td>
     <select v-model="form.transport_id">

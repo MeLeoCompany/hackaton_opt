@@ -12,7 +12,7 @@ function harness() {
   const dayCheck = { respond: async () => ({ plan_date: day.value, active_requests: 0, held_requests: [] }) }
   const make = new Function(
     'ref', 'watch', 'approvePlan', 'buildPlan', 'cancelPlanApproval', 'checkPlanningDay',
-    'deletePlan', 'getPlan', 'listPlans', 'fetchReferences', 'useMessages', 'useSelectedDay',
+    'deletePlan', 'getPlan', 'listPlans', 'fetchReferences', 'useMessages', 'useSelectedDay', 'replanPlan',
     source + '; return usePlans()')
   const plans = make(
     value => ({ value }), () => {},
@@ -29,7 +29,11 @@ function harness() {
       showNotice: notice => notices.push(notice),
       clearMessages() {},
     }),
-    () => ({ selectedDay: day }))
+    () => ({ selectedDay: day }),
+    async (id, params) => {
+      approvals.push(['replan', id, params.at])
+      return { id: 41, assigned_count: 4, unassigned_count: 2 }
+    })
   return { plans, details, lists, builds, notices, errors, approvals, dayCheck }
 }
 
@@ -155,4 +159,17 @@ test('возвращённая в «Новая» заявка снимается
   assert.equal(plans.plan.value.routes[0].visits[0].approved_plan_id, null)
   plans.markVisitStatus(1, 2)
   assert.equal(plans.plan.value.routes[0].visits[0].approved_plan_id, 22)
+})
+
+test('пересчёт утверждённого плана: новый план в списке и подсказка утвердить', async () => {
+  const { plans, lists, approvals, notices } = harness()
+  const replanning = plans.replan({ id: 22 }, { solver: 'cuopt', at: '2026-08-17T18:40:00+03:00' })
+  await Promise.resolve()
+  await Promise.resolve()
+  lists['2026-08-17']([{ id: 41, parent_plan_id: 22 }, { id: 22 }])
+  await replanning
+
+  assert.deepEqual(approvals, [['replan', 22, '2026-08-17T18:40:00+03:00']])
+  assert.deepEqual(plans.plans.value.map((plan) => plan.id), [41, 22])
+  assert.match(notices.at(-1), /Пересчёт №41 плана №22 готов.*заменить план №22/)
 })

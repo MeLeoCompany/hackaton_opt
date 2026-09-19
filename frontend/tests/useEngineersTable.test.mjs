@@ -15,7 +15,7 @@ function harness() {
   const selectedDay = { value: '2026-08-17' }
   const make = new Function(
     'ref', 'watch', 'useMessages', 'useSelectedDay', 'toMoscowInputValue',
-    'fetchReferences', 'listEngineers', 'isAtOffice',
+    'fetchReferences', 'listEngineers', 'isAtOffice', 'listBrigades',
     source + '; return useEngineersTable()',
   )
   const table = make(
@@ -27,6 +27,7 @@ function harness() {
     async () => ({ skills: [], priorities: [], transports: [], work_types: [] }),
     (day) => new Promise((resolve) => { lists[day] = resolve }),
     isAtOffice,
+    async () => [{ id: 7, name: 'Бригада Соколов', is_active: true }],
   )
   return { table, lists, selectedDay }
 }

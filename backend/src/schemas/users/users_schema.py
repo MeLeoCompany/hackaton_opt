@@ -10,6 +10,7 @@ class UserWrite(BaseModel):
 
     login: str = Field(min_length=1)
     name: str = Field(min_length=1)
+    # учётки бригад заводятся в справочнике бригад (brigades), не здесь
     role: Literal["admin", "dispatcher"]
     office_id: int | None = Field(default=None, gt=0)
     is_active: bool = True

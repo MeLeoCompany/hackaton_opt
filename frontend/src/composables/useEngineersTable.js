@@ -11,6 +11,7 @@ import {
   listEngineers,
   updateEngineer,
 } from '../api/engineersApi.js'
+import { listBrigades } from '../api/brigadesApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
 import { downloadBlob } from '../utils/downloadFile.js'
 import { fromMoscowInputValue, toMoscowInputValue } from '../utils/moscowTime.js'
@@ -42,12 +43,14 @@ export function useEngineersTable() {
     loading.value = true
     clearMessages()
     try {
-      const [loadedReferences, loadedEngineers] = await Promise.all([
+      const [loadedReferences, loadedEngineers, loadedBrigades] = await Promise.all([
         fetchReferences(),
         listEngineers(day),
+        listBrigades(),
       ])
       if (request !== loadRequest) return
-      references.value = loadedReferences
+      // бригады офиса — из них выбирают, чья это смена
+      references.value = { ...loadedReferences, brigades: loadedBrigades }
       engineers.value = loadedEngineers
     } catch (error) {
       if (request === loadRequest) showError(error)
@@ -63,7 +66,7 @@ export function useEngineersTable() {
     const office = references.value.offices?.[0] ?? null
     form.value = {
       id: '',
-      name: '',
+      brigade_id: '',
       transport_id: references.value.transports[0]?.id ?? '',
       skill_ids: [],
       equipment: {}, // { номер оборудования: сколько штук }
@@ -79,7 +82,7 @@ export function useEngineersTable() {
     editingId.value = engineer.id
     form.value = {
       id: engineer.id,
-      name: engineer.name,
+      brigade_id: engineer.brigade_id,
       transport_id: engineer.transport_id,
       skill_ids: [...engineer.skill_ids],
       equipment: Object.fromEntries((engineer.equipment ?? []).map((item) => [item.equipment_id, item.quantity])),
@@ -103,7 +106,7 @@ export function useEngineersTable() {
   function formToPayload() {
     const values = form.value
     return {
-      name: values.name.trim(),
+      brigade_id: numberOrNull(values.brigade_id),
       transport_id: numberOrNull(values.transport_id),
       skill_ids: values.skill_ids.map(Number),
       equipment: equipmentPayload(values.equipment),

@@ -22,3 +22,8 @@ test('в подсказке — номера снятых и новых заяв
 test('неутверждённый план знак не получает', () => {
   assert.equal(replanHint({ approved_at: null, withdrawn_requests: [{ request_id: 1, status_id: 4 }] }), '')
 })
+
+test('отставание бригад — тоже повод: номера заявок, к которым не успеть', () => {
+  const hint = replanHint({ approved_at: APPROVED, withdrawn_requests: [], new_request_ids: [], at_risk_request_ids: [32840] })
+  assert.match(hint, /бригады не успевают к окну: №32840/)
+})

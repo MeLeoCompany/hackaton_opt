@@ -61,6 +61,8 @@ class Engineer(Base):
     transport_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("transport.id"))
     # чья бригада; с другими офисами она не работает
     office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
+    # чья это смена: бригада из справочника; name — копия её названия (030)
+    brigade_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("brigade.id"))
     # выезжает из своего офиса: старт = точка офиса, иначе — своя точка
     start_at_office: Mapped[bool] = mapped_column(Boolean, default=False)
 

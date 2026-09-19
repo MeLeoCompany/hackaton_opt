@@ -121,6 +121,7 @@ async def list_placed_in_approved_plan(session: AsyncSession, requests: list[Req
             tuple_(Assignment.plan_id, Assignment.request_id).in_(held),
             Assignment.engineer_id.is_not(None),
             Plan.approved_at.is_not(None),
+            Plan.superseded_at.is_(None),
         )
     )
     return set(result.scalars().all())

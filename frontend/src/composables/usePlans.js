@@ -6,6 +6,7 @@ import {
   approvePlan,
   buildPlan,
   cancelPlanApproval,
+  replanPlan,
   checkPlanningDay,
   deletePlan,
   getPlan,
@@ -149,14 +150,49 @@ export function usePlans() {
     }
   }
 
+  // пересчёт утверждённого плана с момента: новый план появляется в списке рядом с ним
+  async function replan(summary, params) {
+    if (building.value) return
+    const day = selectedDay.value
+    building.value = true
+    clearMessages()
+    try {
+      const result = await replanPlan(summary.id, params)
+      if (day !== selectedDay.value) return
+      await refreshDay()
+      showNotice(
+        `Пересчёт №${result.id} плана №${summary.id} готов: назначено ${result.assigned_count}, ` +
+          `не назначено ${result.unassigned_count}. Утвердите его, чтобы заменить план №${summary.id}`,
+      )
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
   async function approve(summary) {
     if (building.value) return
+    // пересчёт заменяет действующий план: бригады перейдут на новый маршрут
+    if (
+      summary.parent_plan_id &&
+      !window.confirm(
+        `Утвердить пересчёт №${summary.id}? Он заменит план №${summary.parent_plan_id}: бригады ` +
+          'увидят новый маршрут, а заявки, которым не нашлось места, вернутся в «Новые».',
+      )
+    ) {
+      return
+    }
     building.value = true
     clearMessages()
     try {
       await approvePlan(summary.id)
       await refreshDay()
-      showNotice(`План №${summary.id} утверждён: его заявки закреплены за этим днём`)
+      showNotice(
+        summary.parent_plan_id
+          ? `Пересчёт №${summary.id} утверждён и заменил план №${summary.parent_plan_id}`
+          : `План №${summary.id} утверждён: его заявки закреплены за этим днём`,
+      )
     } catch (error) {
       showError(error)
     } finally {
@@ -230,6 +266,7 @@ export function usePlans() {
     buildDayPlan,
     removePlan,
     dayCheck,
+    replan,
     approve,
     cancelApproval,
     selectEngineer,

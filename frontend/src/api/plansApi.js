@@ -27,6 +27,12 @@ export function approvePlan(planId) {
   return apiRequest('POST', `/plans/${planId}/approval`)
 }
 
+// пересчёт утверждённого плана с момента at (ISO; пусто — сейчас): выполненные и начатые
+// заявки остаются за бригадами, остальное раскладывается заново — получается новый план
+export function replanPlan(planId, params = {}) {
+  return apiRequest('POST', `/plans/${planId}/replan`, { json: params })
+}
+
 export function cancelPlanApproval(planId) {
   return apiRequest('DELETE', `/plans/${planId}/approval`)
 }
@@ -34,19 +40,4 @@ export function cancelPlanApproval(planId) {
 // что ждёт расчёт дня: сколько заявок пойдёт и какие заняты утверждённым планом другого дня
 export function checkPlanningDay(planDate) {
   return apiRequest('GET', `/plans/day-check?plan_date=${encodeURIComponent(planDate)}`)
-}
-
-// до какого времени статусы заявок дня синхронизированы с планом: { synced_to, synced_at, user_name }
-export function getDaySync(planDate) {
-  return apiRequest('GET', `/plans/day-sync?plan_date=${encodeURIComponent(planDate)}`)
-}
-
-// что сделает синхронизация дня на это время — ничего не меняя; syncTime — ISO с поясом
-export function previewDaySync(planDate, syncTime) {
-  return apiRequest('POST', '/plans/day-sync/preview', { json: { plan_date: planDate, sync_time: syncTime } })
-}
-
-// синхронизировать: статусы заявок дня приводятся к утверждённому плану на это время
-export function runDaySync(planDate, syncTime) {
-  return apiRequest('POST', '/plans/day-sync', { json: { plan_date: planDate, sync_time: syncTime } })
 }

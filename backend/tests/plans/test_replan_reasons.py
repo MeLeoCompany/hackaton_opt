@@ -32,6 +32,7 @@ async def reasons(the_plan, *, withdrawn, day_requests, seen):
             plans_repository, "list_withdrawn_requests", AsyncMock(return_value=withdrawn)
         ),
         patch.object(plans_repository, "plan_request_ids", AsyncMock(return_value=seen)),
+        patch.object(planning_service, "plan_route_delays", AsyncMock(return_value={})),
         patch.object(
             planning_service.requests_repository,
             "list_active_requests_in_period",
@@ -50,7 +51,7 @@ async def test_new_request_of_the_day_is_a_reason_to_replan():
         seen={1},
     )
 
-    assert result == {"withdrawn_requests": [], "new_request_ids": [7]}
+    assert result == {"at_risk_request_ids": [], "withdrawn_requests": [], "new_request_ids": [7]}
 
 
 @pytest.mark.asyncio

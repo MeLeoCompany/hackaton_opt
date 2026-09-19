@@ -39,7 +39,7 @@ onMounted(load)
   <div class="workspace">
     <header class="workspace-title">
       <h1>Пользователи</h1>
-      <p>Всего {{ users.length }} · диспетчер видит только свой офис</p>
+      <p>Всего {{ users.length }} · диспетчер видит только свой офис · вход бригад — в «Бригадах»</p>
     </header>
 
     <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
@@ -131,7 +131,9 @@ onMounted(load)
                 <td><strong>{{ item.login }}</strong></td>
                 <td>{{ item.name }}</td>
                 <td>{{ roleLabel(item.role) }}</td>
-                <td>{{ item.office_id ? `«${referenceName({ offices }, 'offices', item.office_id)}»` : 'любой' }}</td>
+                <td>
+                  {{ item.office_id ? `«${referenceName({ offices }, 'offices', item.office_id)}»` : 'любой' }}
+                </td>
                 <td>
                   <label class="switch" :title="item.is_active ? 'Может войти' : 'Выключена: войти не может'">
                     <input type="checkbox" :checked="item.is_active" disabled aria-label="учётка активна" />
@@ -163,3 +165,4 @@ onMounted(load)
     </Transition>
   </div>
 </template>
+

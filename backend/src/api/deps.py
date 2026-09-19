@@ -27,6 +27,22 @@ async def current_user(
         ) from error
 
 
+async def require_staff(user: AppUser = Depends(current_user)) -> AppUser:
+    """Диспетчерская часть — администратору и диспетчеру; бригаде только мобильное приложение."""
+    if user.role == UserRole.BRIGADE.value:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Учётка бригады работает только в мобильном приложении"
+        )
+    return user
+
+
+async def require_brigade(user: AppUser = Depends(current_user)) -> AppUser:
+    """Мобильное приложение — только учётке бригады: у неё есть маршрут."""
+    if user.role != UserRole.BRIGADE.value:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Мобильное приложение — для учётки бригады")
+    return user
+
+
 async def require_admin(user: AppUser = Depends(current_user)) -> AppUser:
     if user.role != UserRole.ADMIN.value:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Это доступно только администратору")

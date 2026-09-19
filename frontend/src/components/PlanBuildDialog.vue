@@ -1,16 +1,21 @@
 <script setup>
 // Параметры расчёта плана: окно открывается по кнопке «Построить план», поля заполнены
 // значениями по умолчанию — можно сразу нажать «Рассчитать».
-import { computed, reactive } from 'vue'
+// С replanOf — пересчёт утверждённого плана с момента: выполненные и начатые заявки остаются
+// за бригадами, бригады стартуют оттуда, где они сейчас, остальное раскладывается заново.
+import { computed, reactive, ref } from 'vue'
 
-import { formatDay } from '../utils/moscowTime.js'
+import { formatDay, fromMoscowInputValue, moscowDateOf, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
+import TimeInput from './TimeInput.vue'
 
 const props = defineProps({
   planDate: { type: String, required: true },
   building: { type: Boolean, required: true },
   // ответ /plans/day-check: заявки дня, уже закреплённые за утверждёнными планами других дней
   dayCheck: { type: Object, default: null },
+  // сводка утверждённого плана, который пересчитываем; null — обычный расчёт дня
+  replanOf: { type: Object, default: null },
 })
 const emit = defineEmits(['build', 'close'])
 
@@ -45,8 +50,15 @@ function solverHint() {
   return SOLVERS.find((solver) => solver.value === params.solver)?.hint ?? ''
 }
 
+// момент пересчёта: у плана на сегодня — сейчас, у другого дня время выбирают на этот день
+const nowIso = new Date().toISOString()
+const isToday = moscowDateOf(nowIso) === props.planDate
+const replanTime = ref(isToday ? moscowTimeOf(nowIso) : '')
+const canSubmit = computed(() => !props.replanOf || /^\d\d:\d\d$/.test(replanTime.value))
+
 function submit() {
   const payload = { solver: params.solver }
+  if (props.replanOf) payload.at = fromMoscowInputValue(`${props.planDate}T${replanTime.value}`)
   if (params.solver === 'cuopt') {
     payload.objective_order = objectiveOrder(params.servicePriority, params.resourcePriority)
   }
@@ -58,9 +70,23 @@ function submit() {
   <div class="dialog-backdrop" @click.self="emit('close')">
     <div class="dialog" role="dialog" aria-label="Параметры расчёта плана">
       <header>
-        <strong>Параметры расчёта · {{ formatDay(planDate) }}</strong>
+        <strong v-if="replanOf">Пересчёт плана №{{ replanOf.id }} · {{ formatDay(planDate) }}</strong>
+        <strong v-else>Параметры расчёта · {{ formatDay(planDate) }}</strong>
         <button class="close" title="Закрыть" @click="emit('close')">×</button>
       </header>
+
+      <template v-if="replanOf">
+        <label class="field">
+          <span>С какого момента</span>
+          <TimeInput v-model="replanTime" aria-label="момент пересчёта" />
+        </label>
+        <p class="hint">
+          Выполненные и начатые заявки остаются за бригадами. Бригады продолжают оттуда, где они
+          сейчас, — по отметкам в мобильном приложении. Не начатые и новые заявки дня
+          раскладываются заново; куда уже не успеть, останется неназначенным. Получится новый
+          план — утвердите его, и он заменит план №{{ replanOf.id }}.
+        </p>
+      </template>
 
       <label class="field">
         <span>Алгоритм</span>
@@ -94,7 +120,7 @@ function submit() {
         </p>
       </fieldset>
 
-      <p v-if="heldRequests.length" class="warning">
+      <p v-if="heldRequests.length && !replanOf" class="warning">
         <span class="mark">!</span>
         <span>
           Заявок этого дня закреплено за утверждёнными планами других дней:
@@ -107,8 +133,8 @@ function submit() {
       <footer>
         <span class="hint">Заявки и смены берутся на {{ formatDay(planDate) }}</span>
         <div class="dialog-actions">
-          <button class="primary" :disabled="building" @click="submit">
-            {{ building ? 'Считаю…' : 'Рассчитать' }}
+          <button class="primary" :disabled="building || !canSubmit" @click="submit">
+            {{ building ? 'Считаю…' : replanOf ? 'Пересчитать' : 'Рассчитать' }}
           </button>
           <button :disabled="building" @click="emit('close')">Отмена</button>
         </div>

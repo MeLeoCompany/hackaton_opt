@@ -1,6 +1,6 @@
 import { apiRequest } from './httpClient.js'
 
-// учётка: { id, login, name, role: 'admin' | 'dispatcher', office_id, is_active }
+// учётка: { id, login, name, role: 'admin' | 'dispatcher', office_id, is_active }; учётки бригад — в brigadesApi
 export function listUsers() {
   return apiRequest('GET', '/users')
 }

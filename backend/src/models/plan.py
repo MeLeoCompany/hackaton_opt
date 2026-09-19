@@ -48,3 +48,8 @@ class Plan(Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # чей план; утверждается один план на офис и день
     office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
+    # пересчёт утверждённого плана с текущего момента (029): какой план пересчитан и на какой
+    # момент; superseded_at — когда этот план заменили утверждённым пересчётом
+    parent_plan_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("plan.id"))
+    replanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

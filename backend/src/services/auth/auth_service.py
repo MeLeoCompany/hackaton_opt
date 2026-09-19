@@ -46,4 +46,6 @@ async def to_current_user(session: AsyncSession, user: AppUser) -> CurrentUser:
         role=user.role,
         office_id=user.office_id,
         office_name=office.name if office else None,
+        # учётка бригады называется её именем — в справочнике бригад оно общее
+        brigade_name=user.name if user.brigade_id is not None else None,
     )

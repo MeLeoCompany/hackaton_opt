@@ -12,12 +12,13 @@ const props = defineProps({
   summary: { type: Object, required: true },
   references: { type: Object, required: true },
 })
-defineEmits(['close'])
+defineEmits(['close', 'replan'])
 
 const { openRequest } = usePlanFocus()
 
 const withdrawn = computed(() => props.summary.withdrawn_requests ?? [])
 const fresh = computed(() => props.summary.new_request_ids ?? [])
+const atRisk = computed(() => props.summary.at_risk_request_ids ?? [])
 
 // как сняли: отменили или вернули в «Новая» — ждёт нового расчёта
 function howWithdrawn(item) {
@@ -29,6 +30,12 @@ function howWithdrawn(item) {
 <template>
   <ErrorMessage :message="`План №${summary.id} стоит пересчитать`" @close="$emit('close')">
     <ul class="replan-reasons">
+      <li v-if="atRisk.length">
+        Бригады отстают от плана — к этим заявкам уже не успеть до конца окна:
+        <span v-for="id in atRisk" :key="id" class="replan-request">
+          <button type="button" class="link" @click="openRequest(id)">№{{ id }}</button>
+        </span>
+      </li>
       <li v-if="withdrawn.length">
         С утверждения сняты с плана — бригада к ним не поедет, их время в маршрутах пустует:
         <span v-for="item in withdrawn" :key="item.request_id" class="replan-request">
@@ -44,7 +51,9 @@ function howWithdrawn(item) {
       </li>
     </ul>
     <p class="replan-how">
-      Чтобы пересчитать: снимите утверждение с плана, постройте план дня заново и утвердите новый.
+      Пересчёт с текущего момента оставит выполненное и начатое за бригадами и разложит остальное
+      заново — получится новый план, его утверждение заменит этот.
+      <button type="button" class="primary" @click="$emit('replan')">Пересчитать с текущего момента</button>
     </p>
   </ErrorMessage>
 </template>
@@ -67,7 +76,11 @@ function howWithdrawn(item) {
 }
 
 .replan-how {
-  margin: 6px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0 0;
   color: #7f1d1d;
 }
 </style>

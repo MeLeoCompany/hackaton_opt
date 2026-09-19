@@ -7,6 +7,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
 import { statusCode } from '../utils/requestStatuses.js'
+import { brigadeNow, routeProgress } from '../utils/routeFact.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { formatDuration } from '../utils/duration.js'
 import { routeColor } from '../utils/routeColors.js'
@@ -42,6 +43,23 @@ function visitMark(visit) {
   if (removedFromPlan(visit)) return 'removed'
   const code = statusCode(props.references, visit.status_id)
   return MARKED_STATUSES.includes(code) ? code : ''
+}
+
+// где бригада сейчас и сколько закрыла — только у утверждённого плана: по нему бригады ездят
+function brigadeState(route) {
+  if (!props.approved) return ''
+  const { done, total } = routeProgress(route, props.references, props.plan.id)
+  return `закрыто ${done} из ${total} · ${brigadeNow(route, props.references, props.plan.id).text}`
+}
+
+// отставание от плана по отметкам бригады: меньше 5 минут — не шум
+const LATE_MINUTES = 5
+
+function lateText(route) {
+  if (!props.approved || (route.delay_minutes ?? 0) < LATE_MINUTES) return ''
+  const atRisk = route.at_risk_request_ids ?? []
+  const risk = atRisk.length ? ` · не успевает к окну: ${atRisk.map((id) => `№${id}`).join(', ')}` : ''
+  return `опаздывает на ${formatDuration(route.delay_minutes)}${risk}`
 }
 
 function visitMarkName(visit) {
@@ -158,6 +176,8 @@ watch(() => props.plan.id, () => {
               <strong>{{ route.engineer_name }}</strong>
               <span class="muted">{{ referenceName(references, 'transports', route.transport_id) }}</span>
             </header>
+            <p v-if="brigadeState(route)" class="brigade-state">{{ brigadeState(route) }}</p>
+            <p v-if="lateText(route)" class="brigade-late">{{ lateText(route) }}</p>
             <p class="muted">
               {{ route.visits.length }} заявок · {{ route.distance_km.toFixed(1) }} км ·
               {{ formatDuration(route.duration_min) }} в пути
@@ -267,9 +287,11 @@ watch(() => props.plan.id, () => {
               :class="{ selected: route.engineer_id === selectedEngineerId }"
               @click="emit('select-engineer', route.engineer_id)"
             >
-              <td class="nowrap">
+              <td>
                 <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
                 <strong>{{ route.engineer_name }}</strong>
+                <span v-if="brigadeState(route)" class="brigade-state">{{ brigadeState(route) }}</span>
+                <span v-if="lateText(route)" class="brigade-late">{{ lateText(route) }}</span>
               </td>
               <td class="nowrap">{{ referenceName(references, 'transports', route.transport_id) }}</td>
               <td class="under-range-filter">{{ route.visits.length }}</td>
@@ -427,6 +449,23 @@ watch(() => props.plan.id, () => {
 
 .route-card p {
   margin: 4px 0 6px;
+}
+
+/* бригада отстаёт от плана — красным: к части заявок может не успеть */
+.brigade-late {
+  display: block;
+  margin: 2px 0 0;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* где бригада сейчас — по её отметкам в мобильном приложении */
+.brigade-state {
+  display: block;
+  margin: 2px 0 0;
+  color: #b45309;
+  font-size: 12px;
 }
 
 /* маршруты — строками, как остальные таблицы; клик по строке показывает маршрут на карте */

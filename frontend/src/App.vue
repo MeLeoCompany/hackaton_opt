@@ -8,6 +8,7 @@ import AppSidebar from './components/AppSidebar.vue'
 import { useAuth } from './composables/useAuth.js'
 import { usePlanFocus } from './composables/usePlanFocus.js'
 import { useSelectedDay } from './composables/useSelectedDay.js'
+import BrigadesPage from './pages/BrigadesPage.vue'
 import EngineersPage from './pages/EngineersPage.vue'
 import EquipmentPage from './pages/EquipmentPage.vue'
 import ImportPage from './pages/ImportPage.vue'
@@ -38,6 +39,8 @@ const ALL_SECTIONS = [
     icon: '☷',
     items: [
       { key: 'offices', label: 'Офисы', adminOnly: true },
+      // бригады — и администратору, и диспетчеру: смены на день заводят из них
+      { key: 'brigades', label: 'Бригады' },
       { key: 'norms', label: 'Нормативы' },
       { key: 'equipment', label: 'Оборудование' },
       { key: 'users', label: 'Пользователи', adminOnly: true },
@@ -49,7 +52,8 @@ const ALL_SECTIONS = [
 
 const TAB_STORAGE_KEY = 'routing.activeTab'
 const TABS = [
-  'requests', 'engineers', 'plans', 'comparison', 'offices', 'norms', 'equipment', 'users', 'import', 'routes',
+  'requests', 'engineers', 'plans', 'comparison', 'offices', 'brigades', 'norms', 'equipment', 'users', 'import',
+  'routes',
 ]
 // вкладка «Справочники» была одной страницей — теперь это «Офисы» внутри раздела
 const RENAMED_TABS = { references: 'offices' }
@@ -127,6 +131,7 @@ onMounted(async () => {
         <PlansPage v-else-if="activeTab === 'plans'" />
         <PlanComparisonPage v-else-if="activeTab === 'comparison'" />
         <OfficesPage v-else-if="activeTab === 'offices'" />
+        <BrigadesPage v-else-if="activeTab === 'brigades'" />
         <NormsPage v-else-if="activeTab === 'norms'" />
         <EquipmentPage v-else-if="activeTab === 'equipment'" />
         <UsersPage v-else-if="activeTab === 'users'" />

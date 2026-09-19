@@ -58,6 +58,19 @@ class PlanningDay:
         return self.day_start + timedelta(minutes=float(minutes))
 
 
+@dataclass(frozen=True)
+class EngineerStart:
+    """Пересчёт с текущего момента: откуда бригада стартует и с какого времени свободна.
+
+    Бригада уже работает: стоит на последней выполненной заявке или едет на текущую. Решатель
+    берёт эту точку вместо утреннего старта, а начало смены — не раньше available_from.
+    """
+
+    latitude: float
+    longitude: float
+    available_from: datetime
+
+
 @dataclass
 class LoadedDay:
     day: PlanningDay
@@ -81,7 +94,19 @@ def local_date_of(moment: datetime) -> date:
     return moment.astimezone(local_timezone()).date()
 
 
-async def load_day(session: AsyncSession, day: PlanningDay, office_id: int) -> LoadedDay:
+async def load_day(
+    session: AsyncSession,
+    day: PlanningDay,
+    office_id: int,
+    *,
+    starts: dict[int, EngineerStart] | None = None,
+    not_before: datetime | None = None,
+) -> LoadedDay:
+    """starts — пересчёт с текущего момента: у бригады своя точка старта и время, с которого
+    она свободна. В LoadedDay.engineers остаются сами бригады (для снимка и отображения
+    плана), подмена — только в задаче решателя."""
+    starts = starts or {}
+    # not_before — момент пересчёта: раньше него не свободна ни одна бригада
     # офисы изолированы: бригады офиса берут только заявки своего офиса.
     # Заявки, закреплённые за утверждённым планом другого дня, в задачу не попадают:
     # окно через полночь иначе выполнялось бы дважды
@@ -91,10 +116,21 @@ async def load_day(session: AsyncSession, day: PlanningDay, office_id: int) -> L
     engineers = await engineers_repository.list_engineers_in_period(
         session, day.day_start, day.day_end, office_id=office_id
     )
+
+    def free_from(engineer: Engineer) -> datetime:
+        start = starts.get(engineer.id)
+        moments = [engineer.shift_start]
+        if start is not None:
+            moments.append(start.available_from)
+        if not_before is not None:
+            moments.append(not_before)
+        return max(moments)
+
+    # бригада, у которой смена уже закончилась к моменту пересчёта, в задачу не идёт
     engineers = [
         e
         for e in engineers
-        if day.to_minutes(e.shift_start, round_up=True) <= day.to_minutes(e.shift_end)
+        if day.to_minutes(free_from(e), round_up=True) <= day.to_minutes(e.shift_end)
     ]
     skills = await references_repository.list_skills(session)
     transports = await references_repository.list_transports(session)
@@ -103,7 +139,13 @@ async def load_day(session: AsyncSession, day: PlanningDay, office_id: int) -> L
         priority.id for priority in priorities if priority.name == URGENT_PRIORITY_NAME
     }
 
-    distance_km, travel_min = await build_day_matrices(engineers, requests)
+    start_points = [
+        Point(latitude=starts[e.id].latitude, longitude=starts[e.id].longitude)
+        if e.id in starts
+        else Point(latitude=float(e.start_latitude), longitude=float(e.start_longitude))
+        for e in engineers
+    ]
+    distance_km, travel_min = await build_day_matrices(engineers, requests, start_points)
 
     instance = ProblemInstance(
         engineers=[
@@ -111,7 +153,7 @@ async def load_day(session: AsyncSession, day: PlanningDay, office_id: int) -> L
                 engineer_id=engineer.id,
                 name=engineer.name,
                 transport_id=engineer.transport_id,
-                shift_start_min=day.to_minutes(engineer.shift_start, round_up=True),
+                shift_start_min=day.to_minutes(free_from(engineer), round_up=True),
                 shift_end_min=day.to_minutes(engineer.shift_end),
             )
             for engineer in engineers
@@ -147,7 +189,7 @@ async def load_day(session: AsyncSession, day: PlanningDay, office_id: int) -> L
 
 
 async def build_day_matrices(
-    engineers: list[Engineer], requests: list[Request]
+    engineers: list[Engineer], requests: list[Request], start_points: list[Point] | None = None
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
     """Матрицы км и минут по всем точкам дня — отдельно для каждого типа транспорта исполнителей.
 
@@ -156,10 +198,17 @@ async def build_day_matrices(
     if not engineers or not requests:
         return {}, {}
 
-    points = [
-        Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))
-        for engineer in engineers
-    ]
+    # старты бригад: утренние или (при пересчёте) там, где бригада сейчас
+    points = (
+        list(start_points)
+        if start_points is not None
+        else [
+            Point(
+                latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude)
+            )
+            for engineer in engineers
+        ]
+    )
     points += [
         Point(latitude=float(request.latitude), longitude=float(request.longitude))
         for request in requests

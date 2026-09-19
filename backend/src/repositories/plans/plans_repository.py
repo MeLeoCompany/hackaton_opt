@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models import AppUser, Assignment, DaySync, Plan, PlanRunType, Request, RequestStatusId
+from src.models import Assignment, Plan, PlanRunType, Request, RequestStatusId
 
 
 def add_plan(
@@ -71,6 +71,8 @@ async def get_approved_plan(
             Plan.office_id == office_id,
             Plan.plan_date == plan_date,
             Plan.approved_at.is_not(None),
+            # заменённый утверждённым пересчётом — уже не действующий план дня
+            Plan.superseded_at.is_(None),
         )
     )
     return result.scalar_one_or_none()
@@ -230,32 +232,9 @@ async def plan_request_ids(session: AsyncSession, plan_id: int) -> set[int]:
     return set(result.scalars().all())
 
 
-async def get_day_sync(
-    session: AsyncSession, plan_date: date, *, office_id: int
-) -> tuple[DaySync, str | None] | None:
-    """До какого времени день офиса синхронизирован и кто это сделал; None — ещё ни разу."""
+async def list_bound_requests(session: AsyncSession, plan_id: int) -> list[Request]:
+    """Заявки, закреплённые за утверждённым планом (request.approved_plan_id)."""
     result = await session.execute(
-        select(DaySync, AppUser.name)
-        .outerjoin(AppUser, AppUser.id == DaySync.user_id)
-        .where(DaySync.office_id == office_id, DaySync.plan_date == plan_date)
+        select(Request).where(Request.approved_plan_id == plan_id).order_by(Request.id)
     )
-    row = result.first()
-    return (row[0], row[1]) if row else None
-
-
-async def save_day_sync(
-    session: AsyncSession,
-    plan_date: date,
-    synced_to: datetime,
-    *,
-    office_id: int,
-    user_id: int | None,
-) -> None:
-    """Запоминает время синхронизации дня: у дня офиса одна запись — последняя."""
-    day_sync = await session.get(DaySync, (office_id, plan_date))
-    if day_sync is None:
-        day_sync = DaySync(office_id=office_id, plan_date=plan_date)
-        session.add(day_sync)
-    day_sync.synced_to = synced_to
-    day_sync.synced_at = datetime.now(synced_to.tzinfo)
-    day_sync.user_id = user_id
+    return list(result.scalars().all())

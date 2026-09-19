@@ -91,3 +91,11 @@ test('выход забывает токен и учётку', async () => {
   assert.equal(auth.user.value, null)
   assert.equal(session.token, null)
 })
+
+test('учётка бригады в диспетчерскую не входит — её место в мобильном приложении', async () => {
+  const brigade = { id: 40, role: 'brigade', office_id: 1, brigade_name: 'Бригада Соколов' }
+  const { auth } = harness({ me: brigade })
+
+  await assert.rejects(auth.login('sokolov', 'верный'), /мобильное приложение/)
+  assert.equal(auth.user.value, null)
+})

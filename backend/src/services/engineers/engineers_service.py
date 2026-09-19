@@ -8,6 +8,7 @@ from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.free_id import smallest_free_id
 from src.core.local_day import day_bounds, local_timezone
 from src.models import Engineer, Skill
+from src.repositories.brigades import brigades_repository
 from src.repositories.engineers import engineers_repository
 from src.repositories.offices import offices_repository
 from src.repositories.references import references_repository
@@ -44,6 +45,7 @@ def to_engineer_read(engineer: Engineer) -> EngineerRead:
     return EngineerRead(
         id=engineer.id,
         name=engineer.name,
+        brigade_id=engineer.brigade_id,
         start_latitude=float(engineer.start_latitude),
         start_longitude=float(engineer.start_longitude),
         shift_start=engineer.shift_start,
@@ -93,7 +95,11 @@ async def create_engineer(
 
     fields = await with_office_start(
         session,
-        {**payload.model_dump(exclude={"skill_ids", "equipment"}), "office_id": office_id},
+        {
+            **payload.model_dump(exclude={"skill_ids", "equipment"}),
+            "office_id": office_id,
+            "name": await brigade_name(session, payload.brigade_id, office_id),
+        },
     )
     if fields["id"] is None:
         fields["id"] = smallest_free_id(await engineers_repository.list_engineer_ids(session))
@@ -110,9 +116,19 @@ async def update_engineer(
 ) -> EngineerRead:
     engineer = await find_engineer(session, engineer_id, office_id)
     skills = await check_references(session, payload)
+    # у уже заведённой смены бригада может быть выключена — смену всё равно можно поправить
     fields = await with_office_start(
         session,
-        {**payload.model_dump(exclude={"skill_ids", "equipment"}), "office_id": office_id},
+        {
+            **payload.model_dump(exclude={"skill_ids", "equipment"}),
+            "office_id": office_id,
+            "name": await brigade_name(
+                session,
+                payload.brigade_id,
+                office_id,
+                allow_inactive=payload.brigade_id == engineer.brigade_id,
+            ),
+        },
     )
     engineers_repository.apply_changes(engineer, fields, skills)
     engineers_repository.set_equipment(engineer, equipment_quantities(payload))
@@ -132,6 +148,18 @@ async def delete_engineer(session: AsyncSession, engineer_id: int, office_id: in
 
     await engineers_repository.delete_engineer(session, engineer)
     await session.commit()
+
+
+async def brigade_name(
+    session: AsyncSession, brigade_id: int, office_id: int, *, allow_inactive: bool = False
+) -> str:
+    """Название бригады смены — из справочника бригад офиса; выключенной новые смены не заводят."""
+    brigade = await brigades_repository.get_brigade(session, brigade_id)
+    if brigade is None or brigade.office_id != office_id:
+        raise EngineerDataError([f"бригады №{brigade_id} нет в справочнике бригад офиса"])
+    if not brigade.is_active and not allow_inactive:
+        raise EngineerDataError([f"бригада «{brigade.name}» выключена — включите её в справочнике"])
+    return brigade.name
 
 
 async def find_engineer(session: AsyncSession, engineer_id: int, office_id: int) -> Engineer:
@@ -284,6 +312,21 @@ async def import_engineers_csv(
     taken_ids = await engineers_repository.list_engineer_ids(session)
     taken_ids.update(row["id"] for row in parsed.rows if row["id"] is not None)
 
+    # колонка «имя» — бригада офиса; бригады, которой ещё нет в справочнике, заводим сами
+    # (без входа в приложение — логин и пароль ей зададут в справочнике бригад)
+    brigades: dict[str, int] = {}
+
+    async def brigade_id_of(name: str) -> int:
+        if name not in brigades:
+            brigade = await brigades_repository.find_by_name(session, office_id, name)
+            if brigade is None:
+                brigade = brigades_repository.add_brigade(
+                    session, {"office_id": office_id, "name": name, "is_active": True}
+                )
+                await session.flush()
+            brigades[name] = brigade.id
+        return brigades[name]
+
     created = 0
     updated = 0
     for fields in parsed.rows:
@@ -296,6 +339,7 @@ async def import_engineers_csv(
         # колонки «оборудование» нет в файле — запас бригады не трогаем
         quantities = fields.get("equipment")
         values["office_id"] = office_id
+        values["brigade_id"] = await brigade_id_of(values["name"])
         # из офиса — старт в точке офиса, как и при правке в интерфейсе
         if values["start_at_office"]:
             values["start_latitude"] = office.latitude

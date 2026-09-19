@@ -85,19 +85,22 @@ def user_fields(payload: UserWrite) -> dict:
 
 async def find_user(session: AsyncSession, user_id: int) -> AppUser:
     user = await users_repository.get_user(session, user_id)
-    if user is None:
+    # учётку бригады правят в справочнике бригад
+    if user is None or user.role == UserRole.BRIGADE.value:
         raise UserNotFoundError(f"Учётка №{user_id} не найдена")
     return user
 
 
-async def check_user(session: AsyncSession, payload: UserWrite, except_id: int | None = None) -> None:
+async def check_user(
+    session: AsyncSession, payload: UserWrite, except_id: int | None = None
+) -> None:
     problems = []
     same_login = await users_repository.find_user_by_login(session, payload.login)
     if same_login is not None and same_login.id != except_id:
         problems.append(f"логин «{payload.login}» уже занят")
     if (
         payload.office_id is not None
-        and payload.role == UserRole.DISPATCHER.value
+        and payload.role != UserRole.ADMIN.value
         and await offices_repository.get_office(session, payload.office_id) is None
     ):
         problems.append(f"офиса №{payload.office_id} нет в справочнике")
@@ -109,3 +112,4 @@ async def check_other_admin_remains(session: AsyncSession) -> None:
     """Последнего включённого администратора нельзя разжаловать, выключить или удалить."""
     if await users_repository.count_active_admins(session) <= 1:
         raise UserInUseError("Это последний администратор: без него некому управлять учётками")
+

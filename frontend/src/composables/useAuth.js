@@ -71,6 +71,10 @@ export function useAuth() {
 
   async function login(loginName, password) {
     const session = await requestLogin(loginName, password)
+    // учётка бригады работает только в мобильном приложении: здесь бэкенд ей всё запретит
+    if (session.user?.role === 'brigade') {
+      throw new Error('Это учётка бригады — войдите в мобильное приложение бригады')
+    }
     saveToken(session.token)
     applySession(session.user)
     await loadOffices()

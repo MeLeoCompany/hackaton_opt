@@ -24,8 +24,8 @@ defineEmits(['reset'])
   <input
     v-else-if="column === 'name'"
     v-model="filters.text"
-    placeholder="имя"
-    aria-label="фильтр по имени"
+    placeholder="бригада"
+    aria-label="фильтр по бригаде"
   />
 
   <select v-else-if="column === 'transport'" v-model="filters.transportId" aria-label="фильтр по транспорту">

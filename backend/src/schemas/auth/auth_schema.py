@@ -16,6 +16,7 @@ class CurrentUser(BaseModel):
     # офис диспетчера; у администратора пусто — он выбирает офис сам
     office_id: int | None
     office_name: str | None
+    brigade_name: str | None = None  # учётка бригады — мобильное приложение
 
 
 class LoginResponse(BaseModel):

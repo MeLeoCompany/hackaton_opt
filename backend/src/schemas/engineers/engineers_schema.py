@@ -15,7 +15,8 @@ class EngineerWrite(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    name: str = Field(min_length=1)
+    # чья это смена: бригада из справочника бригад офиса (название берётся оттуда)
+    brigade_id: int = Field(gt=0)
     start_latitude: float = Field(ge=-90, le=90)
     start_longitude: float = Field(ge=-180, le=180)
     shift_start: datetime
@@ -51,6 +52,7 @@ class EngineerCreate(EngineerWrite):
 
 class EngineerRead(EngineerWrite):
     id: int
+    name: str  # название бригады
     office_id: int  # чья бригада; задаётся офисом того, кто её завёл
 
 

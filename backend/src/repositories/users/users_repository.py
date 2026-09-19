@@ -7,7 +7,10 @@ from src.models import AppUser, UserRole
 
 
 async def list_users(session: AsyncSession) -> list[AppUser]:
-    result = await session.execute(select(AppUser).order_by(AppUser.id))
+    """Учётки администраторов и диспетчеров; учётки бригад — в справочнике бригад."""
+    result = await session.execute(
+        select(AppUser).where(AppUser.role != UserRole.BRIGADE.value).order_by(AppUser.id)
+    )
     return list(result.scalars().all())
 
 
@@ -16,7 +19,9 @@ async def get_user(session: AsyncSession, user_id: int) -> AppUser | None:
 
 
 async def find_user_by_login(session: AsyncSession, login: str) -> AppUser | None:
-    result = await session.execute(select(AppUser).where(func.lower(AppUser.login) == login.lower()))
+    result = await session.execute(
+        select(AppUser).where(func.lower(AppUser.login) == login.lower())
+    )
     return result.scalar_one_or_none()
 
 
@@ -42,3 +47,4 @@ def apply_changes(user: AppUser, fields: dict) -> None:
 
 async def delete_user(session: AsyncSession, user: AppUser) -> None:
     await session.delete(user)
+

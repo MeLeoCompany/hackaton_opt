@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates
 from src.models import Assignment, Engineer, Plan, PlanRunType, Request, RequestStatusId
+from src.repositories.brigade import brigade_repository
 from src.repositories.plans import plans_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
@@ -37,6 +38,7 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_loader import LoadedDay
+from src.services.planner.route_delay import RouteDelay, VisitFact, route_delay, visit_state
 from src.services.requests import request_status_service
 from src.services.travel import build_route
 
@@ -230,6 +232,8 @@ async def approve_plan(
     plan = await find_plan(session, plan_id, office_id=office_id)
     if plan.approved_at is not None:
         return (await summarize_plans(session, [plan]))[0]
+    if getattr(plan, "parent_plan_id", None) is not None:
+        return await approve_replan(session, plan, user_id=user_id)
     if plan.plan_date is None:
         raise PlanDataError(
             [f"План №{plan_id} создан до поддержки дней планирования и не может быть утверждён"]
@@ -280,11 +284,128 @@ async def approve_plan(
     return (await summarize_plans(session, [plan]))[0]
 
 
+async def approve_replan(
+    session: AsyncSession, plan: Plan, *, user_id: int | None = None
+) -> PlanSummary:
+    """Утверждает пересчёт с текущего момента: он заменяет пересчитанный план.
+
+    - заявки, которые пересчёт разложил по маршрутам, и оставленные за бригадами (выполненные,
+      отменённые, в работе) закрепляются за новым планом; «Новые» из них становятся «В плане»;
+    - заявки прежнего плана «В плане», которым в пересчёте не нашлось места, — «Новая»,
+      отвязываются: их окно нужно сдвинуть или заявку отменить, и пересчитать ещё раз;
+    - прежний план помечается заменённым — бригады ездят уже по новому.
+    Если с момента пересчёта бригады что-то отметили по заявкам, которые он раскладывал, —
+    пересчёт устарел: считаем заново на актуальных данных.
+    """
+    parent = await plans_repository.get_plan(session, plan.parent_plan_id)
+    current = await plans_repository.get_approved_plan(
+        session, plan.plan_date, office_id=plan.office_id
+    )
+    if parent is None or current is None or current.id != parent.id:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} устарел: действующий план дня уже не №{plan.parent_plan_id}. "
+            "Пересчитайте действующий план заново"
+        )
+
+    candidates = set((plan.input_snapshot or {}).get("request_order", []))
+    assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    assigned = [assignment for assignment in assignments if assignment.engineer_id is not None]
+    to_plan, rebind, stale = [], [], []
+    for assignment in assigned:
+        request = assignment.request
+        if assignment.request_id in candidates:
+            # решатель раскладывал: заявка должна быть такой же, как в момент пересчёта
+            if request.status_id == RequestStatusId.NEW and request.approved_plan_id is None:
+                to_plan.append(request)
+            elif (
+                request.status_id == RequestStatusId.PLANNED
+                and request.approved_plan_id == parent.id
+            ):
+                rebind.append(request)
+            else:
+                stale.append(request.id)
+        elif request.approved_plan_id == parent.id:
+            rebind.append(request)  # оставлена за бригадой: выполнена, отменена или в работе
+        else:
+            stale.append(request.id)
+    if stale:
+        listed = ", ".join(f"№{request_id}" for request_id in sorted(stale))
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} устарел: после него менялись заявки {listed}. Пересчитайте ещё раз"
+        )
+
+    assigned_ids = {assignment.request_id for assignment in assigned}
+    dropped = [
+        request
+        for request in await plans_repository.list_bound_requests(session, parent.id)
+        if request.status_id == RequestStatusId.PLANNED and request.id not in assigned_ids
+    ]
+
+    await request_status_service.require_transition(
+        session, RequestStatusId.NEW, RequestStatusId.PLANNED, manual=False
+    )
+    await request_status_service.require_transition(
+        session, RequestStatusId.PLANNED, RequestStatusId.NEW, manual=False
+    )
+    statuses = {
+        status.id: status for status in await request_statuses_repository.list_statuses(session)
+    }
+    now = datetime.now(UTC)
+    moment = planner_loader.planning_day(plan.plan_date).to_minutes(plan.replanned_at or now)
+    at_text = f"{moment // 60:02d}:{moment % 60:02d}"
+
+    # сначала заменяем прежний план: утверждённым на день может быть только один
+    parent.superseded_at = now
+    await session.flush()
+
+    for request in rebind + to_plan:
+        request.approved_plan_id = plan.id
+    for request in to_plan:
+        request_status_service.set_status(request, statuses[RequestStatusId.PLANNED])
+    request_statuses_repository.add_history(
+        session,
+        [request.id for request in to_plan],
+        RequestStatusId.NEW,
+        RequestStatusId.PLANNED,
+        manual=False,
+        user_id=user_id,
+        plan_id=plan.id,
+        comment=f"Пересчёт №{plan.id} утверждён",
+    )
+    for request in dropped:
+        request_status_service.set_status(request, statuses[RequestStatusId.NEW])
+        request.approved_plan_id = None
+    request_statuses_repository.add_history(
+        session,
+        [request.id for request in dropped],
+        RequestStatusId.PLANNED,
+        RequestStatusId.NEW,
+        manual=False,
+        user_id=user_id,
+        plan_id=parent.id,
+        comment=f"Не поместилась в пересчёт на {at_text}: сдвиньте окно или отмените",
+    )
+    plan.approved_at = now
+    try:
+        await session.commit()
+    except IntegrityError as error:
+        await session.rollback()
+        raise PlanInUseError(
+            f"На {plan.plan_date:%d.%m.%Y} одновременно был утверждён другой план; "
+            "обновите список планов"
+        ) from error
+    return (await summarize_plans(session, [plan]))[0]
+
+
 async def cancel_plan_approval(
     session: AsyncSession, plan_id: int, *, office_id: int, user_id: int | None = None
 ) -> PlanSummary:
     """Снимает утверждение: заявки плана снова доступны любому дню."""
     plan = await find_plan(session, plan_id, office_id=office_id)
+    if getattr(plan, "superseded_at", None) is not None:
+        raise PlanInUseError(
+            f"План №{plan_id} заменён утверждённым пересчётом — снимайте утверждение с действующего"
+        )
     if plan.approved_at is not None:
         # заявки «В плане» возвращаются в «Новые»: переход системный, он должен быть в таблице
         await request_status_service.require_transition(
@@ -349,8 +470,13 @@ async def save_solution(
     solver: str = SOLVER_NAME,
     solve_duration_ms: float | None = None,
     objective_order: tuple[ObjectiveCriterion, ...] | None = None,
+    fixed: dict[int, list[Assignment]] | None = None,
 ) -> Plan:
+    """fixed — пересчёт с текущего момента: визиты, которые бригада уже закрыла или начала,
+    по бригадам. Они идут первыми в её маршруте нового плана с прежним временем, решатель их
+    не двигает; новые визиты — после них."""
     day = loaded.day
+    fixed = fixed or {}
     plan = plans_repository.add_plan(
         session,
         run_type,
@@ -369,11 +495,27 @@ async def save_solution(
     plan.input_snapshot = snapshot_inputs(loaded)
     await session.flush()
 
+    # пересчёт: что бригада уже закрыла или начала — первыми, с прежним временем
+    for engineer_id, kept in fixed.items():
+        for visit_order, assignment in enumerate(kept, start=1):
+            plans_repository.add_assignment(
+                session,
+                {
+                    "plan_id": plan.id,
+                    "request_id": assignment.request_id,
+                    "engineer_id": engineer_id,
+                    "visit_order": visit_order,
+                    "planned_arrival_time": assignment.planned_arrival_time,
+                    "unassigned_reason": None,
+                },
+            )
+
     # назначенные заявки — по маршрутам исполнителей, в порядке объезда
     assigned_request_indices: set[int] = set()
     for engineer_index, visits in solution.routes.items():
         engineer = loaded.engineers[engineer_index]
-        for visit_order, visit in enumerate(visits, start=1):
+        first_order = len(fixed.get(engineer.id, [])) + 1
+        for visit_order, visit in enumerate(visits, start=first_order):
             plans_repository.add_assignment(
                 session,
                 {
@@ -489,6 +631,9 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 ),
                 approved_at=plan.approved_at,
                 objective_order=objective_order_from_plan(plan),
+                parent_plan_id=getattr(plan, "parent_plan_id", None),
+                replanned_at=getattr(plan, "replanned_at", None),
+                superseded_at=getattr(plan, "superseded_at", None),
                 **(await replan_reasons(session, plan)),
             )
         )
@@ -501,7 +646,7 @@ async def replan_reasons(session: AsyncSession, plan: Plan) -> dict[str, list]:
     Если есть и то, и другое — план стоит пересчитать. У неутверждённого плана считать нечего:
     он и так пересчитывается свободно.
     """
-    if plan.approved_at is None or plan.plan_date is None:
+    if plan.approved_at is None or plan.plan_date is None or getattr(plan, "superseded_at", None):
         return {}
     withdrawn = await plans_repository.list_withdrawn_requests(session, plan.id)
     day = planner_loader.planning_day(plan.plan_date)
@@ -516,7 +661,11 @@ async def replan_reasons(session: AsyncSession, plan: Plan) -> dict[str, list]:
         and request.approved_plan_id is None
         and request.id not in seen
     ]
+    delays = await plan_route_delays(session, plan)
     return {
+        "at_risk_request_ids": sorted(
+            request_id for delay in delays.values() for request_id in delay.at_risk_request_ids
+        ),
         "withdrawn_requests": [
             WithdrawnRequest(request_id=request_id, status_id=status_id)
             for request_id, status_id in withdrawn
@@ -572,6 +721,22 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
         *(build_engineer_route(group, candidates_by_request) for group in engineer_assignments)
     )
 
+    # отметки бригад из мобильного приложения — факт поверх плана, и отставание от него
+    facts = await brigade_repository.list_facts(
+        session, [assignment.request_id for assignment in stored_assignments]
+    )
+    delays = await plan_route_delays(session, plan, stored_assignments)
+    for route in routes:
+        if route.engineer_id in delays:
+            route.delay_minutes = delays[route.engineer_id].delay_minutes
+            route.at_risk_request_ids = delays[route.engineer_id].at_risk_request_ids
+        for visit in route.visits:
+            fact = facts.get(visit.request_id)
+            if fact is not None:
+                visit.departed_at = fact.departed_at
+                visit.arrived_at = fact.arrived_at
+                visit.finished_at = fact.finished_at
+
     summary = (await summarize_plans(session, [plan]))[0]
     return PlanDetail(
         **summary.model_dump(exclude={"total_distance_km"}),
@@ -579,6 +744,57 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
         routes=list(routes),
         unassigned=unassigned,
     )
+
+
+async def plan_route_delays(
+    session: AsyncSession, plan: Plan, assignments: list[Assignment] | None = None
+) -> dict[int, RouteDelay]:
+    """Отставание каждой бригады утверждённого плана по её отметкам (route_delay.py).
+
+    «Сейчас» учитывается только у плана на сегодня — у прошлых и будущих дней только отметки.
+    """
+    if plan.approved_at is None or plan.plan_date is None or getattr(plan, "superseded_at", None):
+        return {}
+    if assignments is None:
+        assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    facts = await brigade_repository.list_facts(
+        session, [assignment.request_id for assignment in assignments]
+    )
+    codes = {
+        status.id: status.code
+        for status in await request_statuses_repository.list_statuses(session)
+    }
+    moment = datetime.now(UTC)
+    now = moment if planner_loader.local_date_of(moment) == plan.plan_date else None
+
+    routes: dict[int, list[Assignment]] = defaultdict(list)
+    for assignment in assignments:
+        if assignment.engineer_id is not None and assignment.planned_arrival_time is not None:
+            routes[assignment.engineer_id].append(assignment)
+    result = {}
+    for engineer_id, route in routes.items():
+        visits = []
+        for assignment in sorted(route, key=lambda item: item.visit_order or 0):
+            request = assignment.request
+            fact = facts.get(request.id)
+            arrived_at = fact.arrived_at if fact else None
+            visits.append(
+                VisitFact(
+                    request_id=request.id,
+                    planned_start=assignment.planned_arrival_time,
+                    duration_minutes=request.duration_minutes,
+                    window_end=request.window_end,
+                    state=visit_state(
+                        codes.get(request.status_id, ""),
+                        request.approved_plan_id != plan.id,
+                        arrived_at,
+                    ),
+                    arrived_at=arrived_at,
+                    finished_at=fact.finished_at if fact else None,
+                )
+            )
+        result[engineer_id] = route_delay(visits, now)
+    return result
 
 
 def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:

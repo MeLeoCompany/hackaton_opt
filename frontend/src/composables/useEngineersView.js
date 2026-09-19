@@ -10,7 +10,7 @@ import { referenceName } from '../utils/referenceNames.js'
 // width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
 export const ENGINEER_COLUMNS = [
   { key: 'id', label: '№', sortKey: 'id', width: '90px' },
-  { key: 'name', label: 'Имя', sortKey: 'name', grow: 1, minWidth: 170, floor: 130 },
+  { key: 'name', label: 'Бригада', sortKey: 'name', grow: 1, minWidth: 170, floor: 130 },
   { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '215px', floor: 170 },
   { key: 'skills', label: 'Навыки', sortKey: 'skills', grow: 2, minWidth: 230, floor: 170 },
   // что бригада везёт с собой: тип и количество, отдельно от навыков

@@ -11,7 +11,7 @@ import ReplanMark from '../components/ReplanMark.vue'
 import ReplanNotice from '../components/ReplanNotice.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { usePlans } from '../composables/usePlans.js'
-import { formatDay } from '../utils/moscowTime.js'
+import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 
 const {
   selectedDay,
@@ -35,9 +35,22 @@ const {
   dayCheck,
   approve,
   cancelApproval,
+  replan,
   selectEngineer,
   markVisitStatus,
 } = usePlans()
+
+// пересчёт утверждённого плана с момента: окно параметров с временем пересчёта
+const replanTarget = ref(null)
+
+async function startReplan(params) {
+  const summary = replanTarget.value
+  replanTarget.value = null
+  replanPlanId.value = null
+  await replan(summary, params)
+  // открыт план — возвращаемся к списку: там рядом старый план и его пересчёт
+  if (selectedPlanId.value !== null) backToPlans()
+}
 
 // пришли из сравнения планов: открываем нужный план; из заявки — ещё и её точку на карте
 const { takePlanId, takePlanRequestId } = usePlanFocus()
@@ -54,6 +67,8 @@ async function startBuild(params) {
 
 // «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
 const viewMode = ref('details')
+// карта утверждённого плана: «План» — как задумано, «Факт» — где бригады по их отметкам
+const showFact = ref(true)
 
 // Страница в двух состояниях: список планов дня или маршруты одного плана.
 // Клик по плану в списке открывает его маршруты, стрелка «← Планы на …» возвращает к списку.
@@ -133,7 +148,13 @@ onMounted(async () => {
         <h1 class="plan-title">
           План №{{ selectedPlanId }}
           <ReplanMark :summary="openedSummary" large @show="replanPlanId = selectedPlanId" />
-          <span v-if="openedSummary?.approved_at" class="badge approved">утверждён</span>
+          <span v-if="openedSummary?.superseded_at" class="badge superseded" title="Бригады ездят по утверждённому пересчёту">
+            заменён пересчётом
+          </span>
+          <span v-else-if="openedSummary?.approved_at" class="badge approved">утверждён</span>
+          <span v-if="openedSummary?.parent_plan_id" class="replan-title">
+            пересчёт плана №{{ openedSummary.parent_plan_id }} на {{ moscowTimeOf(openedSummary.replanned_at) }}
+          </span>
         </h1>
         <p v-if="openedSummary">
           {{ openedSummary.solver ?? '—' }} · назначено {{ openedSummary.assigned_count }} · не назначено
@@ -162,6 +183,7 @@ onMounted(async () => {
         :summary="replanSummary"
         :references="references"
         @close="replanPlanId = null"
+        @replan="replanTarget = replanSummary"
       />
 
       <p v-if="loadingDays" class="muted">Загружаю планы…</p>
@@ -179,6 +201,7 @@ onMounted(async () => {
           @approve="approve"
           @cancel-approval="cancelApproval"
           @replan-info="replanPlanId = $event"
+          @replan="replanTarget = $event"
         />
       </section>
     </template>
@@ -197,6 +220,7 @@ onMounted(async () => {
         :summary="replanSummary"
         :references="references"
         @close="replanPlanId = null"
+        @replan="replanTarget = replanSummary"
       />
 
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
@@ -221,6 +245,32 @@ onMounted(async () => {
               Карта · маршрутов {{ plan.routes.length }}
             </button>
           </div>
+
+          <button
+            v-if="openedSummary?.approved_at && !openedSummary?.superseded_at"
+            class="primary replan-button"
+            :disabled="building"
+            title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
+            @click="replanTarget = openedSummary"
+          >
+            Пересчитать с текущего момента
+          </button>
+
+          <!-- утверждённый план: по нему ездят бригады — на карте можно смотреть факт по их отметкам -->
+          <div v-if="viewMode === 'map' && openedSummary?.approved_at" class="view-switch" role="tablist">
+            <button role="tab" :aria-selected="!showFact" :class="{ active: !showFact }" @click="showFact = false">
+              План
+            </button>
+            <button
+              role="tab"
+              :aria-selected="showFact"
+              :class="{ active: showFact }"
+              title="Где бригады сейчас: по их отметкам в мобильном приложении"
+              @click="showFact = true"
+            >
+              Факт
+            </button>
+          </div>
         </div>
 
         <div :class="['plan-view', { 'with-map': viewMode === 'map' }]">
@@ -229,6 +279,8 @@ onMounted(async () => {
               :plan="plan"
               :selected-engineer-id="selectedEngineerId"
               :focused-request-id="focusedRequestId"
+              :references="references"
+              :fact="showFact && Boolean(openedSummary?.approved_at)"
               @select-engineer="selectEngineer"
               @focus-request="focusVisit"
             />
@@ -251,6 +303,14 @@ onMounted(async () => {
     </template>
 
     <PlanBuildDialog
+      v-if="replanTarget"
+      :plan-date="selectedDay"
+      :replan-of="replanTarget"
+      :building="building"
+      @build="startReplan"
+      @close="replanTarget = null"
+    />
+    <PlanBuildDialog
       v-if="buildDialogOpen"
       :plan-date="selectedDay"
       :day-check="dayCheck"
@@ -266,6 +326,23 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* пересчёт открытого плана — справа в полосе переключателей */
+.badge.superseded {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.replan-title {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.replan-button {
+  margin-left: auto;
+  order: 1;
+}
+
 
 .plan-title {
   display: flex;

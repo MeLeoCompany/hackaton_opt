@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
@@ -36,6 +36,31 @@ class PlanBuildRequest(BaseModel):
         return list(validate_objective_order(value))
 
 
+class PlanReplanRequest(BaseModel):
+    """Пересчёт утверждённого плана: чем считать и на какой момент (пусто — сейчас)."""
+
+    solver: SolverName = SolverName.CUOPT
+    objective_order: list[ObjectiveCriterion] = Field(
+        default_factory=lambda: list(DEFAULT_OBJECTIVE_ORDER)
+    )
+    # на какой момент пересчитать: бригады свободны не раньше него. Пусто — текущее время
+    at: datetime | None = None
+
+    @field_validator("objective_order")
+    @classmethod
+    def validate_order(cls, value: list[ObjectiveCriterion]) -> list[ObjectiveCriterion]:
+        return list(validate_objective_order(value))
+
+    @field_validator("at")
+    @classmethod
+    def with_time_zone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError(
+                "момент пересчёта — с часовым поясом, например 2026-08-17T14:30:00+03:00"
+            )
+        return value
+
+
 class PlanningDayOption(BaseModel):
     """День, на который есть активные заявки."""
 
@@ -65,11 +90,18 @@ class PlanSummary(BaseModel):
     solve_duration_ms: float | None = None
     approved_at: datetime | None = None  # план утверждён: его заявки закреплены за этим днём
     objective_order: list[ObjectiveCriterion] | None = None
+    # пересчёт с текущего момента: какой план пересчитан и на какой момент
+    parent_plan_id: int | None = None
+    replanned_at: datetime | None = None
+    # план заменён утверждённым пересчётом: бригады ездят уже по новому
+    superseded_at: datetime | None = None
     # только у утверждённого плана: что изменилось с утверждения — повод его пересчитать.
     # Сняты — заявки его маршрутов отменены или возвращены в «Новая» (со статусом: как сняли);
     # новые — заявки дня офиса, которые ждут планирования, а расчёт плана их не видел
     withdrawn_requests: list[WithdrawnRequest] = []
     new_request_ids: list[int] = []
+    # бригады отстают: к этим заявкам по плану уже не успеть до конца окна
+    at_risk_request_ids: list[int] = []
 
 
 class HeldRequest(BaseModel):
@@ -108,6 +140,10 @@ class PlanVisit(BaseModel):
     # за каким утверждённым планом заявка закреплена сейчас; у утверждённого плана визит,
     # чья заявка закреплена не за ним, снят с плана (заявку вернули в «Новая»)
     approved_plan_id: int | None = None
+    # что отметила бригада в мобильном приложении: выехала, прибыла, закончила
+    departed_at: datetime | None = None
+    arrived_at: datetime | None = None
+    finished_at: datetime | None = None
     # факты этого визита — из них интерфейс объясняет, почему он стоит здесь
     available_from: datetime  # когда исполнитель освободился: конец прошлой работы или начало смены
     window_slack_minutes: int  # запас до закрытия окна заявки
@@ -125,6 +161,10 @@ class EngineerRoute(BaseModel):
     duration_min: float  # время в пути, без работы на заявках
     provider: str  # valhalla или haversine — чем посчитаны пробег и линия
     geometry: list[str]  # encoded polyline по участкам; пусто, если посчитано по прямой
+    # утверждённый план: на сколько бригада отстаёт по своим отметкам и к каким заявкам
+    # маршрута уже не успеет к концу окна (route_delay.py)
+    delay_minutes: int = 0
+    at_risk_request_ids: list[int] = []
     shift_start: datetime
     shift_end: datetime
     visits: list[PlanVisit]
@@ -144,54 +184,3 @@ class PlanDetail(PlanSummary):
     total_distance_km: float
     routes: list[EngineerRoute]
     unassigned: list[UnassignedRequest]
-
-
-class DaySyncRequest(BaseModel):
-    """Синхронизировать день офиса с утверждённым планом на это время."""
-
-    plan_date: date
-    sync_time: datetime
-
-    @model_validator(mode="after")
-    def check_time_zone(self) -> "DaySyncRequest":
-        if self.sync_time.tzinfo is None:
-            raise ValueError(
-                "время синхронизации — с часовым поясом, например 2026-08-17T14:30:00+03:00"
-            )
-        return self
-
-
-class DaySyncTransition(BaseModel):
-    """Какой статус заявка получит при синхронизации и почему."""
-
-    request_id: int
-    address: str
-    from_status_id: int
-    to_status_id: int
-    reason: str
-    warning: bool = False  # «Новая» уходит в «Отменена»: окно прошло, а в плане её нет
-
-
-class DaySyncState(BaseModel):
-    """До какого времени день офиса синхронизирован; synced_to None — ещё ни разу."""
-
-    plan_date: date
-    synced_to: datetime | None = None
-    synced_at: datetime | None = None
-    user_name: str | None = None
-
-
-class DaySyncReport(BaseModel):
-    """Переходы синхронизации: в предпросмотре — что будет, после выполнения — что сделано.
-
-    problems — почему синхронизировать нельзя (например, разрыв в маршруте бригады):
-    тогда не меняется ничего.
-    """
-
-    plan_date: date
-    sync_time: datetime
-    approved_plan_id: int | None = None
-    last_synced_to: datetime | None = None
-    transitions: list[DaySyncTransition] = []
-    problems: list[str] = []
-    applied: bool = False
