@@ -15,7 +15,7 @@ from zipfile import BadZipFile, ZipFile
 import httpx
 
 from src.core.config import settings
-from src.schemas.travel import Point, TransportKind, TravelLeg, TravelMode
+from src.schemas.travel import Point, TransportKind, TravelLeg, TravelMode, TravelProvider
 from src.services.travel import r5_provider, valhalla_provider
 
 logger = logging.getLogger(__name__)
@@ -108,15 +108,36 @@ async def _walk(
 
 
 async def route(origin: Point, destination: Point, departure: datetime) -> r5_provider.RouteResult:
-    """Повторить поиск только при 404 R5, добавив проверенный пеший участок."""
+    """Сравнить R5 с прямым пешим путём и восстановить привязку при 404."""
     try:
-        return await r5_provider.build_route(origin, destination, departure)
+        direct_result = await r5_provider.build_route(origin, destination, departure)
     except httpx.HTTPStatusError as error:
         if error.response.status_code != 404:
             raise
         original_error = error
+        direct_result = None
 
     options: list[r5_provider.RouteResult] = []
+    # На коротком плече остановка может быть вовсе не нужна. Valhalla использует
+    # тот же профиль пешехода, что и отдельный режим «Пешеход».
+    direct_walk = await _walk(origin, destination, max_distance_km=math.inf)
+    if direct_walk is not None:
+        options.append(
+            r5_provider.RouteResult(
+                legs=[direct_walk],
+                total_duration_min=direct_walk.duration_min,
+                walking_duration_min=direct_walk.duration_min,
+                waiting_duration_min=0,
+                transit_duration_min=0,
+                entry_exit_penalty_min=0,
+                reliability_buffer_min=0,
+                transfers=0,
+                provider=TravelProvider.VALHALLA,
+            )
+        )
+    if direct_result is not None:
+        options.append(direct_result)
+        return min(options, key=lambda option: option.total_duration_min)
     stop_access: dict[bool, list[tuple[Point, TravelLeg]]] = {True: [], False: []}
     for is_origin, point in ((True, origin), (False, destination)):
         stop_candidates = _nearby_stops(point)
@@ -157,7 +178,7 @@ async def route(origin: Point, destination: Point, departure: datetime) -> r5_pr
 
     # Обе исходные точки могут оказаться на изолированных рёбрах. В этом случае
     # проверяем ограниченное число пар остановок, не перебирая все смещения.
-    if not options:
+    if not any(option.provider is TravelProvider.R5 for option in options):
         for start, start_walk in stop_access[True]:
             for end, end_walk in stop_access[False]:
                 try:

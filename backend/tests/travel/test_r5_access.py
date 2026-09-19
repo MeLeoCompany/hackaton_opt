@@ -6,7 +6,7 @@ from zipfile import ZipFile
 import httpx
 import pytest
 
-from src.schemas.travel import Point, TravelLeg, TravelMode
+from src.schemas.travel import Point, TravelLeg, TravelMode, TravelProvider
 from src.services.travel import r5_access, r5_provider
 
 ORIGIN = Point(latitude=55.7, longitude=37.5)
@@ -32,6 +32,42 @@ def result() -> r5_provider.RouteResult:
         reliability_buffer_min=2,
         transfers=0,
     )
+
+
+def access_walk(walk):
+    def pick(origin, destination, **kwargs):
+        return None if origin == ORIGIN and destination == DESTINATION else walk
+
+    return pick
+
+
+@pytest.mark.asyncio
+async def test_direct_walking_wins_when_transit_is_slower():
+    walk = TravelLeg(distance_km=0.6, duration_min=8, geometry="shape", mode=TravelMode.WALK)
+    with (
+        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_provider, "build_route", AsyncMock(return_value=result())),
+    ):
+        route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
+
+    assert route.provider is TravelProvider.VALHALLA
+    assert route.total_duration_min == 8
+    assert route.legs == [walk]
+
+
+@pytest.mark.asyncio
+async def test_direct_walking_survives_r5_not_found():
+    walk = TravelLeg(distance_km=0.6, duration_min=8, geometry="shape", mode=TravelMode.WALK)
+    with (
+        patch.object(r5_access, "_nearby_stops", return_value=[]),
+        patch.object(r5_access, "_nearby_points", return_value=iter([])),
+        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_provider, "build_route", AsyncMock(side_effect=not_found())),
+    ):
+        route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
+
+    assert route.provider is TravelProvider.VALHALLA
+    assert route.total_duration_min == 8
 
 
 def test_gtfs_candidates_include_regular_stops_and_skip_parent_station(tmp_path):
@@ -62,7 +98,7 @@ async def test_stop_access_selects_fastest_complete_route():
     with (
         patch.object(r5_access, "_nearby_stops", side_effect=[[first, second], []]),
         patch.object(r5_access, "_nearby_points", return_value=iter([])),
-        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_access, "_walk", AsyncMock(side_effect=access_walk(walk))),
         patch.object(
             r5_provider, "build_route", AsyncMock(side_effect=[not_found(), slow, fast])
         ) as build,
@@ -93,7 +129,7 @@ async def test_stop_access_handles_both_isolated_endpoints():
     with (
         patch.object(r5_access, "_nearby_stops", side_effect=[[first], [last]]),
         patch.object(r5_access, "_nearby_points", return_value=iter([])),
-        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_access, "_walk", AsyncMock(side_effect=access_walk(walk))),
         patch.object(r5_provider, "build_route", side_effect=build),
     ):
         route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
@@ -112,7 +148,7 @@ async def test_nearby_access_adds_real_walk_and_shifts_departure():
             "_nearby_points",
             return_value=iter([ORIGIN.model_copy(update={"latitude": 55.699})]),
         ),
-        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_access, "_walk", AsyncMock(side_effect=access_walk(walk))),
         patch.object(
             r5_provider, "build_route", AsyncMock(side_effect=[not_found(), result()])
         ) as build,

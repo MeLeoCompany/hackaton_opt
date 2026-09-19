@@ -44,6 +44,7 @@ async def test_public_transport_uses_r5_time_and_valhalla_distance():
             "build_duration_matrix",
             AsyncMock(return_value=[[0, 24], [None, 0]]),
         ) as r5_matrix,
+        patch.object(travel_service, "_walking_matrix", AsyncMock(return_value=None)),
     ):
         result = await travel_service.build_matrix(
             POINTS,
@@ -58,6 +59,39 @@ async def test_public_transport_uses_r5_time_and_valhalla_distance():
     assert result.distances_km[0][1] > 0
     assert result.distances_km[1][0] is None
     r5_matrix.assert_awaited_once_with(POINTS, DEPARTURE)
+
+
+@pytest.mark.asyncio
+async def test_public_transport_matrix_prefers_faster_direct_walk():
+    walking = TravelMatrix(
+        transport=TransportKind.PEDESTRIAN,
+        provider=TravelProvider.VALHALLA,
+        points=POINTS,
+        distances_km=[[0, 1.2], [1.3, 0]],
+        durations_min=[[0, 12], [13, 0]],
+    )
+    with (
+        patch.object(
+            travel_service.valhalla_provider,
+            "build_matrix",
+            AsyncMock(return_value=surface_matrix()),
+        ),
+        patch.object(
+            travel_service.r5_provider,
+            "build_duration_matrix",
+            AsyncMock(return_value=[[0, 24], [None, 0]]),
+        ),
+        patch.object(travel_service, "_walking_matrix", AsyncMock(return_value=walking)),
+    ):
+        matrix = await travel_service.build_matrix(
+            POINTS,
+            TransportKind.PUBLIC_TRANSPORT,
+            departure_time=DEPARTURE,
+            allow_fallback=False,
+        )
+
+    assert matrix.durations_min == [[0, 12], [13, 0]]
+    assert matrix.distances_km == [[0, 1.2], [1.3, 0]]
 
 
 @pytest.mark.asyncio
