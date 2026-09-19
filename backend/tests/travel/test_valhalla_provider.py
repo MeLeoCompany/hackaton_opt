@@ -42,6 +42,7 @@ async def test_pedestrian_route_strictly_excludes_ferries():
     assert payload["costing_options"]["pedestrian"] == {
         "use_ferry": 0.0,
         "exclude_ferries": True,
+        "walking_speed": valhalla_provider.settings.walking_speed_kmh,
     }
 
 
@@ -74,6 +75,7 @@ async def test_pedestrian_matrix_strictly_excludes_ferries():
 
     payload = post.await_args.kwargs["json"]
     assert payload["costing_options"]["pedestrian"]["exclude_ferries"] is True
+    assert payload["costing_options"]["pedestrian"]["walking_speed"] == 4.8
 
 
 @pytest.mark.asyncio

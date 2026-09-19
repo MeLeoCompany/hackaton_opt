@@ -2,16 +2,49 @@
 
 from __future__ import annotations
 
+import csv
+import io
+import logging
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from itertools import pairwise
+from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 import httpx
 
 from src.core.config import settings
-from src.schemas.travel import Point, TravelLeg, TravelMode
+from src.schemas.travel import Point, TravelLeg, TravelMode, TravelProvider
 from src.services.travel.polyline import encode
+
+logger = logging.getLogger(__name__)
+HEX_COLOR = re.compile(r"[0-9A-Fa-f]{6}\Z")
+
+
+@lru_cache(maxsize=2)
+def _route_colors(path: Path, modified_ns: int) -> dict[str, str]:
+    del modified_ns
+    with ZipFile(path) as archive, archive.open("routes.txt") as source:
+        rows = csv.DictReader(io.TextIOWrapper(source, encoding="utf-8-sig"))
+        return {
+            row["route_id"]: f"#{color.upper()}"
+            for row in rows
+            if (color := (row.get("route_color") or "").lstrip("#")) and HEX_COLOR.fullmatch(color)
+        }
+
+
+def _color_for_route(route_id: str | None) -> str | None:
+    if route_id is None:
+        return None
+    path = settings.r5_gtfs_path
+    try:
+        return _route_colors(path, path.stat().st_mtime_ns).get(route_id)
+    except (OSError, BadZipFile, KeyError, ValueError):
+        logger.warning("R5: не удалось прочитать цвета маршрутов из %s", path, exc_info=True)
+        return None
 
 
 @dataclass(frozen=True)
@@ -24,6 +57,7 @@ class RouteResult:
     entry_exit_penalty_min: float
     reliability_buffer_min: float
     transfers: int
+    provider: TravelProvider = TravelProvider.R5
 
 
 def _point_id(index: int) -> str:
@@ -179,6 +213,7 @@ def _parse_route(payload: object) -> RouteResult:
                 geometry=geometry,
                 mode=_mode(raw_leg.get("mode"), route_id),
                 route_id=route_id,
+                route_color=_color_for_route(route_id),
                 from_stop_id=(
                     None if raw_leg.get("from_stop_id") is None else str(raw_leg["from_stop_id"])
                 ),

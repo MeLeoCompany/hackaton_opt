@@ -15,6 +15,7 @@ from src.schemas.travel import (
 )
 from src.services.travel import (
     haversine_provider,
+    r5_access,
     r5_provider,
     transit_provider,
     valhalla_provider,
@@ -65,6 +66,7 @@ async def _public_transport_matrix(
 
     try:
         durations = await r5_provider.build_duration_matrix(points, departure_time)
+        durations = await r5_access.repair_duration_matrix(points, departure_time, durations)
     except (httpx.HTTPError, KeyError, ValueError):
         if not allow_fallback:
             raise
@@ -88,6 +90,20 @@ async def _public_transport_matrix(
                         points, TransportKind.PUBLIC_TRANSPORT
                     ).distances_km
                 distances[row_index][column_index] = approximate_distances[row_index][column_index]
+
+    walking = await _walking_matrix(points)
+    if walking is not None:
+        for row_index, row in enumerate(durations):
+            for column_index, duration in enumerate(row):
+                walk_duration = walking.durations_min[row_index][column_index]
+                walk_distance = walking.distances_km[row_index][column_index]
+                if (
+                    walk_duration is not None
+                    and walk_distance is not None
+                    and (duration is None or walk_duration <= duration)
+                ):
+                    durations[row_index][column_index] = walk_duration
+                    distances[row_index][column_index] = walk_distance
     return TravelMatrix(
         transport=TransportKind.PUBLIC_TRANSPORT,
         provider=TravelProvider.R5,
@@ -155,7 +171,7 @@ async def _r5_route(
     for index, (origin, destination) in enumerate(pairwise(points)):
         if leg_departure_times is not None:
             current_departure = leg_departure_times[index]
-        result = await r5_provider.build_route(origin, destination, current_departure)
+        result = await r5_access.route(origin, destination, current_departure)
         results.append(result)
         current_departure += timedelta(minutes=result.total_duration_min)
 
@@ -167,7 +183,11 @@ async def _r5_route(
     geometry = [leg.geometry for leg in legs]
     return TravelRoute(
         transport=TransportKind.PUBLIC_TRANSPORT,
-        provider=TravelProvider.R5,
+        provider=(
+            TravelProvider.VALHALLA
+            if all(result.provider is TravelProvider.VALHALLA for result in results)
+            else TravelProvider.R5
+        ),
         distance_km=round(sum(leg.distance_km for leg in legs), 3),
         duration_min=round(sum(result.total_duration_min for result in results), 1),
         geometry=geometry if any(geometry) else [],

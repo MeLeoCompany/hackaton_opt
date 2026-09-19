@@ -16,6 +16,13 @@ function modeOf(leg) {
   return TRAVEL_MODES[leg.mode] ?? TRAVEL_MODES.road
 }
 
+function badgeTextColor(color) {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return '#fff'
+  const channels = [1, 3, 5].map((index) => parseInt(color.slice(index, index + 2), 16))
+  const brightness = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+  return brightness > 150 ? '#0f172a' : '#fff'
+}
+
 // сумма плеч по матрице пригодится, чтобы своими глазами увидеть расхождение с /route
 function matrixLegSum(matrix) {
   return matrix.distances_km
@@ -41,7 +48,7 @@ function matrixLegSum(matrix) {
     <ol v-if="route.legs?.length" class="legs">
       <li v-for="(leg, index) in route.legs" :key="index">
         <span class="leg-points">{{ index + 1 }}</span>
-        <span class="mode" :style="{ background: modeOf(leg).color }">{{ modeOf(leg).label }}</span>
+        <span class="mode" :style="{ background: leg.route_color || modeOf(leg).color, color: badgeTextColor(leg.route_color || modeOf(leg).color) }">{{ modeOf(leg).label }}</span>
         <span v-if="leg.route_id" class="route-id">{{ leg.route_id }}</span>
         <span class="leg-numbers">
           {{ formatDuration(leg.duration_min) }}<template v-if="leg.wait_min">, ожидание {{ formatDuration(leg.wait_min) }}</template>

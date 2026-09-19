@@ -31,6 +31,7 @@ COSTING_OPTIONS: dict[TransportKind, dict[str, dict[str, float | bool]]] = {
         "pedestrian": {
             "use_ferry": 0.0,
             "exclude_ferries": True,
+            "walking_speed": settings.walking_speed_kmh,
         }
     }
 }

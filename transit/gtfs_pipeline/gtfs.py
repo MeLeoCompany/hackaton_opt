@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import io
 import math
+import os
+import tempfile
 import zipfile
 from collections.abc import Iterable
 from datetime import date, datetime, timezone
@@ -12,6 +14,7 @@ from typing import Any
 
 from .common import gtfs_time, read_json
 from .metro_transfers import cluster_metro_stations, transfer_rows
+from .validate import validate_gtfs
 
 AGENCY_ID = "moscow-transport-pilot"
 
@@ -41,6 +44,60 @@ def _metro_service_start(service: dict[str, Any]) -> str:
     return collected.replace(month=1, day=1).isoformat()
 
 
+def _load_datasets(inputs: list[Path]) -> list[dict[str, Any]]:
+    datasets = []
+    for path in inputs:
+        dataset = read_json(path)
+        if dataset["kind"] != "bus_weekly":
+            datasets.append(dataset)
+            continue
+        service = dataset["service"]
+        start = date.fromisoformat(service["start_date"])
+        end = date.fromisoformat(service["end_date"])
+        weekdays = service["weekdays"]
+        if (
+            start > end
+            or not weekdays
+            or len(set(weekdays)) != len(weekdays)
+            or any(
+                not isinstance(day, int) or isinstance(day, bool) or not 0 <= day <= 6
+                for day in weekdays
+            )
+        ):
+            raise ValueError(f"некорректный календарь автобуса: {path}")
+        template = read_json(path.parent / dataset["template"])
+        if template["kind"] != "bus_exact":
+            raise ValueError(f"шаблон автобуса должен быть точным днём: {path}")
+        for example in dataset.get("matching_examples", []):
+            observed = read_json(path.parent / example)
+            if (
+                observed["kind"] != "bus_exact"
+                or observed["route"] != template["route"]
+                or observed["patterns"] != template["patterns"]
+            ):
+                raise ValueError(f"контрольная дата отличается от шаблона: {example}")
+        datasets.append(
+            {
+                "kind": "bus_weekly",
+                "route": template["route"],
+                "patterns": template["patterns"],
+                "service": service,
+                "source": dataset["source"],
+            }
+        )
+    weekly = [dataset for dataset in datasets if dataset["kind"] == "bus_weekly"]
+    for index, left in enumerate(weekly):
+        for right in weekly[index + 1 :]:
+            if (
+                left["route"]["source_route_id"] == right["route"]["source_route_id"]
+                and set(left["service"]["weekdays"]) & set(right["service"]["weekdays"])
+                and left["service"]["start_date"] <= right["service"]["end_date"]
+                and right["service"]["start_date"] <= left["service"]["end_date"]
+            ):
+                raise ValueError("пересекаются недельные календари одного автобуса")
+    return datasets
+
+
 def _distributed_offsets(stops: list[dict[str, Any]], duration: int) -> list[int]:
     distances = [0.0]
     for left, right in pairwise(stops):
@@ -54,25 +111,36 @@ def _distributed_offsets(stops: list[dict[str, Any]], duration: int) -> list[int
 
 
 def build_gtfs(inputs: list[Path], output: Path) -> None:
-    datasets = [read_json(path) for path in inputs]
+    datasets = _load_datasets(inputs)
     metro_clusters = cluster_metro_stations(datasets)
     parent_by_stop = {
         stop_id: cluster.station_id
         for cluster in metro_clusters
         for stop_id in cluster.stop_ids
     }
-    service_starts = [
-        dataset["source"]["service_date"]
-        if dataset["kind"] == "bus_exact"
-        else _metro_service_start(dataset["service"])
-        for dataset in datasets
-    ]
-    service_ends = [
-        dataset["source"]["service_date"]
-        if dataset["kind"] == "bus_exact"
-        else dataset["service"]["end_date"]
-        for dataset in datasets
-    ]
+    service_starts = []
+    service_ends = []
+    for dataset in datasets:
+        if dataset["kind"] == "bus_exact":
+            start = end = dataset["source"]["service_date"]
+        elif dataset["kind"] == "bus_weekly":
+            start, end = (
+                dataset["service"]["start_date"],
+                dataset["service"]["end_date"],
+            )
+        else:
+            start, end = (
+                _metro_service_start(dataset["service"]),
+                dataset["service"]["end_date"],
+            )
+        service_starts.append(start)
+        service_ends.append(end)
+    exact_dates: dict[str, set[str]] = {}
+    for dataset in datasets:
+        if dataset["kind"] == "bus_exact":
+            exact_dates.setdefault(dataset["route"]["source_route_id"], set()).add(
+                dataset["source"]["service_date"]
+            )
     tables: dict[str, list[list[Any]]] = {
         "stops.txt": [],
         "routes.txt": [],
@@ -111,11 +179,32 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                 ]
             )
             route_seen.add(route_id)
-        if dataset["kind"] == "bus_exact":
-            service_id = f"bus-{route_id}-{dataset['source']['service_date']}"
-            tables["calendar_dates.txt"].append(
-                [service_id, _date(dataset["source"]["service_date"]), 1]
-            )
+        if dataset["kind"] in {"bus_exact", "bus_weekly"}:
+            if dataset["kind"] == "bus_exact":
+                service_id = f"bus-{route_id}-{dataset['source']['service_date']}"
+                tables["calendar_dates.txt"].append(
+                    [service_id, _date(dataset["source"]["service_date"]), 1]
+                )
+            else:
+                service = dataset["service"]
+                service_id = f"bus-{route_id}-weekly-{service['start_date']}-{'-'.join(map(str, service['weekdays']))}"
+                tables["calendar.txt"].append(
+                    [
+                        service_id,
+                        *(int(day in service["weekdays"]) for day in range(7)),
+                        _date(service["start_date"]),
+                        _date(service["end_date"]),
+                    ]
+                )
+                for exact_day in exact_dates.get(route_id, set()):
+                    parsed = date.fromisoformat(exact_day)
+                    if (
+                        service["start_date"] <= exact_day <= service["end_date"]
+                        and parsed.weekday() in service["weekdays"]
+                    ):
+                        tables["calendar_dates.txt"].append(
+                            [service_id, _date(exact_day), 2]
+                        )
             for pattern in dataset["patterns"]:
                 shape_id = f"{route_id}-{pattern['direction_id']}"
                 if shape_id not in shape_seen:
@@ -130,8 +219,7 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                         )
                         stop_seen.add(stop_id)
                 for trip_index in range(len(pattern["stops"][0]["departures"])):
-                    service_date = dataset["source"]["service_date"]
-                    trip_id = f"{shape_id}-{service_date}-{trip_index + 1}"
+                    trip_id = f"{shape_id}-{service_id}-{trip_index + 1}"
                     tables["trips.txt"].append(
                         [
                             route_id,
@@ -342,8 +430,20 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
         ],
     )
     output.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("agency.txt", agency)
-        for name, rows in tables.items():
-            if rows:
-                archive.writestr(name, _csv_bytes(headers[name], rows))
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        with zipfile.ZipFile(
+            temporary, "w", compression=zipfile.ZIP_DEFLATED
+        ) as archive:
+            archive.writestr("agency.txt", agency)
+            for name, rows in tables.items():
+                if rows:
+                    archive.writestr(name, _csv_bytes(headers[name], rows))
+        validate_gtfs(temporary)
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)

@@ -162,6 +162,7 @@ def build_solver_inputs(
 ) -> SolverInputs:
     """ProblemInstance -> массивы для DataModel. task_request_indices — какие заявки отправляем."""
     transport_ids = sorted({engineer.transport_id for engineer in instance.engineers})
+    _validate_transport_matrices(instance, transport_ids)
     engineers = instance.engineers
     requests = [instance.requests[request_index] for request_index in task_request_indices]
     selected_nodes = np.array(
@@ -226,6 +227,29 @@ def build_solver_inputs(
         ],
         objective=objective,
     )
+
+
+def _validate_transport_matrices(instance: ProblemInstance, transport_ids: list[int]) -> None:
+    """Не передавать в cuOpt матрицы с повреждённой размерностью или значениями."""
+    size = instance.n_engineers + instance.n_requests
+    for transport_id in transport_ids:
+        for name, matrices in (
+            ("расстояний", instance.distance_km),
+            ("времени", instance.travel_min),
+        ):
+            matrix = matrices.get(transport_id)
+            if matrix is None or matrix.shape != (size, size):
+                raise ValueError(
+                    f"матрица {name} для транспорта {transport_id} имеет неверный размер"
+                )
+            if not np.isfinite(matrix).all() or np.any(matrix < 0):
+                raise ValueError(
+                    f"матрица {name} для транспорта {transport_id} содержит недопустимые значения"
+                )
+            if np.any(matrix > np.finfo(np.float32).max):
+                raise ValueError(
+                    f"матрица {name} для транспорта {transport_id} превышает диапазон float32"
+                )
 
 
 def build_objective_policy(

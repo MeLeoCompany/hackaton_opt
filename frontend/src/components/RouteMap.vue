@@ -52,9 +52,10 @@ function drawRoute() {
     props.route.geometry.forEach((leg, index) => {
       const mode = props.route.legs?.[index]?.mode
       const routeId = props.route.legs?.[index]?.route_id
+      const routeColor = props.route.legs?.[index]?.route_color
       const style = mode && mode !== 'road' ? TRAVEL_MODES[mode] : null
       L.polyline(decodePolyline(leg), {
-        color: style ? style.color : LEG_COLORS[index % LEG_COLORS.length],
+        color: routeColor || (style ? style.color : LEG_COLORS[index % LEG_COLORS.length]),
         weight: 5,
         opacity: 0.8,
         // пеший кусок пунктиром: это не поездка
