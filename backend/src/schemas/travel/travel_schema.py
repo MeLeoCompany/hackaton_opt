@@ -1,6 +1,7 @@
 import enum
+from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TransportKind(int, enum.Enum):
@@ -13,11 +14,12 @@ class TransportKind(int, enum.Enum):
 
 
 class TravelProvider(str, enum.Enum):
-    """Чем посчитаны цифры. Всегда возвращается наружу: haversine и Valhalla
-    отличаются в разы, и подмена не должна проходить незаметно."""
+    """Основной источник времени. Возвращается наружу, чтобы деградация была видна."""
 
     HAVERSINE = "haversine"
     VALHALLA = "valhalla"
+    R5 = "r5"
+    TRANSIT_ESTIMATE = "transit_estimate"
 
 
 class TravelMode(str, enum.Enum):
@@ -46,6 +48,13 @@ class TravelRouteRequest(BaseModel):
 class TravelMatrixRequest(BaseModel):
     points: list[Point] = Field(min_length=2)
     transport: TransportKind = TransportKind.CAR
+    departure_time: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_departure_time(self) -> "TravelMatrixRequest":
+        if self.departure_time is not None and self.departure_time.tzinfo is None:
+            raise ValueError("departure_time должен содержать часовой пояс")
+        return self
 
 
 class TravelMatrix(BaseModel):

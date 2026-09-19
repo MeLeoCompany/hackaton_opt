@@ -153,6 +153,8 @@ def test_checked_in_pilot_builds_valid_gtfs(tmp_path: Path) -> None:
     with zipfile.ZipFile(output) as archive:
         assert "frequencies.txt" not in archive.namelist()
         assert "calendar_dates.txt" in archive.namelist()
+        calendar = archive.read("calendar.txt").decode("utf-8-sig")
+        assert "20260101,20261231" in calendar
 
 
 def test_multiple_dates_of_same_bus_route_do_not_duplicate_route_or_shape(

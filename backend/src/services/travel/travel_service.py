@@ -1,7 +1,9 @@
 import logging
+from datetime import datetime
 
 import httpx
 
+from src.core.local_day import local_timezone
 from src.schemas.travel import (
     Point,
     TransportKind,
@@ -10,14 +12,30 @@ from src.schemas.travel import (
     TravelProvider,
     TravelRoute,
 )
-from src.services.travel import haversine_provider, transit_provider, valhalla_provider
+from src.services.travel import (
+    haversine_provider,
+    r5_provider,
+    transit_provider,
+    valhalla_provider,
+)
 
 logger = logging.getLogger(__name__)
 
 
 async def build_matrix(
-    points: list[Point], transport: TransportKind, *, allow_fallback: bool = True
+    points: list[Point],
+    transport: TransportKind,
+    *,
+    departure_time: datetime | None = None,
+    allow_fallback: bool = True,
 ) -> TravelMatrix:
+    if transport is TransportKind.PUBLIC_TRANSPORT:
+        return await _public_transport_matrix(
+            points,
+            departure_time or datetime.now(local_timezone()),
+            allow_fallback=allow_fallback,
+        )
+
     try:
         matrix = await valhalla_provider.build_matrix(points, transport)
     except (httpx.HTTPError, KeyError, ValueError):
@@ -27,11 +45,61 @@ async def build_matrix(
         logger.warning("Valhalla недоступна, матрица посчитана по haversine", exc_info=True)
         matrix = haversine_provider.build_matrix(points, transport)
 
-    if transport is not TransportKind.PUBLIC_TRANSPORT:
-        return matrix
-    # метро в дорожном графе отсутствует, а короткие куски человек проходит пешком:
-    # и то и другое добавляется поверх наземного расчёта там, где оно быстрее
-    return transit_provider.matrix_with_transit(matrix, await _walking_matrix(points))
+    return matrix
+
+
+async def _public_transport_matrix(
+    points: list[Point], departure_time: datetime, *, allow_fallback: bool
+) -> TravelMatrix:
+    try:
+        surface = await valhalla_provider.build_matrix(
+            points, TransportKind.PUBLIC_TRANSPORT
+        )
+    except (httpx.HTTPError, KeyError, ValueError):
+        if not allow_fallback:
+            raise
+        logger.warning(
+            "Valhalla недоступна, расстояния общественного транспорта оценены по прямой",
+            exc_info=True,
+        )
+        surface = haversine_provider.build_matrix(
+            points, TransportKind.PUBLIC_TRANSPORT
+        )
+
+    try:
+        durations = await r5_provider.build_duration_matrix(points, departure_time)
+    except (httpx.HTTPError, KeyError, ValueError):
+        if not allow_fallback:
+            raise
+        logger.warning(
+            "R5 недоступен, использована приближённая модель общественного транспорта",
+            exc_info=True,
+        )
+        walking = await _walking_matrix(points)
+        fallback = transit_provider.matrix_with_transit(surface, walking)
+        return fallback.model_copy(update={"provider": TravelProvider.TRANSIT_ESTIMATE})
+
+    distances = [list(row) for row in surface.distances_km]
+    approximate_distances: list[list[float | None]] | None = None
+    for row_index, row in enumerate(durations):
+        for column_index, duration in enumerate(row):
+            if duration is None:
+                distances[row_index][column_index] = None
+            elif distances[row_index][column_index] is None:
+                if approximate_distances is None:
+                    approximate_distances = haversine_provider.build_matrix(
+                        points, TransportKind.PUBLIC_TRANSPORT
+                    ).distances_km
+                distances[row_index][column_index] = approximate_distances[row_index][
+                    column_index
+                ]
+    return TravelMatrix(
+        transport=TransportKind.PUBLIC_TRANSPORT,
+        provider=TravelProvider.R5,
+        points=points,
+        distances_km=distances,
+        durations_min=durations,
+    )
 
 
 async def build_route(

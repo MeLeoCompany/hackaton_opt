@@ -35,6 +35,12 @@ def _date(value: str) -> str:
     return date.fromisoformat(value).strftime("%Y%m%d")
 
 
+def _metro_service_start(service: dict[str, Any]) -> str:
+    """Начало года данных: расчётное метро действует ежедневно, а не со дня сбора."""
+    collected = date.fromisoformat(service["start_date"])
+    return collected.replace(month=1, day=1).isoformat()
+
+
 def _distributed_offsets(stops: list[dict[str, Any]], duration: int) -> list[int]:
     distances = [0.0]
     for left, right in pairwise(stops):
@@ -58,7 +64,7 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
     service_starts = [
         dataset["source"]["service_date"]
         if dataset["kind"] == "bus_exact"
-        else dataset["service"]["start_date"]
+        else _metro_service_start(dataset["service"])
         for dataset in datasets
     ]
     service_ends = [
@@ -159,7 +165,7 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                     1,
                     1,
                     1,
-                    _date(service["start_date"]),
+                    _date(_metro_service_start(service)),
                     _date(service["end_date"]),
                 ]
             )

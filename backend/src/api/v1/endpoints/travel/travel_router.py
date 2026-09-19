@@ -22,6 +22,10 @@ async def travel_route(payload: TravelRouteRequest) -> TravelRoute:
 @router.post("/matrix", response_model=TravelMatrix)
 async def travel_matrix(payload: TravelMatrixRequest) -> TravelMatrix:
     try:
-        return await build_matrix(payload.points, payload.transport)
+        return await build_matrix(
+            payload.points,
+            payload.transport,
+            departure_time=payload.departure_time,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Матрицу построить не удалось: {exc}") from exc

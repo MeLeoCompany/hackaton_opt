@@ -101,7 +101,9 @@ async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
         priority.id for priority in priorities if priority.name == URGENT_PRIORITY_NAME
     }
 
-    distance_km, travel_min = await build_day_matrices(engineers, requests)
+    distance_km, travel_min = await build_day_matrices(
+        engineers, requests, day_start=day.day_start
+    )
 
     instance = ProblemInstance(
         engineers=[
@@ -144,7 +146,10 @@ async def load_day(session: AsyncSession, day: PlanningDay) -> LoadedDay:
 
 
 async def build_day_matrices(
-    engineers: list[Engineer], requests: list[Request]
+    engineers: list[Engineer],
+    requests: list[Request],
+    *,
+    day_start: datetime | None = None,
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
     """Матрицы км и минут по всем точкам дня — отдельно для каждого типа транспорта исполнителей.
 
@@ -165,11 +170,25 @@ async def build_day_matrices(
     distance_km: dict[int, np.ndarray] = {}
     travel_min: dict[int, np.ndarray] = {}
     for transport_id in sorted({engineer.transport_id for engineer in engineers}):
+        transport_engineers = [
+            engineer for engineer in engineers if engineer.transport_id == transport_id
+        ]
+        departure_time = min(
+            max(engineer.shift_start, day_start)
+            if day_start is not None
+            else engineer.shift_start
+            for engineer in transport_engineers
+        )
         try:
-            matrix = await build_matrix(points, TransportKind(transport_id), allow_fallback=False)
+            matrix = await build_matrix(
+                points,
+                TransportKind(transport_id),
+                departure_time=departure_time,
+                allow_fallback=False,
+            )
         except (httpx.HTTPError, KeyError, ValueError) as error:
             raise ExternalServiceError(
-                f"Маршрутизатор Valhalla недоступен, матрицу расстояний посчитать нельзя: {error}"
+                f"Маршрутизатор недоступен, матрицу расстояний посчитать нельзя: {error}"
             ) from error
 
         distance_km[transport_id] = replace_unreachable(matrix.distances_km, UNREACHABLE_KM)

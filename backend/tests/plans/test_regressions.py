@@ -12,11 +12,28 @@ from src.services.planner.planning_service import snapshot_assignment, snapshot_
 
 @pytest.mark.asyncio
 async def test_matrix_rounds_up_and_preserves_unreachable():
-    engineer = SimpleNamespace(start_latitude=55.7, start_longitude=37.7, transport_id=1)
+    shift_start = datetime(2026, 8, 17, 9, tzinfo=UTC)
+    engineer = SimpleNamespace(
+        start_latitude=55.7,
+        start_longitude=37.7,
+        transport_id=1,
+        shift_start=shift_start,
+    )
     request = SimpleNamespace(latitude=55.71, longitude=37.71)
     matrix = SimpleNamespace(distances_km=[[0, 1], [None, 0]], durations_min=[[0, 10.4], [None, 0]])
-    with patch.object(planner_loader, "build_matrix", AsyncMock(return_value=matrix)):
+    with patch.object(
+        planner_loader, "build_matrix", AsyncMock(return_value=matrix)
+    ) as build_matrix:
         distances, times = await planner_loader.build_day_matrices([engineer], [request])
+    build_matrix.assert_awaited_once_with(
+        [
+            Point(latitude=55.7, longitude=37.7),
+            Point(latitude=55.71, longitude=37.71),
+        ],
+        planner_loader.TransportKind.CAR,
+        departure_time=shift_start,
+        allow_fallback=False,
+    )
     assert times[1][0, 1] == 11
     assert times[1][1, 0] == planner_loader.UNREACHABLE_MINUTES
     assert distances[1][1, 0] == planner_loader.UNREACHABLE_KM
