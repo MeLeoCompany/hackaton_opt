@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="560" viewBox="0 0 1300 560" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <marker id="sys" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#64748b"/></marker>
+    <marker id="bri" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c2410c"/></marker>
+    <marker id="ope" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#1d4ed8"/></marker>
+    <marker id="both" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="1300" height="560" fill="#ffffff"/>
+
+  <!-- состояния -->
+  <rect x="30"   y="210" width="170" height="60" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="115"  y="237" text-anchor="middle" font-size="13" fill="#1d4ed8">1</text>
+  <text x="115"  y="258" text-anchor="middle" font-size="16" font-weight="700" fill="#1e3a8a">Новая</text>
+
+  <rect x="290"  y="210" width="170" height="60" rx="10" fill="#ede9fe" stroke="#6d28d9" stroke-width="2"/>
+  <text x="375"  y="237" text-anchor="middle" font-size="13" fill="#6d28d9">2</text>
+  <text x="375"  y="258" text-anchor="middle" font-size="16" font-weight="700" fill="#4c1d95">В плане</text>
+
+  <rect x="550"  y="210" width="170" height="60" rx="10" fill="#ffedd5" stroke="#c2410c" stroke-width="2"/>
+  <text x="635"  y="237" text-anchor="middle" font-size="13" fill="#c2410c">6</text>
+  <text x="635"  y="258" text-anchor="middle" font-size="16" font-weight="700" fill="#7c2d12">В пути</text>
+
+  <rect x="810"  y="210" width="170" height="60" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="2"/>
+  <text x="895"  y="237" text-anchor="middle" font-size="13" fill="#b45309">5</text>
+  <text x="895"  y="258" text-anchor="middle" font-size="16" font-weight="700" fill="#78350f">В работе</text>
+
+  <rect x="1070" y="210" width="170" height="60" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="1155" y="237" text-anchor="middle" font-size="13" fill="#16a34a">3</text>
+  <text x="1155" y="258" text-anchor="middle" font-size="16" font-weight="700" fill="#14532d">Выполнена</text>
+
+  <rect x="405"  y="400" width="200" height="60" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+  <text x="505"  y="427" text-anchor="middle" font-size="13" fill="#64748b">4</text>
+  <text x="505"  y="448" text-anchor="middle" font-size="16" font-weight="700" fill="#334155">Отменена</text>
+
+  <!-- цепочка -->
+  <path d="M200 240 H283" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#sys)"/>
+  <path d="M460 240 H543" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#both)"/>
+  <path d="M720 240 H803" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#both)"/>
+  <path d="M980 240 H1063" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#both)"/>
+  <g font-size="12" text-anchor="middle">
+    <text x="241" y="230" fill="#334155">1 → 2</text><text x="241" y="262" font-size="11" fill="#64748b">система</text>
+    <text x="501" y="230" fill="#334155">2 → 6</text><text x="761" y="230" fill="#334155">6 → 5</text><text x="1021" y="230" fill="#334155">5 → 3</text>
+  </g>
+
+  <!-- дуги сверху -->
+  <path d="M320 210 V40 H115 V204" stroke="#64748b" stroke-width="2" fill="none" stroke-dasharray="6 5" marker-end="url(#sys)"/>
+  <text x="217" y="32" text-anchor="middle" font-size="12" fill="#334155">2 → 1 · система: пересчёт, сняли утверждение, новое окно</text>
+
+  <path d="M635 210 V85 H1190 V204" stroke="#1d4ed8" stroke-width="2" fill="none" marker-end="url(#ope)"/>
+  <text x="912" y="77" text-anchor="middle" font-size="12" fill="#334155">6 → 3 · оператор: закрыл, минуя «на месте»</text>
+
+  <path d="M375 210 V130 H1120 V204" stroke="#1d4ed8" stroke-width="2" fill="none" marker-end="url(#ope)"/>
+  <text x="690" y="122" text-anchor="middle" font-size="12" fill="#334155">2 → 3 · оператор: закрыл со слов бригады</text>
+
+  <path d="M430 210 V170 H895 V204" stroke="#1d4ed8" stroke-width="2" fill="none" marker-end="url(#ope)"/>
+  <text x="598" y="162" text-anchor="middle" font-size="12" fill="#334155">2 → 5 · оператор: отметил со слов бригады</text>
+
+  <!-- отмена -->
+  <path d="M80 270 V430 H399" stroke="#1d4ed8" stroke-width="2" fill="none" marker-end="url(#ope)"/>
+  <text x="150" y="422" font-size="12" fill="#334155">1 → 4 · оператор</text>
+
+  <path d="M310 270 V370 H455 V394" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#both)"/>
+  <text x="300" y="330" text-anchor="end" font-size="12" fill="#334155">2 → 4 · бригада / оператор</text>
+
+  <path d="M590 270 V370 H555 V394" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#both)"/>
+  <text x="600" y="362" font-size="12" fill="#334155">6 → 4 · бригада / оператор</text>
+
+  <path d="M850 270 V430 H611" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#both)"/>
+  <text x="860" y="422" font-size="12" fill="#334155">5 → 4 · бригада / оператор</text>
+
+  <!-- легенда -->
+  <g font-size="12">
+    <line x1="60" y1="500" x2="100" y2="500" stroke="#64748b" stroke-width="2" stroke-dasharray="6 5"/>
+    <text x="108" y="504" fill="#334155">система, само</text>
+    <line x1="250" y1="500" x2="290" y2="500" stroke="#7c3aed" stroke-width="2"/>
+    <text x="298" y="504" fill="#334155">бригада в приложении или оператор за неё</text>
+    <line x1="640" y1="500" x2="680" y2="500" stroke="#1d4ed8" stroke-width="2"/>
+    <text x="688" y="504" fill="#334155">только оператор: в приложении такой кнопки нет</text>
+  </g>
+  <text x="650" y="536" text-anchor="middle" font-size="12" fill="#64748b">отмена — всегда с причиной · 3 и 4 конечные · переходов 6 → 2 и 5 → 2 нет: начатую заявку в общий котёл не возвращаем · из «Отменена» выхода нет, повтор работы — копия заявки</text>
+</svg>
