@@ -124,11 +124,13 @@ async def test_build_route_converts_r5_legs_and_geometry():
     with (
         patch.object(r5_provider.httpx, "AsyncClient", return_value=client),
         patch.object(r5_provider, "_color_for_route", return_value="#E42313"),
+        patch.object(r5_provider, "_name_for_route", return_value="1"),
     ):
         result = await r5_provider.build_route(POINTS[0], POINTS[1], DEPARTURE)
 
     assert [leg.mode.value for leg in result.legs] == ["walk", "metro"]
     assert result.legs[1].route_id == "metro-1"
+    assert result.legs[1].route_short_name == "1"
     assert result.legs[1].route_color == "#E42313"
     assert result.legs[1].wait_min == 2
     assert result.legs[1].distance_km > 0
@@ -159,10 +161,12 @@ def test_route_colors_come_from_gtfs_and_reject_invalid_values(tmp_path):
     with ZipFile(archive_path, "w") as archive:
         archive.writestr(
             "routes.txt",
-            "route_id,route_color\nmetro-1,e42313\nbus-1,0072BA\nbad,red;alert(1)\n",
+            "route_id,route_color,route_short_name\n"
+            "metro-1,e42313,1\nbus-1,0072BA,н1\nbad,red;alert(1),\n",
         )
 
     with patch.object(r5_provider.settings, "r5_gtfs_path", archive_path):
         assert r5_provider._color_for_route("metro-1") == "#E42313"
         assert r5_provider._color_for_route("bus-1") == "#0072BA"
         assert r5_provider._color_for_route("bad") is None
+        assert r5_provider._name_for_route("bus-1") == "н1"

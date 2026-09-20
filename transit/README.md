@@ -31,6 +31,11 @@
   Время полного круга 88 минут взято из отношений OSM. Официальный режим работы
   05:30–01:00 и интервалы 4 минуты в пик / 8 минут вне пика взяты с портала
   Московского транспорта; границы пиковых часов и конкретные отправления расчётные.
+- Ночные автобусы с [отдельной страницы портала](https://transport.mos.ru/transport/schedule/night)
+  собираются с собственным календарным правилом: рейс, отправившийся вечером,
+  продолжает маршрут после полуночи под той же датой обслуживания GTFS.
+  Ежедневное повторение одного собранного расписания помечается как приближение;
+  точный день имеет приоритет над ним.
 - Сформированный архив GTFS `generated/moscow-pilot.gtfs.zip`.
 
 Точные автобусные данные есть только для собранных дат; последующие дни используют
@@ -86,6 +91,28 @@ PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline collect-bus-catalog
   --cache-dir transit/cache/bus-catalog \
   --output transit/data/bus/catalog.json
 ```
+
+Ночной каталог и расписания всех показанных в нём автобусов:
+
+```bash
+PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline collect-night-catalog \
+  --output transit/data/bus/night/catalog.json
+PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline collect-night-bus-batch \
+  --catalog transit/data/bus/night/catalog.json --date 2026-09-20 \
+  --output-dir transit/data/bus/night
+PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline repeat-night-buses \
+  --catalog transit/data/bus/night/catalog.json \
+  --template-date 2026-09-20 --start-date 2026-09-21 --end-date 2026-12-31 \
+  --output-dir transit/data/bus/night
+```
+
+Дата в примере — ночь с 20 на 21 сентября: отправления после полуночи имеют в GTFS
+время `24:xx` и далее. Для R5 эти участки также выпускаются отдельными рейсами
+следующего календарного дня с временем `00:xx`: так он видит ночной автобус после
+полуночи. Если портал не отдаёт одно направление или рейсы на остановках
+не согласованы, соответствующий маршрут не включается; причины остаются в
+`transit/data/bus/night/collection-report.json`. При обновлении расписаний новые даты
+собирают вручную и пересобирают GTFS.
 
 Получение одного автобусного маршрута на выбранную дату (1054 — внутренний
 идентификатор `е10` на портале):
@@ -144,6 +171,7 @@ PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline build \
   transit/data/bus/e10-weekday-weekly.json \
   transit/data/bus/e10-weekend-weekly.json \
   transit/data/bus/route-{204,684}-*.json \
+  transit/data/bus/night/route-*.json \
   transit/data/metro/line-*.json \
   --output transit/generated/moscow-pilot.gtfs.zip
 PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline validate \

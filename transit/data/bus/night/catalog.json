@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "kind": "bus_catalog",
+  "source": {
+    "publisher": "Единый транспортный портал Москвы",
+    "url": "https://transport.mos.ru/transport/schedule/night",
+    "retrieved_at": "2026-09-20T01:25:23.440561+00:00"
+  },
+  "route_count": 16,
+  "routes": [
+    {
+      "source_route_id": "1335",
+      "short_name": "н1",
+      "long_name": "Аэропорт Шереметьево - Терминал B - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:40 по 07:14",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1335"
+    },
+    {
+      "source_route_id": "1336",
+      "short_name": "н2",
+      "long_name": "Беловежская улица - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 00:14 по 06:05",
+      "interval_summary": "каждые 30 мин 03:00 - 06:00 30 мин 00:00 - 03:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1336"
+    },
+    {
+      "source_route_id": "1337",
+      "short_name": "н3",
+      "long_name": "Уссурийская улица - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:54 по 06:51",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1337"
+    },
+    {
+      "source_route_id": "1338",
+      "short_name": "н4",
+      "long_name": "Новокосино - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:53 по 06:52",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1338"
+    },
+    {
+      "source_route_id": "1339",
+      "short_name": "н5",
+      "long_name": "Каширское шоссе (МКАД) - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:36 по 07:17",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1339"
+    },
+    {
+      "source_route_id": "1340",
+      "short_name": "н6",
+      "long_name": "Осташковская улица - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:41 по 07:12",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1340"
+    },
+    {
+      "source_route_id": "1341",
+      "short_name": "н7",
+      "long_name": "2-й микрорайон Жулебина - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:23 по 06:27",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1341"
+    },
+    {
+      "source_route_id": "1342",
+      "short_name": "н8",
+      "long_name": "Остафьевская улица - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:20 по 06:50",
+      "interval_summary": "каждые 30 мин 03:00 - 06:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1342"
+    },
+    {
+      "source_route_id": "1343",
+      "short_name": "н9",
+      "long_name": "6-й микрорайон Бибирева - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:10 по 07:08",
+      "interval_summary": "каждые 30 мин 03:00 - 06:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1343"
+    },
+    {
+      "source_route_id": "1344",
+      "short_name": "н10",
+      "long_name": "Лобненская улица - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:41 по 06:38",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1344"
+    },
+    {
+      "source_route_id": "1345",
+      "short_name": "н11",
+      "long_name": "Аэропорт Внуково - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:30 по 07:18",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1345"
+    },
+    {
+      "source_route_id": "1346",
+      "short_name": "н12",
+      "long_name": "8-й микрорайон Митина - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:49 по 07:04",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1346"
+    },
+    {
+      "source_route_id": "1347",
+      "short_name": "н13",
+      "long_name": "6-й микрорайон Загорья - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 00:01 по 06:50",
+      "interval_summary": "каждые 28 - 30 мин 03:00 - 04:00 30 мин 04:00 - 05:00 28 мин 00:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1347"
+    },
+    {
+      "source_route_id": "1348",
+      "short_name": "н14",
+      "long_name": "Метро \"Молодёжная\" - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 00:02 по 06:54",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 00:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1348"
+    },
+    {
+      "source_route_id": "1349",
+      "short_name": "н15",
+      "long_name": "Сиреневый бульвар - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 00:15 по 06:38",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 00:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1349"
+    },
+    {
+      "source_route_id": "1350",
+      "short_name": "н16",
+      "long_name": "Проезд Карамзина - Метро \"Китай-город\"",
+      "mode": "bus",
+      "operating_hours": "с 23:43 по 07:01",
+      "interval_summary": "каждые 30 мин 03:00 - 05:00 30 мин 23:00 - 02:00 30 мин",
+      "url": "https://transport.mos.ru/transport/schedule/route/1350"
+    }
+  ]
+}

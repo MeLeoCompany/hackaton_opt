@@ -1,0 +1,104 @@
+{
+  "created_at": "2026-09-20T01:37:23.502807+00:00",
+  "requested": 16,
+  "successful": 16,
+  "failed": 0,
+  "results": [
+    {
+      "route_id": 1335,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1335-2026-09-20.json"
+    },
+    {
+      "route_id": 1336,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1336-2026-09-20.json"
+    },
+    {
+      "route_id": 1337,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1337-2026-09-20.json"
+    },
+    {
+      "route_id": 1338,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1338-2026-09-20.json"
+    },
+    {
+      "route_id": 1339,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1339-2026-09-20.json"
+    },
+    {
+      "route_id": 1340,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1340-2026-09-20.json"
+    },
+    {
+      "route_id": 1341,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1341-2026-09-20.json"
+    },
+    {
+      "route_id": 1342,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1342-2026-09-20.json"
+    },
+    {
+      "route_id": 1343,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1343-2026-09-20.json"
+    },
+    {
+      "route_id": 1344,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1344-2026-09-20.json"
+    },
+    {
+      "route_id": 1345,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1345-2026-09-20.json"
+    },
+    {
+      "route_id": 1346,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1346-2026-09-20.json"
+    },
+    {
+      "route_id": 1347,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1347-2026-09-20.json"
+    },
+    {
+      "route_id": 1348,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1348-2026-09-20.json"
+    },
+    {
+      "route_id": 1349,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1349-2026-09-20.json"
+    },
+    {
+      "route_id": 1350,
+      "service_date": "2026-09-20",
+      "status": "ok",
+      "output": "transit/data/bus/night/route-1350-2026-09-20.json"
+    }
+  ]
+}

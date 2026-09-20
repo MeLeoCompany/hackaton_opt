@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup, Tag
 from .common import read_json, write_json
 
 BASE_URL = "https://transport.mos.ru/transport/schedule/route/{route_id}"
+NIGHT_CATALOG_URL = "https://transport.mos.ru/transport/schedule/night"
 CATALOG_URL = (
     "https://transport.mos.ru/ru/ajax/App/V2_ScheduleV2Controller/getRoutesList"
 )
@@ -157,6 +158,28 @@ def collect_catalog_to_file(output: Path, cache_dir: Path | None = None) -> None
     write_json(output, collect_bus_catalog(cache_dir=cache_dir))
 
 
+def collect_night_catalog_to_file(output: Path) -> None:
+    routes, page_count = parse_catalog_page(_fetch_text(NIGHT_CATALOG_URL))
+    if page_count != 1 or any(route["mode"] != "bus" for route in routes):
+        raise ScheduleParseError(
+            "ночной каталог содержит неожиданные страницы или виды транспорта"
+        )
+    write_json(
+        output,
+        {
+            "schema_version": 1,
+            "kind": "bus_catalog",
+            "source": {
+                "publisher": "Единый транспортный портал Москвы",
+                "url": NIGHT_CATALOG_URL,
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "route_count": len(routes),
+            "routes": routes,
+        },
+    )
+
+
 def _service_day_minutes(hour: int, minute: int, boundary_hour: int = 3) -> int:
     # Портал выводит отправления после полуночи перед строкой 05:00. В GTFS они
     # записываются как 24:xx/25:xx, чтобы время рейса всегда шло вперёд.
@@ -165,7 +188,7 @@ def _service_day_minutes(hour: int, minute: int, boundary_hour: int = 3) -> int:
     return hour * 60 + minute
 
 
-def _departures(stop: Tag) -> list[int]:
+def _departures(stop: Tag, *, boundary_hour: int = 3) -> list[int]:
     values: list[int] = []
     for row in stop.select(".raspisanie_hover .raspisanie_data"):
         hour_node = row.select_one(".dt1")
@@ -178,11 +201,15 @@ def _departures(stop: Tag) -> list[int]:
         for minute_node in row.select(".dt2 .div10"):
             minute_text = minute_node.get_text(strip=True)
             if minute_text.isdigit():
-                values.append(_service_day_minutes(hour, int(minute_text)))
+                values.append(
+                    _service_day_minutes(hour, int(minute_text), boundary_hour)
+                )
     return sorted(values)
 
 
-def parse_route_page(html: str, *, route_id: int, service_date: date) -> dict[str, Any]:
+def parse_route_page(
+    html: str, *, route_id: int, service_date: date, night: bool = False
+) -> dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
     route_container = soup.select_one(".schedule-route[data-coords]")
     stop_nodes = soup.select(".schedule-route [data-direction][data-stop]")
@@ -211,7 +238,8 @@ def parse_route_page(html: str, *, route_id: int, service_date: date) -> dict[st
         zip(stop_nodes, points, strict=True), start=1
     ):
         name_node = node.select_one(".sl_a .a_dotted")
-        departures = _departures(node)
+        # Ночные рейсы продолжаются до утра: 03:00–11:59 относится к следующим суткам.
+        departures = _departures(node, boundary_hour=12 if night else 3)
         coordinates = point["geometry"]["coordinates"]
         if name_node is None or not departures or len(coordinates) < 2:
             raise ScheduleParseError(f"неполные данные остановки в позиции {position}")
@@ -246,12 +274,15 @@ def collect_bus_route(
     service_date: date,
     delay_seconds: float = 1.0,
     route_name: str | None = None,
+    night: bool = False,
 ) -> dict[str, Any]:
     patterns = []
     source_urls = []
     for direction in (0, 1):
         html = fetch_route_page(route_id, service_date, direction)
-        parsed = parse_route_page(html, route_id=route_id, service_date=service_date)
+        parsed = parse_route_page(
+            html, route_id=route_id, service_date=service_date, night=night
+        )
         patterns.append(parsed)
         soup = BeautifulSoup(html, "html.parser")
         page_route_name = soup.select_one("h1.h3mb")
@@ -276,6 +307,7 @@ def collect_bus_route(
             "urls": source_urls,
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "service_date": service_date.isoformat(),
+            "night_service": night,
         },
         "route": {
             "source_route_id": str(route_id),
@@ -287,9 +319,16 @@ def collect_bus_route(
 
 
 def collect_bus_to_file(
-    route_id: int, service_date: date, output: Path, route_name: str | None = None
+    route_id: int,
+    service_date: date,
+    output: Path,
+    route_name: str | None = None,
+    night: bool = False,
 ) -> None:
-    write_json(output, collect_bus_route(route_id, service_date, route_name=route_name))
+    write_json(
+        output,
+        collect_bus_route(route_id, service_date, route_name=route_name, night=night),
+    )
 
 
 def collect_bus_batch(
@@ -297,6 +336,7 @@ def collect_bus_batch(
     service_dates: list[date],
     output_dir: Path,
     catalog_path: Path | None = None,
+    night: bool = False,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     route_names: dict[int, str] = {}
@@ -315,7 +355,11 @@ def collect_bus_batch(
             output = output_dir / f"route-{route_id}-{service_date.isoformat()}.json"
             try:
                 collect_bus_to_file(
-                    route_id, service_date, output, route_name=route_names.get(route_id)
+                    route_id,
+                    service_date,
+                    output,
+                    route_name=route_names.get(route_id),
+                    night=night,
                 )
                 results.append(
                     {

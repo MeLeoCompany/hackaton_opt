@@ -391,7 +391,7 @@ function legPopup(route, index, piece, pieces, stateKey) {
   // чем едут: у куска с режимом (общественный транспорт) — он, иначе транспорт бригады
   const mode = piece.details?.mode && piece.details.mode !== 'road' ? TRAVEL_MODES[piece.details.mode] : null
   const how = mode
-    ? `${mode.label}${piece.details.route_id ? ` ${piece.details.route_id}` : ''}`
+    ? `${mode.label}${piece.details.route_id ? ` ${piece.details.route_short_name || piece.details.route_id}` : ''}`
     : referenceName(props.references, 'transports', route.transport_id)
   const km = pieces.reduce((sum, item) => sum + (item.details?.distance_km ?? lengthKm(item.latlngs)), 0)
   const minutes = pieces.reduce((sum, item) => sum + (item.details?.duration_min ?? 0), 0)
@@ -540,7 +540,7 @@ function drawRouteProgress(route, select) {
           }
       const mode = details?.mode && details.mode !== 'road' ? TRAVEL_MODES[details.mode] : null
       const label = mode
-        ? `${mode.label}${details.route_id ? ` · ${escapeHtml(details.route_id)}` : ''}`
+        ? `${mode.label}${details.route_id ? ` · ${escapeHtml(details.route_short_name || details.route_id)}` : ''}`
         : escapeHtml(route.engineer_name)
       const stateKey = states[index] === 'planned' && index === activeIndex ? 'next' : states[index]
       lines.push({
@@ -553,7 +553,7 @@ function drawRouteProgress(route, select) {
       // способ передвижения на участке: значок чуть отступя от начала поездки (чтобы не закрыть
       // точку заявки), пешком — посередине; под точками заявок, над стрелками
       if (mode && details.mode !== 'walk' && latlngs.length > 1) {
-        L.marker(pointOnLine(latlngs, 0.2), { icon: modeIcon(details.mode, details.route_id), zIndexOffset: -500 })
+        L.marker(pointOnLine(latlngs, 0.2), { icon: modeIcon(details.mode, details.route_short_name || details.route_id), zIndexOffset: -500 })
           .bindTooltip(label)
           .addTo(planLayer)
       } else if (walk && (details.distance_km ?? 0) >= 0.15 && latlngs.length > 1) {

@@ -87,6 +87,7 @@ class TravelLeg(BaseModel):
     mode: TravelMode = TravelMode.ROAD
     wait_min: float = 0
     route_id: str | None = None
+    route_short_name: str | None = None  # н1, 205, МЦК из GTFS routes.txt
     route_color: str | None = None  # #RRGGBB из GTFS routes.txt
     from_stop_id: str | None = None
     to_stop_id: str | None = None

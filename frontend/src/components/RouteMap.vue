@@ -51,7 +51,7 @@ function drawRoute() {
   if (props.route.geometry.length > 0) {
     props.route.geometry.forEach((leg, index) => {
       const mode = props.route.legs?.[index]?.mode
-      const routeId = props.route.legs?.[index]?.route_id
+      const routeId = props.route.legs?.[index]?.route_short_name || props.route.legs?.[index]?.route_id
       const routeColor = props.route.legs?.[index]?.route_color
       const style = mode && mode !== 'road' ? TRAVEL_MODES[mode] : null
       L.polyline(decodePolyline(leg), {

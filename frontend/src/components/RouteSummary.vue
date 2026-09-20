@@ -56,7 +56,7 @@ function matrixLegSum(matrix) {
       <li v-for="(leg, index) in route.legs" :key="index">
         <span class="leg-points">{{ index + 1 }}</span>
         <span class="mode" :style="{ background: leg.route_color || modeOf(leg).color, color: badgeTextColor(leg.route_color || modeOf(leg).color) }">{{ modeOf(leg).label }}</span>
-        <span v-if="leg.route_id" class="route-id">{{ leg.route_id }}</span>
+        <span v-if="leg.route_id" class="route-id">{{ leg.route_short_name || leg.route_id }}</span>
         <span class="leg-numbers">
           {{ formatDuration(leg.duration_min) }}<template v-if="leg.wait_min">, ожидание {{ formatDuration(leg.wait_min) }}</template>
           · {{ leg.distance_km.toFixed(2) }} км
@@ -70,10 +70,10 @@ function matrixLegSum(matrix) {
     <p v-else-if="route.provider === 'transit_estimate'" class="warn">
       R5 недоступен: использована приближённая модель общественного транспорта.
     </p>
-    <!-- рейсов в это время нет (ночь, выходной вне расписания) — R5 вернул только пешие участки -->
+    <!-- подходящих рейсов в загруженных данных нет — R5 вернул только пешие участки -->
     <p v-else-if="onlyWalking" class="warn">
-      На это время рейсов в расписании нет — показан пеший маршрут. Поменяйте время выезда:
-      метро в данных ходит с 05:00 до 02:00.
+      Для этих точек и времени подходящих рейсов в загруженном расписании нет — показан
+      пеший маршрут. Попробуйте изменить время выезда.
     </p>
   </div>
 

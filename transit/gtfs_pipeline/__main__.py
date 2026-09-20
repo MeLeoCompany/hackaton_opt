@@ -5,12 +5,14 @@ from datetime import date
 from pathlib import Path
 
 from .gtfs import build_gtfs
+from .night_weekly import generate_night_weekly
 from .osm_mcc import collect_mcc_to_file
 from .osm_metro import collect_metro_network, collect_metro_to_file
 from .transport_mos import (
     collect_bus_batch,
     collect_bus_to_file,
     collect_catalog_to_file,
+    collect_night_catalog_to_file,
 )
 from .validate import validate_gtfs
 
@@ -33,6 +35,10 @@ def main() -> None:
         type=Path,
         help="каталог кеша страниц для продолжения после сетевого сбоя",
     )
+    night_catalog = commands.add_parser(
+        "collect-night-catalog", help="получить список ночных автобусов"
+    )
+    night_catalog.add_argument("--output", required=True, type=Path)
     batch = commands.add_parser(
         "collect-bus-batch", help="пакетно получить выбранные маршруты и даты"
     )
@@ -42,6 +48,22 @@ def main() -> None:
     batch.add_argument(
         "--catalog", type=Path, help="каталог для проверки ID и названий маршрутов"
     )
+    night_batch = commands.add_parser(
+        "collect-night-bus-batch", help="получить все ночные автобусы из каталога"
+    )
+    night_batch.add_argument("--catalog", required=True, type=Path)
+    night_batch.add_argument(
+        "--date", required=True, type=date.fromisoformat, nargs="+"
+    )
+    night_batch.add_argument("--output-dir", required=True, type=Path)
+    night_weekly = commands.add_parser(
+        "repeat-night-buses", help="повторять собранные ночные рейсы по дням"
+    )
+    night_weekly.add_argument("--catalog", required=True, type=Path)
+    night_weekly.add_argument("--template-date", required=True, type=date.fromisoformat)
+    night_weekly.add_argument("--start-date", required=True, type=date.fromisoformat)
+    night_weekly.add_argument("--end-date", required=True, type=date.fromisoformat)
+    night_weekly.add_argument("--output-dir", required=True, type=Path)
     metro = commands.add_parser("collect-metro", help="получить топологию линии метро")
     metro.add_argument("--relations", required=True, type=int, nargs="+")
     metro.add_argument("--output", required=True, type=Path)
@@ -65,6 +87,8 @@ def main() -> None:
         collect_bus_to_file(args.route_id, args.date, args.output)
     elif args.command == "collect-bus-catalog":
         collect_catalog_to_file(args.output, args.cache_dir)
+    elif args.command == "collect-night-catalog":
+        collect_night_catalog_to_file(args.output)
     elif args.command == "collect-bus-batch":
         report = collect_bus_batch(
             args.route_id, args.date, args.output_dir, catalog_path=args.catalog
@@ -72,6 +96,33 @@ def main() -> None:
         print(f"Успешно: {report['successful']}; с ошибкой: {report['failed']}")
         if report["failed"]:
             raise SystemExit(1)
+    elif args.command == "collect-night-bus-batch":
+        from .common import read_json
+
+        catalog = read_json(args.catalog)
+        if (
+            catalog["source"]["url"]
+            != "https://transport.mos.ru/transport/schedule/night"
+        ):
+            raise ValueError("нужен каталог ночных автобусов")
+        route_ids = [int(route["source_route_id"]) for route in catalog["routes"]]
+        report = collect_bus_batch(
+            route_ids, args.date, args.output_dir, catalog_path=args.catalog, night=True
+        )
+        print(f"Успешно: {report['successful']}; с ошибкой: {report['failed']}")
+        if report["failed"]:
+            raise SystemExit(1)
+    elif args.command == "repeat-night-buses":
+        created, missing = generate_night_weekly(
+            args.catalog,
+            args.output_dir,
+            args.template_date,
+            args.start_date,
+            args.end_date,
+        )
+        print(f"Создано недельных шаблонов: {created}")
+        if missing:
+            print(f"Без полного расписания: {', '.join(missing)}")
     elif args.command == "collect-metro":
         collect_metro_to_file(args.relations, args.output)
     elif args.command == "collect-metro-network":

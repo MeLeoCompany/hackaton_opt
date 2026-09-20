@@ -7,7 +7,7 @@ import os
 import tempfile
 import zipfile
 from collections.abc import Iterable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -180,11 +180,19 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
             )
             route_seen.add(route_id)
         if dataset["kind"] in {"bus_exact", "bus_weekly"}:
+            night_service = dataset["source"].get("night_service", False)
             if dataset["kind"] == "bus_exact":
                 service_id = f"bus-{route_id}-{dataset['source']['service_date']}"
                 tables["calendar_dates.txt"].append(
                     [service_id, _date(dataset["source"]["service_date"]), 1]
                 )
+                if night_service:
+                    following = date.fromisoformat(
+                        dataset["source"]["service_date"]
+                    ) + timedelta(days=1)
+                    tables["calendar_dates.txt"].append(
+                        [f"{service_id}-morning", following.strftime("%Y%m%d"), 1]
+                    )
             else:
                 service = dataset["service"]
                 service_id = f"bus-{route_id}-weekly-{service['start_date']}-{'-'.join(map(str, service['weekdays']))}"
@@ -196,6 +204,28 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                         _date(service["end_date"]),
                     ]
                 )
+                if night_service:
+                    tables["calendar.txt"].append(
+                        [
+                            f"{service_id}-morning",
+                            *(
+                                int((day - 1) % 7 in service["weekdays"])
+                                for day in range(7)
+                            ),
+                            _date(
+                                (
+                                    date.fromisoformat(service["start_date"])
+                                    + timedelta(days=1)
+                                ).isoformat()
+                            ),
+                            _date(
+                                (
+                                    date.fromisoformat(service["end_date"])
+                                    + timedelta(days=1)
+                                ).isoformat()
+                            ),
+                        ]
+                    )
                 for exact_day in exact_dates.get(route_id, set()):
                     parsed = date.fromisoformat(exact_day)
                     if (
@@ -205,6 +235,17 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                         tables["calendar_dates.txt"].append(
                             [service_id, _date(exact_day), 2]
                         )
+                        if night_service:
+                            following = date.fromisoformat(exact_day) + timedelta(
+                                days=1
+                            )
+                            tables["calendar_dates.txt"].append(
+                                [
+                                    f"{service_id}-morning",
+                                    following.strftime("%Y%m%d"),
+                                    2,
+                                ]
+                            )
             for pattern in dataset["patterns"]:
                 shape_id = f"{route_id}-{pattern['direction_id']}"
                 if shape_id not in shape_seen:
@@ -240,6 +281,36 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                                 sequence,
                             ]
                         )
+                    if night_service:
+                        morning_stops = [
+                            stop
+                            for stop in pattern["stops"]
+                            if stop["departures"][trip_index] >= 24 * 60
+                        ]
+                        if len(morning_stops) >= 2:
+                            morning_trip = f"{trip_id}-morning"
+                            tables["trips.txt"].append(
+                                [
+                                    route_id,
+                                    f"{service_id}-morning",
+                                    morning_trip,
+                                    pattern["direction_id"],
+                                    "",
+                                ]
+                            )
+                            for sequence, stop in enumerate(morning_stops, start=1):
+                                value = gtfs_time(
+                                    stop["departures"][trip_index] - 24 * 60
+                                )
+                                tables["stop_times.txt"].append(
+                                    [
+                                        morning_trip,
+                                        value,
+                                        value,
+                                        f"bus-{stop['source_stop_id']}",
+                                        sequence,
+                                    ]
+                                )
         elif dataset["kind"] == "metro_frequency":
             service_id = f"metro-{route_id}-daily"
             service = dataset["service"]

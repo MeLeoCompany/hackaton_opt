@@ -14,6 +14,7 @@ from gtfs_pipeline.metro_transfers import (
     cluster_metro_stations,
     transfer_rows,
 )
+from gtfs_pipeline.night_weekly import generate_night_weekly
 from gtfs_pipeline.osm_metro import MetroDataError, normalize_line
 from gtfs_pipeline.transport_mos import (
     ScheduleParseError,
@@ -84,6 +85,62 @@ def test_transport_mos_parser_preserves_service_day_order() -> None:
     assert result["stops"][0]["departures"] == [1438, 1448]
     assert result["stops"][1]["departures"] == [1452, 1462]
     assert result["stops"][1]["name"] == "Конец"
+
+
+def test_night_bus_parser_keeps_morning_departures_on_next_day() -> None:
+    html = _page().replace('<div class="dt1">00:', '<div class="dt1">05:')
+
+    result = parse_route_page(
+        html, route_id=1335, service_date=date(2026, 9, 20), night=True
+    )
+
+    assert result["stops"][0]["departures"] == [1438, 1748]
+    assert result["stops"][1]["departures"] == [1752, 1762]
+
+
+def test_night_bus_gtfs_keeps_service_date_across_midnight(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    source = root / "transit/data/bus/night/route-1335-2026-09-20.json"
+    output = tmp_path / "night.zip"
+
+    build_gtfs([source], output)
+
+    validate_gtfs(output)
+    with zipfile.ZipFile(output) as archive:
+        stop_times = archive.read("stop_times.txt").decode("utf-8-sig")
+        exceptions = archive.read("calendar_dates.txt").decode("utf-8-sig")
+        assert "29:" in stop_times
+        assert "20260920" in exceptions
+        assert "bus-1335-2026-09-20-morning,20260921,1" in exceptions
+        assert ",00:10:00,00:10:00," in stop_times
+
+
+def test_night_weekly_repeats_only_checked_in_routes(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    source = root / "transit/data/bus/night/route-1335-2026-09-20.json"
+    (tmp_path / source.name).write_bytes(source.read_bytes())
+    catalog = {
+        "source": {"url": "https://transport.mos.ru/transport/schedule/night"},
+        "routes": [
+            {"source_route_id": "1335", "short_name": "н1"},
+            {"source_route_id": "1336", "short_name": "н2"},
+        ],
+    }
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    created, missing = generate_night_weekly(
+        catalog_path, tmp_path, date(2026, 9, 20), date(2026, 9, 21), date(2026, 12, 31)
+    )
+
+    assert created == 1
+    assert missing == ["н2"]
+    output = tmp_path / "weekly.zip"
+    build_gtfs([source, tmp_path / "route-1335-weekly.json"], output)
+    validate_gtfs(output)
+    with zipfile.ZipFile(output) as archive:
+        calendar = archive.read("calendar.txt").decode("utf-8-sig")
+        assert "bus-1335-weekly-2026-09-21-0-1-2-3-4-5-6-morning" in calendar
 
 
 def test_transport_mos_parser_rejects_inconsistent_trip_count() -> None:

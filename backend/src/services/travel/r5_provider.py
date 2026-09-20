@@ -47,6 +47,29 @@ def _color_for_route(route_id: str | None) -> str | None:
         return None
 
 
+@lru_cache(maxsize=2)
+def _route_names(path: Path, modified_ns: int) -> dict[str, str]:
+    del modified_ns
+    with ZipFile(path) as archive, archive.open("routes.txt") as source:
+        rows = csv.DictReader(io.TextIOWrapper(source, encoding="utf-8-sig"))
+        return {
+            row["route_id"]: name
+            for row in rows
+            if (name := (row.get("route_short_name") or "").strip())
+        }
+
+
+def _name_for_route(route_id: str | None) -> str | None:
+    if route_id is None:
+        return None
+    path = settings.r5_gtfs_path
+    try:
+        return _route_names(path, path.stat().st_mtime_ns).get(route_id)
+    except (OSError, BadZipFile, KeyError, ValueError):
+        logger.warning("R5: не удалось прочитать названия маршрутов из %s", path, exc_info=True)
+        return None
+
+
 @dataclass(frozen=True)
 class RouteResult:
     legs: list[TravelLeg]
@@ -213,6 +236,7 @@ def _parse_route(payload: object) -> RouteResult:
                 geometry=geometry,
                 mode=_mode(raw_leg.get("mode"), route_id),
                 route_id=route_id,
+                route_short_name=_name_for_route(route_id),
                 route_color=_color_for_route(route_id),
                 from_stop_id=(
                     None if raw_leg.get("from_stop_id") is None else str(raw_leg["from_stop_id"])
