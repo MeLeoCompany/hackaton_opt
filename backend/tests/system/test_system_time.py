@@ -62,14 +62,16 @@ async def test_zero_offset_returns_real_time():
     assert abs((result.now - clock.real_now()).total_seconds()) <= 1
 
 
+@pytest.mark.parametrize("seconds", [400 * 24 * 3600, -400 * 24 * 3600])
 @pytest.mark.asyncio
-async def test_too_big_jump_is_rejected():
+async def test_too_big_jump_is_rejected(seconds):
+    """Год назад — чтобы открыть демо-данные прошлых дней, дальше уже незачем."""
     session = SimpleNamespace(commit=AsyncMock(), get=AsyncMock(return_value=None))
     with (
         with_row(stored()),
-        pytest.raises(system_service.SystemTimeError, match="на год вперёд"),
+        pytest.raises(system_service.SystemTimeError, match="на год назад или вперёд"),
     ):
-        await system_service.set_time(session, SystemTimeWrite(offset_seconds=400 * 24 * 3600))
+        await system_service.set_time(session, SystemTimeWrite(offset_seconds=seconds))
 
 
 @pytest.mark.asyncio

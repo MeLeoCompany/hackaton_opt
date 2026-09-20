@@ -19,12 +19,14 @@
 import asyncio
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
+from src.core.config import settings
 from src.core.errors import ExternalServiceError
 from src.core.local_day import local_timezone
 from src.models import Assignment, Plan, PlanRunType, RequestStatusId
@@ -33,6 +35,7 @@ from src.repositories.plans import plans_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
+    BrigadeFreeAt,
     PlanSummary,
     ReplanDecision,
     ReplanPreview,
@@ -40,7 +43,7 @@ from src.schemas.plans import (
     SolverName,
 )
 from src.schemas.travel import Point, TransportKind, TravelProvider
-from src.services.planner import planner_loader, planning_service
+from src.services.planner import planner_loader, planning_service, window_suggestions
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -72,6 +75,7 @@ async def replan(
     *,
     office_id: int,
     decisions: list[ReplanDecision] | None = None,
+    free_at: list[BrigadeFreeAt] | None = None,
     user_id: int | None = None,
 ) -> PlanSummary:
     """Пересчитывает утверждённый план с момента at (по умолчанию — сейчас).
@@ -82,7 +86,10 @@ async def replan(
     """
     parent, at = await replannable(session, plan_id, at, office_id=office_id)
     await apply_decisions(session, parent, decisions or [], office_id=office_id, user_id=user_id)
-    plan = await build_replan(session, parent, solver, objective_order, at, office_id=office_id)
+    built = await build_replan(
+        session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
+    )
+    plan = built.plan
     planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
     await session.commit()
     return (await planning_service.summarize_plans(session, [plan]))[0]
@@ -97,15 +104,30 @@ async def preview_replan(
     at: datetime | None = None,
     *,
     office_id: int,
+    free_at: list[BrigadeFreeAt] | None = None,
 ) -> ReplanPreview:
-    """Пробный пересчёт: тот же расчёт, но ничего не сохраняется. Нужен, чтобы до пересчёта
-    показать заявки, на которые не успеваем, — диспетчер решает: новое окно или отмена."""
+    """Пробный пересчёт: тот же расчёт, но ничего не сохраняется.
+
+    По заявкам, которые никто не успевает, сразу считается второй расчёт с раскрытыми окнами
+    (docs/algoV2.md, шаги 2-3): он даёт конкретное время, которое оператор называет клиенту.
+    """
     parent, at = await replannable(session, plan_id, at, office_id=office_id)
     try:
-        plan = await build_replan(session, parent, solver, objective_order, at, office_id=office_id)
-        assignments = await plans_repository.list_plan_assignments(session, plan.id)
+        built = await build_replan(
+            session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
+        )
+        assignments = await plans_repository.list_plan_assignments(session, built.plan.id)
+        unassigned = [a for a in assignments if a.engineer_id is None]
+        suggestions = await window_suggestions.suggest_windows(
+            built.loaded,
+            solver,
+            validate_objective_order(objective_order),
+            {a.request_id for a in unassigned},
+        )
+        tolerance = timedelta(minutes=settings.promise_tolerance_minutes)
         preview = ReplanPreview(
             assigned_count=sum(1 for a in assignments if a.engineer_id is not None),
+            promise_tolerance_minutes=settings.promise_tolerance_minutes,
             unassigned=[
                 ReplanProblem(
                     request_id=a.request_id,
@@ -114,9 +136,13 @@ async def preview_replan(
                     window_end=a.request.window_end,
                     status_id=a.request.status_id,
                     reason=a.unassigned_reason or "",
+                    expired=a.request.window_end < at,
+                    suggested_start=suggestion.start if suggestion else None,
+                    suggested_end=suggestion.start + tolerance if suggestion else None,
+                    suggested_engineer=suggestion.engineer_name if suggestion else None,
                 )
-                for a in assignments
-                if a.engineer_id is None
+                for a in unassigned
+                if (suggestion := suggestions.get(a.request_id)) or True
             ],
         )
     finally:
@@ -136,8 +162,22 @@ async def replannable(
     at = at or clock.now()
     day = planner_loader.planning_day(parent.plan_date)
     if at >= day.day_end:
-        raise PlanDataError([f"день {parent.plan_date:%d.%m.%Y} на этот момент уже закончился"])
+        raise PlanDataError(
+            [
+                f"день {parent.plan_date:%d.%m.%Y} уже закончился — пересчитывать нечего. "
+                "Для демонстрации переведите системные часы во вкладке «Система»"
+            ]
+        )
     return parent, max(at, day.day_start)
+
+
+@dataclass
+class ReplanResult:
+    """Посчитанный пересчёт: сам план и задача, из которой он получился."""
+
+    plan: Plan
+    loaded: planner_loader.LoadedDay
+    solution: object
 
 
 async def build_replan(
@@ -148,17 +188,20 @@ async def build_replan(
     at: datetime,
     *,
     office_id: int,
-) -> Plan:
-    """Считает пересчёт и записывает его в сессию (без коммита)."""
+    free_at: list[BrigadeFreeAt] | None = None,
+) -> ReplanResult:
+    """Считает пересчёт и записывает его в сессию (без коммита).
+
+    free_at — когда бригада освободится со слов оператора (docs/algoV2.md, шаг 10).
+    """
     day = planner_loader.planning_day(parent.plan_date)
     assignments = await plans_repository.list_plan_assignments(session, parent.id)
-    fixed, starts = await brigade_positions(session, parent, assignments, at)
+    told = {item.engineer_id: item.free_at for item in free_at or []}
+    fixed, starts = await brigade_positions(session, parent, assignments, at, told)
 
     loaded = await planner_loader.load_day(session, day, office_id, starts=starts, not_before=at)
-    if loaded.instance.n_requests == 0:
-        raise PlanDataError(
-            ["пересчитывать нечего: все заявки дня уже выполнены, отменены или в работе"]
-        )
+    # раскладывать может быть нечего: всё закрыто, начато или перенесено решениями оператора.
+    # Это не ошибка — пересчёт выйдет из одних закреплённых визитов, иначе решения откатятся
     if loaded.instance.n_engineers == 0:
         raise PlanDataError(["на этот момент ни у одной бригады не осталось смены"])
 
@@ -180,7 +223,7 @@ async def build_replan(
     plan.parent_plan_id = parent.id
     plan.replanned_at = at
     await session.flush()
-    return plan
+    return ReplanResult(plan=plan, loaded=loaded, solution=solution)
 
 
 async def apply_decisions(
@@ -191,10 +234,13 @@ async def apply_decisions(
     office_id: int,
     user_id: int | None,
 ) -> None:
-    """Новое окно или отмена для заявок, на которые не успеваем, — до расчёта.
+    """Решения оператора по заявкам, на которые не успеваем (docs/algoV2.md, шаг 4).
 
+    agree — клиент согласен на предложенное время: окно сужается до обещанного, ставится
+    отметка «согласовано»; move — не может сегодня: окно уезжает на другой день, отметка
+    «перенесена»; cancel и no_answer — отмена с причиной, у no_answer ещё «требует уточнения».
     Решать можно только о заявках, которые пересчёт раскладывает: «Новых» без плана и не
-    начатых «В плане» этого плана. Новое окно снимает заявку с плана: она «Новая» с этим окном.
+    начатых «В плане» этого плана. Новое окно снимает заявку с плана.
     """
     if not decisions:
         return
@@ -226,33 +272,67 @@ async def apply_decisions(
 
     for decision in decisions:
         request = requests[decision.request_id]
-        if decision.action == "cancel":
+        if decision.action in ("cancel", "no_answer"):
+            no_answer = decision.action == "no_answer"
+            reason = decision.reason.strip() or (
+                "не дозвонились" if no_answer else "клиент отказался"
+            )
+            request.cancel_reason = reason
+            request.needs_followup = no_answer
             await request_status_service.change_status(
                 session,
                 [request],
                 RequestStatusId.CANCELLED,
                 manual=True,
                 user_id=user_id,
-                comment=f"Отменена перед пересчётом плана №{parent.id}: не успеваем",
+                comment=f"Отменена при пересчёте плана №{parent.id}: {reason}",
             )
             continue
+
         window = f"{local_text(decision.window_start)}–{local_text(decision.window_end)}"
-        if request.status_id == RequestStatusId.PLANNED:
-            request_statuses_repository.add_history(
-                session,
-                [request.id],
-                RequestStatusId.PLANNED,
-                RequestStatusId.NEW,
-                manual=False,
-                user_id=user_id,
-                plan_id=parent.id,
-                comment=f"Перед пересчётом окно перенесено на {window}",
-            )
-            request_status_service.set_status(request, statuses[RequestStatusId.NEW])
-            request.approved_plan_id = None
+        agreed = decision.action == "agree"
+        comment = (
+            f"Согласовано с клиентом: {window}"
+            if agreed
+            else f"Перенесена по договорённости на {window}"
+        )
+        detach_from_plan(session, request, parent, statuses, user_id, comment)
         request.window_start = decision.window_start
         request.window_end = decision.window_end
+        if agreed:
+            # обещание клиенту: заявка держится в этом окне и защищена ярусом в расчёте
+            request.promised_from = decision.window_start
+            request.promised_to = decision.window_end
+        else:
+            # на другой день узкое окно не тащим, зато помним, что работу уже двигали
+            request.promised_from = request.promised_to = None
+            request.moved_from = parent.plan_date
     await session.flush()
+
+
+def detach_from_plan(
+    session: AsyncSession,
+    request,
+    parent: Plan,
+    statuses: dict,
+    user_id: int | None,
+    comment: str,
+) -> None:
+    """Снять заявку с утверждённого плана: окно можно менять только у «Новой»."""
+    if request.status_id != RequestStatusId.PLANNED:
+        return
+    request_statuses_repository.add_history(
+        session,
+        [request.id],
+        RequestStatusId.PLANNED,
+        RequestStatusId.NEW,
+        manual=False,
+        user_id=user_id,
+        plan_id=parent.id,
+        comment=comment,
+    )
+    request_status_service.set_status(request, statuses[RequestStatusId.NEW])
+    request.approved_plan_id = None
 
 
 def local_text(moment: datetime) -> str:
@@ -260,9 +340,17 @@ def local_text(moment: datetime) -> str:
 
 
 async def brigade_positions(
-    session: AsyncSession, parent: Plan, assignments: list[Assignment], at: datetime
+    session: AsyncSession,
+    parent: Plan,
+    assignments: list[Assignment],
+    at: datetime,
+    free_at_by_engineer: dict[int, datetime] | None = None,
 ) -> tuple[dict[int, list[Assignment]], dict[int, EngineerStart]]:
-    """Что каждая бригада уже закрыла или начала (остаётся за ней) и откуда она продолжает."""
+    """Что каждая бригада уже закрыла или начала (остаётся за ней) и откуда она продолжает.
+
+    free_at_by_engineer — когда бригада освободится со слов оператора: для застрявшей это
+    честнее норматива (docs/algoV2.md, шаг 10).
+    """
     facts = await brigade_repository.list_facts(
         session, [assignment.request_id for assignment in assignments]
     )
@@ -312,8 +400,11 @@ async def brigade_positions(
             # ещё не выезжала — с утреннего старта
             free_at = engineer.shift_start
             point = (float(engineer.start_latitude), float(engineer.start_longitude))
+        told = (free_at_by_engineer or {}).get(engineer_id)
         starts[engineer_id] = EngineerStart(
-            latitude=point[0], longitude=point[1], available_from=max(at, free_at)
+            latitude=point[0],
+            longitude=point[1],
+            available_from=max(at, told or free_at),
         )
     return fixed, starts
 

@@ -45,7 +45,7 @@ async def test_cuopt_is_used_by_default():
     ):
         await planning_service.build_plan_for_day(session, "2026-08-17", office_id=1)
 
-    cuopt.assert_awaited_once_with(instance, objective_order=DEFAULT_OBJECTIVE_ORDER)
+    cuopt.assert_awaited_once_with(instance, objective_order=DEFAULT_OBJECTIVE_ORDER, ranks=None)
     baseline.assert_not_called()
     assert save_solution.await_args.kwargs["solver"] == "cuopt"
     assert save_solution.await_args.kwargs["solve_duration_ms"] >= 0
@@ -88,9 +88,9 @@ async def test_custom_objective_order_is_forwarded_and_saved():
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)
     order = [
-        ObjectiveCriterion.ASSIGNED_REQUESTS,
         ObjectiveCriterion.URGENT_REQUESTS,
         ObjectiveCriterion.TRAVEL_DISTANCE,
+        ObjectiveCriterion.ASSIGNED_REQUESTS,
         ObjectiveCriterion.ENGINEERS_USED,
     ]
 
@@ -110,7 +110,7 @@ async def test_custom_objective_order_is_forwarded_and_saved():
         )
 
     expected = tuple(order)
-    cuopt.assert_awaited_once_with(instance, objective_order=expected)
+    cuopt.assert_awaited_once_with(instance, objective_order=expected, ranks=None)
     assert save_solution.await_args.kwargs["objective_order"] == expected
 
 

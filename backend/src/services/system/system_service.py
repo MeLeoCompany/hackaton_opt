@@ -21,8 +21,9 @@ from src.repositories.system import system_repository
 from src.schemas.system import ServiceStatus, SystemInfo, SystemTimeRead, SystemTimeWrite
 
 APP_VERSION = "0.1.0"
-# перемотка — инструмент демонстрации: назад дальше суток и вперёд дальше года смысла не имеет
-MIN_OFFSET_SECONDS = -24 * 3600
+# перемотка — инструмент демонстрации: часы ставят в день, на котором лежат данные, поэтому
+# назад можно так же далеко, как вперёд — на год
+MIN_OFFSET_SECONDS = -366 * 24 * 3600
 MAX_OFFSET_SECONDS = 366 * 24 * 3600
 
 
@@ -61,7 +62,7 @@ async def set_time(
     else:
         seconds = payload.offset_seconds
     if not MIN_OFFSET_SECONDS <= seconds <= MAX_OFFSET_SECONDS:
-        raise SystemTimeError(["перематывать можно не больше чем на сутки назад и на год вперёд"])
+        raise SystemTimeError(["перематывать можно не больше чем на год назад или вперёд"])
 
     row = await system_repository.get_system_time(session)
     row.offset_seconds = seconds

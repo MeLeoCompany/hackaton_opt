@@ -14,5 +14,7 @@ class Brigade(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
     name: Mapped[str] = mapped_column(Text)
+    # телефон для звонка оператора, когда бригада выбилась из плана (037)
+    phone: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

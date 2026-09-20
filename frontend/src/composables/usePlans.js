@@ -3,6 +3,7 @@
 import { ref, watch } from 'vue'
 
 import {
+  allowDeparture as allowDepartureRequest,
   approvePlan,
   buildPlan,
   cancelPlanApproval,
@@ -13,6 +14,7 @@ import {
   listPlans,
 } from '../api/plansApi.js'
 import { fetchReferences } from '../api/referencesApi.js'
+import { formatDay, moscowDateOf, moscowTimeOf } from '../utils/moscowTime.js'
 import { useMessages } from './useMessages.js'
 import { useSelectedDay } from './useSelectedDay.js'
 
@@ -160,16 +162,26 @@ export function usePlans() {
       const result = await replanPlan(summary.id, params)
       if (day !== selectedDay.value) return
       await refreshDay()
-      const decisions = params.decisions ?? []
-      const moved = decisions.filter((decision) => decision.action === 'reschedule').length
-      const cancelled = decisions.filter((decision) => decision.action === 'cancel').length
-      const decided = [moved && `новое окно — ${moved}`, cancelled && `отменено — ${cancelled}`].filter(Boolean)
       showNotice(
         `Пересчёт №${result.id} плана №${summary.id} готов: назначено ${result.assigned_count}, ` +
-          `не назначено ${result.unassigned_count}` +
-          (decided.length ? ` (до пересчёта: ${decided.join(', ')})` : '') +
-          `. Утвердите его, чтобы заменить план №${summary.id}`,
+          `не назначено ${result.unassigned_count}. ${decisionsText(params.decisions ?? [])}` +
+          `Утвердите его, чтобы заменить план №${summary.id}`,
       )
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
+  // бригада выбилась из плана, но клиент согласен подождать — выезд открывается вручную
+  async function allowDeparture(requestId) {
+    if (building.value || !plan.value) return
+    building.value = true
+    clearMessages()
+    try {
+      plan.value = await allowDepartureRequest(plan.value.id, requestId)
+      showNotice(`Выезд на заявку №${requestId} разрешён`)
     } catch (error) {
       showError(error)
     } finally {
@@ -179,6 +191,8 @@ export function usePlans() {
 
   async function approve(summary) {
     if (building.value) return
+    // обещания клиентам расчёт не удержал: сорвать их можно только с ведома оператора
+    if (summary.broken_promises?.length && !window.confirm(promiseQuestion(summary))) return
     // пересчёт заменяет действующий план: бригады перейдут на новый маршрут
     if (
       summary.parent_plan_id &&
@@ -220,6 +234,36 @@ export function usePlans() {
     } finally {
       building.value = false
     }
+  }
+
+  // что стало с заявками, по которым оператор решал: иначе заявка молча исчезает из дня
+  function decisionsText(decisions) {
+    const listed = (action, describe) =>
+      decisions
+        .filter((decision) => decision.action === action)
+        .map((decision) => `№${decision.request_id}${describe ? ` ${describe(decision)}` : ''}`)
+    const agreed = listed('agree', (decision) => `на ${moscowTimeOf(decision.window_start)}`)
+    const moved = listed('move', (decision) => `на ${formatDay(moscowDateOf(decision.window_start))}`)
+    const cancelled = [...listed('cancel'), ...listed('no_answer')]
+    const parts = [
+      agreed.length && `согласованы: ${agreed.join(', ')}`,
+      moved.length && `перенесены: ${moved.join(', ')}`,
+      cancelled.length && `отменены: ${cancelled.join(', ')}`,
+    ].filter(Boolean)
+    return parts.length ? `${parts.join('; ')}. ` : ''
+  }
+
+  // чем расчёт разошёлся с обещаниями клиентам (docs/algoV2.md, шаг 5)
+  function promiseQuestion(summary) {
+    const lines = summary.broken_promises.map((promise) => {
+      const promised = `${moscowTimeOf(promise.promised_from)}–${moscowTimeOf(promise.promised_to)}`
+      const fact = promise.planned_start ? `план ставит ${moscowTimeOf(promise.planned_start)}` : 'в план не попала'
+      return `№${promise.request_id}: обещали ${promised}, ${fact}`
+    })
+    return (
+      `Утвердить план №${summary.id}? Обещанное клиентам не удерживается:\n${lines.join('\n')}\n` +
+      'Утвердите и перезвоните клиентам — или откажитесь и оставьте прежний план.'
+    )
   }
 
   // после утверждения меняются и планы, и занятые заявки дня
@@ -277,5 +321,6 @@ export function usePlans() {
     cancelApproval,
     selectEngineer,
     markVisitStatus,
+    allowDeparture,
   }
 }

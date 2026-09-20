@@ -25,6 +25,7 @@ from src.repositories.references import references_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.brigade import BrigadeDays, BrigadeEquipment, BrigadeRoute, BrigadeVisit
+from src.services.planner import departure_gate, planning_service
 from src.services.planner.planner_problem import LOWEST_PRIORITY_LEVEL
 from src.services.requests import request_status_service
 
@@ -91,6 +92,9 @@ async def get_route(session: AsyncSession, user: AppUser, plan_date: date) -> Br
     facts = await brigade_repository.list_facts(
         session, [assignment.request_id for assignment in assignments]
     )
+    cancels = await request_statuses_repository.cancellations(
+        session, [assignment.request_id for assignment in assignments]
+    )
 
     engineer = assignments[0].engineer
     route.shift_start, route.shift_end = engineer.shift_start, engineer.shift_end
@@ -128,9 +132,81 @@ async def get_route(session: AsyncSession, user: AppUser, plan_date: date) -> Br
                 departed_at=fact.departed_at if fact else None,
                 arrived_at=fact.arrived_at if fact else None,
                 finished_at=fact.finished_at if fact else None,
+                cancel_reason=request.cancel_reason,
+                cancelled_at=cancels[request.id][0].changed_at if request.id in cancels else None,
+                cancelled_by=cancelled_by(cancels.get(request.id)),
             )
         )
+    await apply_departure_gate(session, plan, route, assignments)
     return route
+
+
+# кто отменил заявку — словами для карточки визита (docs/algoV2.md, шаг 11)
+CANCELLED_BY = {"brigade": "бригадой", "dispatcher": "диспетчером", "admin": "диспетчером"}
+
+
+def cancelled_by(cancellation) -> str | None:
+    if cancellation is None:
+        return None
+    _, role = cancellation
+    return CANCELLED_BY.get(role, "системой")
+
+
+async def apply_departure_gate(
+    session: AsyncSession,
+    plan,
+    route: BrigadeRoute,
+    assignments: list[Assignment],
+) -> None:
+    """Закрыть выезд, если бригада выбилась из плана или идёт пересчёт (docs/algoV2.md).
+
+    Проверяем только ближайшую незакрытую заявку: остальные и так впереди.
+    """
+    next_visit = next(
+        (visit for visit in route.visits if visit.status_code in ("planned", "new")), None
+    )
+    if next_visit is None:
+        return
+    assignment = next(
+        item for item in assignments if item.request_id == next_visit.request_id
+    )
+    check = await departure_state(
+        session, plan, assignment.request, assignment, assignments, next_visit.departed_at
+    )
+    next_visit.can_depart = check.allowed
+    next_visit.blocked_reason = check.reason
+
+
+async def departure_state(
+    session: AsyncSession,
+    plan,
+    request: Request,
+    assignment: Assignment,
+    assignments: list[Assignment],
+    departed_at: datetime | None,
+) -> departure_gate.DepartureCheck:
+    """Можно ли выезжать на эту заявку: общее правило для приложения и для отметки."""
+    delays = await planning_service.plan_route_delays(session, plan, assignments)
+    at_risk = any(request.id in delay.at_risk_request_ids for delay in delays.values())
+    return departure_gate.check_departure(
+        planned_start=assignment.planned_arrival_time,
+        departed_at=departed_at,
+        at_risk=at_risk,
+        allowed_at=request.departure_allowed_at,
+        replan_pending=await plans_repository.has_unapproved_replan(session, plan.id),
+        now=now(),
+    )
+
+
+async def require_departure_allowed(
+    session: AsyncSession, user: AppUser, request: Request, assignment: Assignment
+) -> None:
+    """Выехать нельзя, пока бригада выбилась из плана: ждёт нового или разрешения оператора."""
+    plan = await plans_repository.get_plan(session, assignment.plan_id)
+    assignments = await route_assignments(session, user, plan.id)
+    check = await departure_state(session, plan, request, assignment, assignments, None)
+    if not check.allowed:
+        raise BrigadeActionError([check.reason or "выезд пока закрыт"])
 
 
 async def find_route_visit(
@@ -168,6 +244,7 @@ async def mark(
     if action == "depart":
         if fact.departed_at is not None:
             raise BrigadeActionError([f"выезд на заявку №{request_id} уже отмечен"])
+        await require_departure_allowed(session, user, request, assignment)
         await to_status(RequestStatusId.EN_ROUTE, "Бригада выехала")
         fact.departed_at = moment
     elif action == "arrive":

@@ -82,17 +82,23 @@ async def check_schedule(
 
 
 async def solve_day(
-    loaded: LoadedDay, objective_order: tuple[ObjectiveCriterion, ...]
+    loaded: LoadedDay,
+    objective_order: tuple[ObjectiveCriterion, ...],
+    ranks: dict[int, int] | None = None,
 ) -> cuopt_solver.DaySolution:
     """Уточнять только использованные плечи, не пересчитывая полную матрицу R5."""
     if TRANSIT_ID not in loaded.instance.travel_min:
-        return await cuopt_solver.solve_day(loaded.instance, objective_order=objective_order)
+        return await cuopt_solver.solve_day(
+            loaded.instance, objective_order=objective_order, ranks=ranks
+        )
 
     points = node_points(loaded)
     cache: dict[tuple[int, int, int], int] = {}
     instance: ProblemInstance = loaded.instance
     for attempt in range(settings.transit_plan_max_attempts):
-        solution = await cuopt_solver.solve_day(instance, objective_order=objective_order)
+        solution = await cuopt_solver.solve_day(
+            instance, objective_order=objective_order, ranks=ranks
+        )
         checked, observations = await check_schedule(loaded, solution, points, cache)
         if checked is not None:
             return checked

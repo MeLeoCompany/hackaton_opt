@@ -66,3 +66,15 @@ async def rename_shifts(session: AsyncSession, brigade_id: int, name: str) -> No
 
 async def delete_brigade(session: AsyncSession, brigade: Brigade) -> None:
     await session.delete(brigade)
+
+
+async def phones_by_engineer(session: AsyncSession, engineer_ids: list[int]) -> dict[int, str]:
+    """Телефон бригады по номеру её смены — оператор звонит из плана."""
+    if not engineer_ids:
+        return {}
+    result = await session.execute(
+        select(Engineer.id, Brigade.phone)
+        .join(Brigade, Brigade.id == Engineer.brigade_id)
+        .where(Engineer.id.in_(engineer_ids), Brigade.phone.is_not(None))
+    )
+    return {engineer_id: phone for engineer_id, phone in result.all()}

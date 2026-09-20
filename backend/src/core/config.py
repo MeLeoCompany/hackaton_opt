@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # подпись токенов входа; в любом общем окружении задайте свой AUTH_SECRET
     auth_secret: str = "dev-secret-change-me"
     auth_token_hours: int = Field(default=12, gt=0)
+    # ширина обещанного клиенту окна: предложенное время плюс допуск (docs/algoV2.md)
+    promise_tolerance_minutes: int = Field(default=30, ge=5, le=240)
+    # бригада выбилась из плана, если не выехала через столько минут после планового выезда
+    departure_grace_minutes: int = Field(default=10, ge=0, le=120)
     # минимум времени поиска; для больших задач лимит растёт до cuopt_max_time_limit_seconds
     cuopt_time_limit_seconds: float = Field(default=1.0, gt=0.0, allow_inf_nan=False)
     cuopt_max_time_limit_seconds: float = Field(default=120.0, gt=0.0, allow_inf_nan=False)

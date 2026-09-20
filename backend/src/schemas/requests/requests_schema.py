@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -63,6 +63,13 @@ class RequestRead(RequestWrite):
     is_active: bool
     # утверждённый план, за которым закреплена заявка: из заявки можно перейти в её маршрут
     approved_plan_id: int | None = None
+    # отметки разговора с клиентом (docs/algoV2.md, шаг 4): обещанное окно, день, с которого
+    # работу перенесли, «требует уточнения» (не дозвонились) и причина отмены
+    promised_from: datetime | None = None
+    promised_to: datetime | None = None
+    moved_from: date | None = None
+    needs_followup: bool = False
+    cancel_reason: str | None = None
 
 
 class RequestStatusHistoryItem(BaseModel):

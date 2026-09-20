@@ -5,6 +5,7 @@ import { NEW_REQUEST } from '../composables/useRequestsTable.js'
 import { useColumnWidths } from '../composables/useColumnWidths.js'
 import { REQUEST_COLUMNS as COLUMNS } from '../composables/useRequestsView.js'
 import { priorityBadgeClass, referenceName } from '../utils/referenceNames.js'
+import { movedAway, requestMarks } from '../utils/requestMarks.js'
 import { statusCode } from '../utils/requestStatuses.js'
 import IconButton from './IconButton.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
@@ -24,6 +25,8 @@ const props = defineProps({
   emptyText: { type: String, default: 'Заявок нет' },
   filters: { type: Object, required: true },
   activeFilterCount: { type: Number, required: true },
+  // открытый день: по нему видно, что заявку перенесли отсюда в другой день
+  planDate: { type: String, default: '' },
 })
 defineEmits([
   'edit',
@@ -134,6 +137,7 @@ onMounted(scrollToSelected)
             editing: request.id === editingId,
             selected: request.id === selectedId,
             inactive: !request.is_active,
+            'moved-away': movedAway(request, planDate),
           }"
           @click="editingId === null && $emit('select', request.id)"
           @dblclick="editingId === null && $emit('show-on-map', request.id)"
@@ -162,6 +166,15 @@ onMounted(scrollToSelected)
                 @history="$emit('history', request)"
                 @open-plan="$emit('open-plan', request)"
               />
+              <!-- след разговора с клиентом: под статусом видно, что заявке обещали или
+                   почему её отменили (docs/algoV2.md, шаг 4) -->
+              <span
+                v-for="mark in requestMarks(request, planDate)"
+                :key="mark.text"
+                :class="['request-mark', mark.kind]"
+              >
+                {{ mark.text }}
+              </span>
             </td>
             <td class="wide-cell">{{ request.address }}</td>
             <!-- на узком экране координаты уходят в две строки по запятой, а не обрезаются -->
@@ -236,6 +249,36 @@ onMounted(scrollToSelected)
 </template>
 
 <style scoped>
+/* заявка ушла в другой день: в этом дне она остаётся видна, но бледной */
+.moved-away td {
+  opacity: 0.65;
+}
+
+/* отметки заявки под статусом: обещание клиенту, перенос, отмена */
+.request-mark {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.request-mark.promised {
+  color: #15803d;
+}
+
+.request-mark.moved {
+  color: #c2410c;
+}
+
+.request-mark.followup {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.request-mark.cancelled {
+  color: #64748b;
+}
+
 .coordinates-value {
   font-variant-numeric: tabular-nums;
 }

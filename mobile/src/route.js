@@ -54,6 +54,24 @@ export function mapsLink(visit, from = null) {
   return `https://yandex.ru/maps/?rtext=${start}~${to}&rtt=auto`
 }
 
+// что изменилось в маршруте, пока бригада работала: диспетчер отменил заявку или снял её
+// с плана при пересчёте — бригада узнаёт об этом при обновлении (docs/algoV2.md, шаг 11)
+export function routeChanges(previous, next) {
+  if (!previous || !next || previous.plan_date !== next.plan_date) return []
+  const before = new Map(previous.visits.map((visit) => [visit.request_id, visit]))
+  const messages = []
+  for (const visit of next.visits) {
+    const old = before.get(visit.request_id)
+    if (!old) continue
+    if (!old.removed && visit.removed) {
+      messages.push(`Заявка №${visit.request_id} снята при пересчёте — к ней не едем`)
+    } else if (old.status_code !== 'cancelled' && visit.status_code === 'cancelled') {
+      messages.push(`Заявка №${visit.request_id} отменена ${visit.cancelled_by ?? 'диспетчером'}`)
+    }
+  }
+  return messages
+}
+
 // откуда бригада едет на эту заявку: прошлый визит маршрута или старт смены
 export function departurePoint(route, visit) {
   const index = route?.visits.findIndex((item) => item.request_id === visit.request_id) ?? -1

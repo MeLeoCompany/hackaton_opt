@@ -168,6 +168,9 @@ async def load_day(
                 skill_id=request.skill_id,
                 required_transport_id=request.transport_id,
                 priority_level=priority_levels.get(request.priority_id, LOWEST_PRIORITY_LEVEL),
+                # отметки синхронизации: обещание клиенту и перенос с другого дня (036)
+                promised=request.promised_from is not None,
+                moved=request.moved_from is not None,
             )
             for request in requests
         ],

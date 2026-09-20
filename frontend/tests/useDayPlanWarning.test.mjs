@@ -48,3 +48,17 @@ test('повторная загрузка очищает старое преду
   await refresh
   assert.equal(warning.planSummary.value, null)
 })
+
+test('посчитанный, но не утверждённый пересчёт показывается вместо «пересчитайте»', async () => {
+  const { warning, pending } = harness()
+  const load = warning.load()
+  pending.get('2026-09-20').resolve([
+    { id: 54, approved_at: 'now', new_request_ids: [3] },
+    { id: 59, parent_plan_id: 54, approved_at: null },
+  ])
+  await load
+
+  assert.equal(warning.planSummary.value.id, 54)
+  assert.equal(warning.pendingReplan.value.id, 59)
+  assert.equal(warning.needsReplan.value, true)
+})

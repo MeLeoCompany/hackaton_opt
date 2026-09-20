@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     FetchedValue,
     ForeignKey,
@@ -56,6 +58,18 @@ class Request(Base):
     office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id"))
     # статус заявки: новая, в плане, выполнена, отменена (db/init/022_request_status.sql)
     status_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("request_status.id"))
+    # отметки синхронизации плана с фактом (db/init/036_request_marks.sql):
+    # обещанное клиенту окно — заявка держится в нём и защищена ярусом в расчёте
+    promised_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    promised_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # день, с которого заявку перенесли: перенесённая идёт выше неперенесённых своего приоритета
+    moved_from: Mapped[date | None] = mapped_column(Date)
+    # отменили, потому что не дозвонились: оператор перезвонит позже
+    needs_followup: Mapped[bool] = mapped_column(Boolean, default=False)
+    # почему отменили — словами, от оператора или от бригады
+    cancel_reason: Mapped[str | None] = mapped_column(Text)
+    # бригада отстаёт, но оператор договорился с клиентом и разрешил выезд
+    departure_allowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     priority: Mapped["Priority"] = relationship()
     skill: Mapped["Skill"] = relationship()

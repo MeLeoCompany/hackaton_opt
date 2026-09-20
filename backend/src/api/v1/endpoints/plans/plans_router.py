@@ -101,6 +101,7 @@ async def replan(
         payload.at,
         office_id=office_id,
         decisions=payload.decisions,
+        free_at=payload.free_at,
         user_id=user.id,
     )
 
@@ -125,6 +126,25 @@ async def preview_replan(
         payload.objective_order,
         payload.at,
         office_id=office_id,
+        free_at=payload.free_at,
+    )
+
+
+@router.post(
+    "/{plan_id}/visits/{request_id}/departure",
+    response_model=PlanDetail,
+    summary="Разрешить бригаде выезд, хотя она отстаёт",
+)
+async def allow_departure(
+    plan_id: int,
+    request_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+) -> PlanDetail:
+    """Оператор созвонился с клиентом: тот согласен подождать, бригада едет как есть."""
+    return await planning_service.allow_departure(
+        session, plan_id, request_id, office_id=office_id, user_id=user.id
     )
 
 

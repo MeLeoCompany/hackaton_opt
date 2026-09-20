@@ -43,15 +43,34 @@ class RequestDataError(DataError):
 
 
 async def list_requests(
-    session: AsyncSession, office_id: int, plan_date: date | None = None
+    session: AsyncSession,
+    office_id: int,
+    plan_date: date | None = None,
+    *,
+    with_moved_out: bool = True,
 ) -> list[Request]:
-    """Все заявки офиса или только те, чьё окно попадает в выбранный день."""
+    """Все заявки офиса или только те, чьё окно попадает в выбранный день.
+
+    with_moved_out — оставлять ли в дне заявки, перенесённые с него в другой день. Списку
+    оператора они нужны, слепку дня в CSV — нет: там день описывается своими окнами.
+    """
     if plan_date is None:
         return await requests_repository.list_requests(session, office_id=office_id)
     day_start, day_end = day_bounds(plan_date)
-    return await requests_repository.list_requests_in_period(
+    requests = await requests_repository.list_requests_in_period(
         session, day_start, day_end, office_id=office_id
     )
+    if not with_moved_out:
+        return requests
+    # перенесённые с этого дня оставляем в списке: иначе заявка молча исчезает из дня,
+    # в котором её ждали, и оператору негде увидеть, куда она делась
+    moved = await requests_repository.list_requests_moved_from(
+        session, plan_date, office_id=office_id
+    )
+    known = {request.id for request in requests}
+    requests.extend(request for request in moved if request.id not in known)
+    requests.sort(key=lambda request: (request.window_start, request.id))
+    return requests
 
 
 async def get_request(session: AsyncSession, request_id: int, office_id: int) -> Request:
@@ -288,7 +307,7 @@ async def export_requests_csv(
     session: AsyncSession, office_id: int, plan_date: date | None = None
 ) -> str:
     """Заявки офиса за день в CSV — слепок дня, который можно загрузить обратно или в другой день."""
-    requests = await list_requests(session, office_id, plan_date)
+    requests = await list_requests(session, office_id, plan_date, with_moved_out=False)
     references = await load_reference_names(session)
     timezone = local_timezone()
     return build_requests_csv(

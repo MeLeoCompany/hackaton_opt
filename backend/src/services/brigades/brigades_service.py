@@ -37,6 +37,7 @@ def to_brigade_read(brigade: Brigade, account: AppUser | None, shift_count: int)
         office_id=brigade.office_id,
         name=brigade.name,
         is_active=brigade.is_active,
+        phone=brigade.phone,
         login=account.login if account else None,
         shift_count=shift_count,
     )
@@ -64,7 +65,13 @@ async def create_brigade(
     if payload.login and not payload.password:
         raise BrigadeDataError(["задайте пароль для входа бригады в приложение"])
     brigade = brigades_repository.add_brigade(
-        session, {"office_id": office_id, "name": payload.name, "is_active": payload.is_active}
+        session,
+        {
+            "office_id": office_id,
+            "name": payload.name,
+            "is_active": payload.is_active,
+            "phone": payload.phone,
+        },
     )
     await session.flush()
     account = sync_account(session, brigade, None, payload)
@@ -85,6 +92,7 @@ async def update_brigade(
         await brigades_repository.rename_shifts(session, brigade.id, payload.name)
     brigade.name = payload.name
     brigade.is_active = payload.is_active
+    brigade.phone = payload.phone
 
     if payload.login is None and account is not None:
         # логин стёрли — входа в приложение у бригады больше нет

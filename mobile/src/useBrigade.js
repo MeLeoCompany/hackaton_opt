@@ -3,6 +3,7 @@
 import { ref } from 'vue'
 
 import { ApiError, currentUser, login, markVisit, routeDays, routeOf, storeToken, storedToken } from './api.js'
+import { routeChanges } from './route.js'
 
 const user = ref(null)
 const days = ref([])
@@ -13,6 +14,8 @@ const lastUpdatedAt = ref(null) // когда маршрут последний 
 const busy = ref(false) // отметка уходит на сервер — кнопки ждут
 const errorMessage = ref('')
 const noticeMessage = ref('')
+// что диспетчер поменял в маршруте с прошлого обновления: висит, пока бригада не закроет
+const changes = ref([])
 let noticeTimer = null
 
 function showNotice(text) {
@@ -72,6 +75,7 @@ function logout() {
   days.value = []
   day.value = null
   lastUpdatedAt.value = null
+  changes.value = []
 }
 
 async function loadDays() {
@@ -93,7 +97,9 @@ async function refresh() {
     if (day.value && !loaded.days.includes(day.value) && loaded.default_day) {
       day.value = loaded.default_day
     }
-    route.value = await routeOf(day.value)
+    const fresh = await routeOf(day.value)
+    changes.value = [...changes.value, ...routeChanges(route.value, fresh)]
+    route.value = fresh
     lastUpdatedAt.value = new Date()
     errorMessage.value = ''
   } catch (error) {
@@ -122,6 +128,7 @@ async function loadRoute() {
 async function selectDay(value) {
   day.value = value
   errorMessage.value = ''
+  changes.value = []
   await loadRoute()
 }
 
@@ -159,6 +166,7 @@ export function useBrigade() {
     busy,
     errorMessage,
     noticeMessage,
+    changes,
     signIn,
     restore,
     logout,

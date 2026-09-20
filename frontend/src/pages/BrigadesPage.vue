@@ -38,7 +38,8 @@ onMounted(load)
       <h1>Бригады</h1>
       <p>
         Офис «{{ currentOfficeName }}» · бригад {{ brigades.length }} · смены на день заводятся во вкладке
-        «Исполнители» · логин и пароль — вход бригады в мобильное приложение
+        «Исполнители» · логин и пароль — вход бригады в мобильное приложение · телефон нужен
+        оператору, когда бригада выбилась из плана
       </p>
     </header>
 
@@ -56,6 +57,7 @@ onMounted(load)
           <colgroup>
             <col style="width: 70px" />
             <col />
+            <col style="width: 150px" />
             <col style="width: 190px" />
             <col style="width: 190px" />
             <col style="width: 100px" />
@@ -66,6 +68,7 @@ onMounted(load)
             <tr>
               <th>№</th>
               <th>Название</th>
+              <th>Телефон</th>
               <th>Логин в приложении</th>
               <th>Пароль</th>
               <th>Смен</th>
@@ -81,6 +84,9 @@ onMounted(load)
               <tr v-if="item === null || item.id === editingId" class="editing">
                 <td class="number-cell">{{ item?.id ?? '—' }}</td>
                 <td><input v-model="form.name" placeholder="Бригада Иванов" aria-label="название бригады" /></td>
+                <td>
+                  <input v-model="form.phone" placeholder="+7 900 000-00-00" aria-label="телефон бригады" />
+                </td>
                 <td>
                   <input
                     v-model="form.login"
@@ -124,6 +130,10 @@ onMounted(load)
                 <td class="number-cell">{{ item.id }}</td>
                 <td><strong>{{ item.name }}</strong></td>
                 <td>
+                  <a v-if="item.phone" :href="`tel:${item.phone}`">{{ item.phone }}</a>
+                  <span v-else class="muted" title="Оператору некуда звонить, если бригада выбилась из плана">—</span>
+                </td>
+                <td>
                   <template v-if="item.login">{{ item.login }}</template>
                   <span v-else class="muted" title="Бригада не входит в мобильное приложение">без входа</span>
                 </td>
@@ -154,7 +164,7 @@ onMounted(load)
               </tr>
             </template>
             <tr v-if="!brigades.length && editingId !== NEW_BRIGADE">
-              <td colspan="7" class="empty">В офисе ещё нет бригад</td>
+              <td colspan="8" class="empty">В офисе ещё нет бригад</td>
             </tr>
           </tbody>
         </table>

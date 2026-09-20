@@ -12,6 +12,8 @@ class BrigadeWrite(BaseModel):
 
     name: str = Field(min_length=1)
     is_active: bool = True
+    # телефон бригады: по нему оператор звонит, когда план разошёлся с фактом
+    phone: str | None = None
     login: str | None = None
     password: str | None = None
 
@@ -19,6 +21,8 @@ class BrigadeWrite(BaseModel):
     def check_password(self) -> "BrigadeWrite":
         if self.login == "":
             self.login = None
+        if self.phone == "":
+            self.phone = None
         if self.password == "":
             self.password = None
         if self.password is not None and len(self.password) < 4:
@@ -31,5 +35,6 @@ class BrigadeRead(BaseModel):
     office_id: int
     name: str
     is_active: bool
+    phone: str | None
     login: str | None  # None — входа в мобильное приложение нет
     shift_count: int  # сколько смен (исполнителей на день) заведено — такую бригаду не удалить

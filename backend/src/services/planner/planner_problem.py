@@ -28,6 +28,18 @@ LOWEST_PRIORITY_LEVEL = 3
 # уровни выше базового: по ним в целевой функции идут отдельные ступени
 PRIORITY_LEVELS = (1, 2)
 
+# Ярусы целевой функции (docs/algoV2.md): чем меньше номер, тем важнее класс заявок.
+# Каждый ярус сильнее всех нижних вместе взятых, поэтому одна авария важнее любого числа
+# подключений, а обещанная клиенту заявка — любого числа обычных
+RANK_EMERGENCY = 1  # P1, авария
+RANK_PROMISED = 2  # «согласовано»: обещание клиенту, подвинуть может только авария
+RANK_MOVED_HIGH = 3  # P2 с отметкой «перенесена»
+RANK_MOVED_NORMAL = 4  # P3 с отметкой «перенесена»
+RANK_HIGH = 5  # P2
+RANK_NORMAL = 6  # P3 — базовый ярус, отдельной ступени не получает
+# во втором расчёте раскрытые заявки идут ниже тех, что уже влезли в первый (ярус C1)
+WIDENED_RANK_SHIFT = 10
+
 
 @dataclass(frozen=True)
 class RequestSpec:
@@ -40,11 +52,26 @@ class RequestSpec:
     # уровень приоритета из справочника: 1 — авария, 2 — подключение, 3 — ремонт и дозаказ.
     # Оптимизатор берёт заявки по уровням: сначала все аварии, потом подключения, потом остальное
     priority_level: int = LOWEST_PRIORITY_LEVEL
+    # отметки заявки: обещана клиенту по телефону и переносилась с другого дня
+    promised: bool = False
+    moved: bool = False
 
     @property
     def is_urgent(self) -> bool:
         """Авария — верхний уровень приоритета."""
         return self.priority_level == TOP_PRIORITY_LEVEL
+
+    @property
+    def objective_rank(self) -> int:
+        """Ярус заявки в целевой функции: авария, обещание, перенос, приоритет."""
+        if self.priority_level == TOP_PRIORITY_LEVEL:
+            return RANK_EMERGENCY
+        if self.promised:
+            return RANK_PROMISED
+        high = self.priority_level < LOWEST_PRIORITY_LEVEL
+        if self.moved:
+            return RANK_MOVED_HIGH if high else RANK_MOVED_NORMAL
+        return RANK_HIGH if high else RANK_NORMAL
 
 
 @dataclass

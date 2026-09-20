@@ -213,29 +213,33 @@ def test_one_urgent_request_wins_over_two_regular_requests():
     assert assigned_request_ids(instance, solution) == [12]
 
 
-def test_throughput_first_can_choose_two_regular_requests_over_one_urgent():
-    skills = {1: {1}}
+def test_crews_first_keeps_one_brigade_instead_of_taking_both_requests():
+    """«Меньше бригад» сразу после приоритетов: вторую бригаду ради обычной заявки не выводим."""
+    skills = {1: {1}, 2: {1}}
     instance = make_instance(
-        engineers=[engineer(1, shift=("10:00", "11:30"))],
+        engineers=[engineer(1, shift=("10:00", "12:00")), engineer(2, shift=("10:00", "12:00"))],
         requests=[
-            request(10, skill=1, window=("10:00", "11:00"), duration=30),
-            request(11, skill=1, window=("10:00", "11:00"), duration=30),
-            request(12, skill=1, window=("10:00", "11:00"), duration=90, priority=URGENT),
+            # обе заявки начинаются до 10:30 и идут час: одной бригаде они не по силам
+            request(10, skill=1, window=("10:00", "10:30"), duration=60),
+            request(11, skill=1, window=("10:00", "10:30"), duration=60),
         ],
         skills=skills,
         travel_min=0,
     )
-    throughput_first = (
-        ObjectiveCriterion.ASSIGNED_REQUESTS,
+    crews_first = (
         ObjectiveCriterion.URGENT_REQUESTS,
         ObjectiveCriterion.ENGINEERS_USED,
+        ObjectiveCriterion.ASSIGNED_REQUESTS,
         ObjectiveCriterion.TRAVEL_DISTANCE,
     )
 
-    solution = solve(instance, throughput_first)
+    both = solve(instance)
+    saving = solve(instance, crews_first)
 
-    assert constraint_violations(instance, skills, solution) == []
-    assert assigned_request_ids(instance, solution) == [10, 11]
+    assert constraint_violations(instance, skills, saving) == []
+    assert assigned_request_ids(instance, both) == [10, 11]  # по умолчанию важнее заявки
+    assert len(assigned_request_ids(instance, saving)) == 1
+    assert len(saving.routes) == 1
 
 
 def test_one_engineer_is_enough_when_he_can_do_everything():

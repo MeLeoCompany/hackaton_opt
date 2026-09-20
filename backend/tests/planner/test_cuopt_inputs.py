@@ -1,5 +1,6 @@
 """Что уходит в cuOpt и как разбирается его ответ — без видеокарты и без самого пакета cuopt."""
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -8,6 +9,7 @@ from planner_test_helpers import (
     CAR,
     CONNECTION,
     EMERGENCY,
+    REGULAR,
     URGENT,
     WALK,
     engineer,
@@ -24,6 +26,14 @@ from src.services.planner.cuopt_solver import (
     schedulable_request_indices,
 )
 from src.services.planner.objective_policy import ObjectiveCriterion
+from src.services.planner.planner_problem import (
+    RANK_EMERGENCY,
+    RANK_HIGH,
+    RANK_MOVED_HIGH,
+    RANK_MOVED_NORMAL,
+    RANK_NORMAL,
+    RANK_PROMISED,
+)
 
 
 def sample_instance():
@@ -78,7 +88,7 @@ def test_requests_become_orders():
     assert inputs.order_window_end.tolist() == [hhmm("12:00"), hhmm("17:00")]
     assert inputs.order_service_minutes.tolist() == [60, 60]
     assert inputs.order_prizes[0] == inputs.objective.regular_reward
-    assert inputs.order_prizes[1] == inputs.objective.reward_for(EMERGENCY)
+    assert inputs.order_prizes[1] == inputs.objective.reward_for(RANK_EMERGENCY)
     assert inputs.order_prizes[1] > inputs.order_prizes[0]
     assert [allowed.tolist() for allowed in inputs.order_allowed_vehicles] == [
         [0, 1],  # навык 1 есть у обоих
@@ -169,26 +179,27 @@ def test_dynamic_objective_has_strict_priority_levels():
     lower_than_request = instance.n_engineers * objective.vehicle_cost + objective.distance_weight
     assert objective.vehicle_cost > objective.distance_weight
     assert objective.regular_reward > lower_than_request
-    assert objective.reward_for(EMERGENCY) > objective.regular_reward + lower_than_request
+    assert objective.reward_for(RANK_EMERGENCY) > objective.regular_reward + lower_than_request
 
 
-def test_dispatcher_can_prioritize_total_throughput_over_urgency():
+def test_dispatcher_can_save_crews_before_taking_more_requests():
+    """«Меньше бригад» сразу после приоритетов: обычная заявка бригаду уже не оправдывает."""
     instance = sample_instance()
     order = (
-        ObjectiveCriterion.ASSIGNED_REQUESTS,
         ObjectiveCriterion.URGENT_REQUESTS,
         ObjectiveCriterion.ENGINEERS_USED,
+        ObjectiveCriterion.ASSIGNED_REQUESTS,
         ObjectiveCriterion.TRAVEL_DISTANCE,
     )
 
-    objective = build_objective_policy(instance, [0, 1], 1.0, order)
-    urgent_bonus = objective.reward_for(EMERGENCY) - objective.regular_reward
-    lower_levels = (
-        urgent_bonus + instance.n_engineers * objective.vehicle_cost + objective.distance_weight
-    )
+    tasks = [0, 1]  # третью заявку никто не умеет, в решатель она не идёт
+    objective = build_objective_policy(instance, tasks, 1.0, order)
+    lower_levels = len(tasks) * objective.regular_reward + objective.distance_weight
 
     assert objective.criteria == order
-    assert objective.regular_reward > lower_levels
+    assert objective.vehicle_cost > lower_levels
+    # ярусы приоритетов остаются выше экономии бригад: авария бригаду оправдывает всегда
+    assert objective.reward_for(RANK_EMERGENCY) > instance.n_engineers * objective.vehicle_cost
 
 
 def test_dispatcher_can_prioritize_distance_over_engineer_count():
@@ -221,7 +232,14 @@ def test_unsafe_float32_objective_is_rejected():
     fake_instance = SimpleNamespace(
         n_engineers=1,
         engineers=[SimpleNamespace(shift_start_min=0, shift_end_min=1_440)],
-        requests=[SimpleNamespace(priority_level=EMERGENCY) for _ in range(request_count)],
+        # ярусы аварий и обычных заявок: на таком объёме Big-M выходит за float32
+        requests=[
+            SimpleNamespace(
+                priority_level=EMERGENCY if index % 2 else REGULAR,
+                objective_rank=RANK_EMERGENCY if index % 2 else RANK_NORMAL,
+            )
+            for index in range(request_count)
+        ],
         distance_km={1: np.zeros((1, 1))},
         travel_min={1: np.zeros((1, 1))},
     )
@@ -260,10 +278,54 @@ def test_three_priority_levels_are_strictly_ordered():
     )
 
     objective = build_objective_policy(instance, list(range(6)), 1.0)
-    emergency_bonus = objective.reward_for(EMERGENCY) - objective.regular_reward
-    connection_bonus = objective.reward_for(CONNECTION) - objective.regular_reward
+    emergency_bonus = objective.reward_for(RANK_EMERGENCY) - objective.regular_reward
+    connection_bonus = objective.reward_for(RANK_HIGH) - objective.regular_reward
 
     assert emergency_bonus > connection_bonus > 0
     # одна авария перевешивает все три подключения, одно подключение — все обычные заявки
     assert emergency_bonus > 3 * connection_bonus
     assert connection_bonus > 6 * objective.regular_reward
+
+
+def marked(request_id, *, priority=REGULAR, promised=False, moved=False):
+    spec = request(request_id, skill=1, window=("10:00", "20:00"), priority=priority)
+    return replace(spec, promised=promised, moved=moved)
+
+
+def test_objective_ranks_follow_marks():
+    """Ярусы A0-F0: авария, обещание, перенос, приоритет (docs/algoV2.md)."""
+    assert marked(1, priority=EMERGENCY).objective_rank == RANK_EMERGENCY
+    # авария остаётся аварией, даже если её обещали клиенту
+    assert marked(2, priority=EMERGENCY, promised=True).objective_rank == RANK_EMERGENCY
+    assert marked(3, promised=True).objective_rank == RANK_PROMISED
+    assert marked(4, priority=CONNECTION, moved=True).objective_rank == RANK_MOVED_HIGH
+    assert marked(5, moved=True).objective_rank == RANK_MOVED_NORMAL
+    assert marked(6, priority=CONNECTION).objective_rank == RANK_HIGH
+    assert marked(7).objective_rank == RANK_NORMAL
+
+
+def test_promised_and_moved_requests_outrank_the_rest():
+    """Обещанная сильнее всех нижних ярусов дня, перенесённая — всех неперенесённых."""
+    instance = make_instance(
+        engineers=[engineer(1)],
+        requests=[
+            marked(10),
+            marked(11),
+            marked(12, priority=CONNECTION),
+            marked(13, priority=CONNECTION),
+            marked(14, priority=CONNECTION),
+            marked(15, moved=True),
+            marked(16, promised=True),
+        ],
+        skills={1: {1}},
+    )
+
+    objective = build_objective_policy(instance, list(range(7)), 1.0)
+
+    def bonus(rank):
+        return objective.reward_for(rank) - objective.regular_reward
+
+    # в задаче: 1 обещанная, 1 перенесённая, 3 подключения, 2 обычные
+    assert bonus(RANK_PROMISED) > bonus(RANK_MOVED_NORMAL) + 3 * bonus(RANK_HIGH)
+    assert bonus(RANK_MOVED_NORMAL) > 3 * bonus(RANK_HIGH)
+    assert bonus(RANK_HIGH) > 0

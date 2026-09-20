@@ -33,6 +33,14 @@ class BrigadeVisit(BaseModel):
     departed_at: datetime | None = None
     arrived_at: datetime | None = None
     finished_at: datetime | None = None
+    # выезд закрыт: бригада выбилась из графика или идёт пересчёт (docs/algoV2.md, шаги 7-9)
+    can_depart: bool = True
+    blocked_reason: str | None = None
+    # подробности отмены — чтобы бригада не звонила выяснять, что случилось
+    cancel_reason: str | None = None
+    cancelled_at: datetime | None = None
+    # кто отменил: «диспетчером», «бригадой» или «системой»
+    cancelled_by: str | None = None
 
 
 class BrigadeRoute(BaseModel):

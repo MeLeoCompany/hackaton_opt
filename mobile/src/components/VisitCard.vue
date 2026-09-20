@@ -19,6 +19,8 @@ const expanded = ref(false)
 const open = computed(() => props.current || expanded.value)
 const action = computed(() => (props.current ? nextAction(props.visit) : null))
 const closed = computed(() => isClosed(props.visit))
+// выезд закрыт: бригада выбилась из плана или идёт пересчёт (docs/algoV2.md, шаги 7-9)
+const blocked = computed(() => action.value?.action === 'depart' && props.visit.can_depart === false)
 
 const stateText = computed(() => {
   const visit = props.visit
@@ -71,6 +73,19 @@ const stateText = computed(() => {
           <dt>Заявка</dt>
           <dd>№{{ visit.request_id }}</dd>
         </div>
+        <!-- почему заявки больше нет в работе: чтобы не выяснять это звонком диспетчеру -->
+        <div v-if="visit.status_code === 'cancelled'">
+          <dt>Отменена</dt>
+          <dd>
+            {{ visit.cancelled_by ?? 'диспетчером' }}<template v-if="visit.cancelled_at">
+              в {{ moscowTime(visit.cancelled_at) }}</template>
+            <template v-if="visit.cancel_reason"> · {{ visit.cancel_reason }}</template>
+          </dd>
+        </div>
+        <div v-else-if="visit.removed">
+          <dt>Снята с плана</dt>
+          <dd>снята при пересчёте — бригада к ней не едет</dd>
+        </div>
       </dl>
 
       <a v-if="!closed" class="maps" :href="mapsLink(visit, from)" target="_blank" rel="noopener" @click.stop>
@@ -78,7 +93,8 @@ const stateText = computed(() => {
       </a>
 
       <div v-if="action" class="actions" @click.stop>
-        <button class="primary big" :disabled="busy" @click="emit('mark', visit, action.action)">
+        <p v-if="blocked" class="blocked">{{ visit.blocked_reason ?? 'Ждите нового плана' }}</p>
+        <button class="primary big" :disabled="busy || blocked" @click="emit('mark', visit, action.action)">
           {{ action.label }}
         </button>
         <button class="ghost" :disabled="busy" @click="emit('fail', visit)">Не выполнить</button>
@@ -238,5 +254,16 @@ dd {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* выезд закрыт: бригада ждёт нового плана или разрешения диспетчера */
+.blocked {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 14px;
+  font-weight: 600;
 }
 </style>

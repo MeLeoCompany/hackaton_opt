@@ -1,4 +1,6 @@
 from src.schemas.plans.plans_schema import (
+    BrigadeFreeAt,
+    BrokenPromise,
     EngineerRoute,
     HeldRequest,
     PlanBuildRequest,
@@ -17,6 +19,8 @@ from src.schemas.plans.plans_schema import (
 )
 
 __all__ = [
+    "BrigadeFreeAt",
+    "BrokenPromise",
     "EngineerRoute",
     "HeldRequest",
     "PlanBuildRequest",

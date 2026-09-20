@@ -16,6 +16,7 @@ import { useDayPlanWarning } from '../composables/useDayPlanWarning.js'
 import { useSelectedDay } from '../composables/useSelectedDay.js'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
 import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
+import { movedAway } from '../utils/requestMarks.js'
 
 // данные и их изменение
 const {
@@ -81,8 +82,10 @@ const selectedRequest = computed(
   () => filteredRequests.value.find((request) => request.id === selectedId.value) ?? null,
 )
 
-// сколько заявок пойдёт в расчёт плана: статусы Новая и В плане
-const activeTotal = computed(() => requests.value.filter((request) => request.is_active).length)
+// сколько заявок пойдёт в расчёт этого дня: статусы Новая и В плане, кроме перенесённых отсюда
+const activeTotal = computed(
+  () => requests.value.filter((request) => request.is_active && !movedAway(request, selectedDay.value)).length,
+)
 
 // заявка, чья история открыта в окне
 const historyRequestId = ref(null)
@@ -106,7 +109,7 @@ function showOnMap(requestId) {
 const { selectedDay, refreshDaysWithRequests } = useSelectedDay()
 
 // утверждённый план дня: если с ним что-то разошлось, предупреждаем прямо здесь
-const { planSummary, needsReplan, load: loadDayPlan } = useDayPlanWarning()
+const { planSummary, pendingReplan, needsReplan, load: loadDayPlan } = useDayPlanWarning()
 
 // обновить всё, что могло измениться: заявки, план дня и дни с заявками
 async function refreshDay() {
@@ -184,7 +187,13 @@ onMounted(async () => {
 
 
     <!-- с утверждённым планом дня что-то разошлось: оператор видит это, не заходя в планы -->
-    <p v-if="needsReplan" class="replan-warning">
+    <p v-if="pendingReplan" class="replan-warning">
+      <span>⚠ Пересчёт №{{ pendingReplan.id }} посчитан — утвердите его, бригады ждут маршрут</span>
+      <button type="button" class="link" @click="openPlan(pendingReplan.id)">
+        Открыть пересчёт №{{ pendingReplan.id }} →
+      </button>
+    </p>
+    <p v-else-if="needsReplan" class="replan-warning">
       <span>⚠ Рекомендуется пересчитать план</span>
       <button type="button" class="link" @click="openPlan(planSummary.id)">Открыть план №{{ planSummary.id }} →</button>
     </p>
@@ -233,6 +242,7 @@ onMounted(async () => {
           :empty-text="requests.length ? 'По фильтрам ничего не найдено' : 'Заявок нет'"
           :filters="filters"
           :active-filter-count="activeFilterCount"
+          :plan-date="selectedDay"
           @sort="toggleSort"
           @select="selectRequest"
           @change-status="changeStatus"

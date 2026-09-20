@@ -7,12 +7,16 @@ function harness() {
   // всё до первого объявления — импорты, они заменяются аргументами new Function
   const source = file.slice(file.indexOf('export function')).replace('export function', 'function')
   const details = {}, lists = {}, builds = {}, errors = [], notices = [], approvals = []
+  // подтверждения оператора: вопрос записываем, ответ задают тесты
+  const asked = []
+  const confirm = { answer: true }
   const day = { value: '2026-08-17' }
   // проверку дня тесты подменяют: она может и ответить занятыми заявками, и упасть
   const dayCheck = { respond: async () => ({ plan_date: day.value, active_requests: 0, held_requests: [] }) }
   const make = new Function(
     'ref', 'watch', 'approvePlan', 'buildPlan', 'cancelPlanApproval', 'checkPlanningDay',
     'deletePlan', 'getPlan', 'listPlans', 'fetchReferences', 'useMessages', 'useSelectedDay', 'replanPlan',
+    'allowDepartureRequest', 'moscowTimeOf', 'window',
     source + '; return usePlans()')
   const plans = make(
     value => ({ value }), () => {},
@@ -33,8 +37,14 @@ function harness() {
     async (id, params) => {
       approvals.push(['replan', id, params.at])
       return { id: 41, assigned_count: 4, unassigned_count: 2 }
-    })
-  return { plans, details, lists, builds, notices, errors, approvals, dayCheck }
+    },
+    async (planId, requestId) => {
+      approvals.push(['departure', planId, requestId])
+      return { id: planId, routes: [] }
+    },
+    (iso) => iso.slice(11, 16),
+    { confirm: (question) => (asked.push(question), confirm.answer) })
+  return { plans, details, lists, builds, notices, errors, approvals, dayCheck, asked, confirm }
 }
 
 test('late detail response cannot replace the selected plan', async () => {
@@ -172,4 +182,42 @@ test('пересчёт утверждённого плана: новый пла�
   assert.deepEqual(approvals, [['replan', 22, '2026-08-17T18:40:00+03:00']])
   assert.deepEqual(plans.plans.value.map((plan) => plan.id), [41, 22])
   assert.match(notices.at(-1), /Пересчёт №41 плана №22 готов.*заменить план №22/)
+})
+
+test('выезд бригаде разрешают из плана: план обновляется ответом сервера', async () => {
+  const { plans, approvals, notices } = harness()
+  plans.plan.value = { id: 7, routes: [{ engineer_id: 3, waiting_request_id: 15 }] }
+  await plans.allowDeparture(15)
+
+  assert.deepEqual(approvals, [['departure', 7, 15]])
+  assert.deepEqual(plans.plan.value, { id: 7, routes: [] })
+  assert.match(notices.at(-1), /Выезд на заявку №15 разрешён/)
+})
+
+test('обещание клиенту сорвано — утверждаем только с ответа оператора', async () => {
+  const { plans, lists, approvals, asked, confirm } = harness()
+  const summary = {
+    id: 9,
+    broken_promises: [
+      {
+        request_id: 15,
+        promised_from: '2026-08-17T17:40:00+03:00',
+        promised_to: '2026-08-17T18:10:00+03:00',
+        planned_start: '2026-08-17T19:05:00+03:00',
+      },
+      { request_id: 16, promised_from: '2026-08-17T12:00:00+03:00', promised_to: '2026-08-17T12:30:00+03:00', planned_start: null },
+    ],
+  }
+  confirm.answer = false
+  await plans.approve(summary)
+  assert.deepEqual(approvals, [])
+  assert.match(asked.at(-1), /№15: обещали 17:40–18:10, план ставит 19:05/)
+  assert.match(asked.at(-1), /№16: .*в план не попала/)
+
+  confirm.answer = true
+  const approving = plans.approve(summary)
+  await Promise.resolve()
+  lists['2026-08-17']([{ id: 9 }])
+  await approving
+  assert.deepEqual(approvals, [['approve', 9]])
 })

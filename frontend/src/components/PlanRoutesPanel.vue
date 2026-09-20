@@ -23,7 +23,7 @@ const props = defineProps({
   approved: { type: Boolean, default: false }, // план утверждён — статусы визитов можно менять
   focusedRequestId: { type: Number, default: null }, // заявка, к которой перешли из «Заявок»
 })
-const emit = defineEmits(['select-engineer', 'visit-status-changed', 'focus-request'])
+const emit = defineEmits(['select-engineer', 'visit-status-changed', 'focus-request', 'allow-departure'])
 
 // из подсвеченного визита — обратно к заявке на вкладке «Заявки»
 const { openRequest } = usePlanFocus()
@@ -60,6 +60,13 @@ function lateText(route) {
   const atRisk = route.at_risk_request_ids ?? []
   const risk = atRisk.length ? ` · не успевает к окну: ${atRisk.map((id) => `№${id}`).join(', ')}` : ''
   return `опаздывает на ${formatDuration(route.delay_minutes)}${risk}`
+}
+
+// бригада выбилась из плана: выезд закрыт, пока оператор не разрешит или не пересчитает
+// (docs/algoV2.md, шаги 7-9)
+function waitingText(route) {
+  if (!props.approved || !route.waiting_reason) return ''
+  return `ждёт плана · ${route.waiting_reason}`
 }
 
 function visitMarkName(visit) {
@@ -174,10 +181,20 @@ watch(() => props.plan.id, () => {
             <header>
               <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
               <strong>{{ route.engineer_name }}</strong>
+              <a v-if="route.phone" class="phone" :href="`tel:${route.phone}`" @click.stop>{{ route.phone }}</a>
               <span class="muted">{{ referenceName(references, 'transports', route.transport_id) }}</span>
             </header>
             <p v-if="brigadeState(route)" class="brigade-state">{{ brigadeState(route) }}</p>
             <p v-if="lateText(route)" class="brigade-late">{{ lateText(route) }}</p>
+            <p v-if="waitingText(route)" class="brigade-waiting">
+              {{ waitingText(route) }}
+              <button
+                title="Клиент согласился подождать: бригада едет как есть"
+                @click.stop="emit('allow-departure', route.waiting_request_id)"
+              >
+                Разрешить выезд
+              </button>
+            </p>
             <p class="muted">
               {{ route.visits.length }} заявок · {{ route.distance_km.toFixed(1) }} км ·
               {{ formatDuration(route.duration_min) }} в пути
@@ -290,8 +307,18 @@ watch(() => props.plan.id, () => {
               <td>
                 <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
                 <strong>{{ route.engineer_name }}</strong>
+                <a v-if="route.phone" class="phone" :href="`tel:${route.phone}`" @click.stop>{{ route.phone }}</a>
                 <span v-if="brigadeState(route)" class="brigade-state">{{ brigadeState(route) }}</span>
                 <span v-if="lateText(route)" class="brigade-late">{{ lateText(route) }}</span>
+                <span v-if="waitingText(route)" class="brigade-waiting">
+                  {{ waitingText(route) }}
+                  <button
+                    title="Клиент согласился подождать: бригада едет как есть"
+                    @click.stop="emit('allow-departure', route.waiting_request_id)"
+                  >
+                    Разрешить выезд
+                  </button>
+                </span>
               </td>
               <td class="nowrap">{{ referenceName(references, 'transports', route.transport_id) }}</td>
               <td class="under-range-filter">{{ route.visits.length }}</td>
@@ -458,6 +485,32 @@ watch(() => props.plan.id, () => {
   color: #b91c1c;
   font-size: 12px;
   font-weight: 600;
+}
+
+/* бригада ждёт нового плана: выезд закрыт, пока оператор не разрешит или не пересчитает */
+.brigade-waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.brigade-waiting button {
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* телефон бригады: оператор звонит прямо из плана */
+.phone {
+  margin-left: 6px;
+  color: #1d4ed8;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 /* где бригада сейчас — по её отметкам в мобильном приложении */

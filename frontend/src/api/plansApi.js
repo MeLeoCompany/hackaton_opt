@@ -39,6 +39,11 @@ export function previewReplan(planId, params = {}) {
   return apiRequest('POST', `/plans/${planId}/replan/preview`, { json: params })
 }
 
+// оператор созвонился с клиентом: бригаде разрешён выезд, хотя она отстаёт (docs/algoV2.md, шаг 9)
+export function allowDeparture(planId, requestId) {
+  return apiRequest('POST', `/plans/${planId}/visits/${requestId}/departure`)
+}
+
 export function cancelPlanApproval(planId) {
   return apiRequest('DELETE', `/plans/${planId}/approval`)
 }

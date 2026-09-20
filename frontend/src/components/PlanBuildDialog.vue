@@ -1,12 +1,12 @@
 <script setup>
 // Параметры расчёта плана: окно открывается по кнопке «Построить план», поля заполнены
 // значениями по умолчанию — можно сразу нажать «Рассчитать».
-// С replanOf — пересчёт утверждённого плана с момента: выполненные и начатые заявки остаются
-// за бригадами, бригады стартуют оттуда, где они сейчас, остальное раскладывается заново.
+// С replanOf — пересчёт утверждённого плана с текущего момента: выполненные и начатые заявки
+// остаются за бригадами, бригады стартуют оттуда, где они сейчас, остальное раскладывается заново.
 import { computed, reactive, ref, watch } from 'vue'
 
 import { previewReplan } from '../api/plansApi.js'
-import { formatDay, fromMoscowInputValue, moscowDateOf, moscowTimeOf, nextDay } from '../utils/moscowTime.js'
+import { formatDay, fromMoscowInputValue, moscowTimeOf, nextDay } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
 import InfoHint from './InfoHint.vue'
 import TimeInput from './TimeInput.vue'
@@ -18,6 +18,8 @@ const props = defineProps({
   dayCheck: { type: Object, default: null },
   // сводка утверждённого плана, который пересчитываем; null — обычный расчёт дня
   replanOf: { type: Object, default: null },
+  // маршруты пересчитываемого плана: по ним видно, кто ждёт плана, и куда вписать «освободится в»
+  routes: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['build', 'close'])
 
@@ -34,19 +36,11 @@ const SOLVERS = [
   },
 ]
 
-// пояснение к выбору «Сначала выполнить» — во всплывающей подсказке у значка «i»
-const SERVICE_HINTS = {
-  urgent_requests:
-    'Сначала как можно больше аварийных заявок, затем — высокого приоритета, потом все остальные. ' +
-    'Уровень заявки — из справочника «Приоритеты».',
-  assigned_requests: 'Как можно больше заявок всего, без учёта уровня приоритета.',
-}
-
 // значения по умолчанию: ими же расчёт и запускается, если ничего не менять
 const params = reactive({
   solver: 'cuopt',
-  servicePriority: 'urgent_requests',
-  resourcePriority: 'engineers_used',
+  // что важнее сразу после уровней приоритета: заявки, бригады или пробег
+  nextGoal: 'assigned_requests',
 })
 
 // заявки с окном через полночь мог забрать утверждённый план соседнего дня — предупреждаем до расчёта
@@ -60,37 +54,39 @@ function solverHint() {
   return SOLVERS.find((solver) => solver.value === params.solver)?.hint ?? ''
 }
 
-// момент пересчёта: у плана на сегодня — сейчас, у другого дня время выбирают на этот день
-const nowIso = new Date().toISOString()
-const isToday = moscowDateOf(nowIso) === props.planDate
-const replanTime = ref(isToday ? moscowTimeOf(nowIso) : '')
-const canSubmit = computed(() => !props.replanOf || /^\d\d:\d\d$/.test(replanTime.value))
-
 function basePayload() {
   const payload = { solver: params.solver }
-  if (props.replanOf) payload.at = fromMoscowInputValue(`${props.planDate}T${replanTime.value}`)
-  if (params.solver === 'cuopt') {
-    payload.objective_order = objectiveOrder(params.servicePriority, params.resourcePriority)
-  }
+  // момент пересчёта бэкенд берёт сам — текущее системное время
+  if (props.replanOf) payload.free_at = freeAtPayload()
+  if (params.solver === 'cuopt') payload.objective_order = objectiveOrder(params.nextGoal)
   return payload
 }
 
-// ---- пересчёт: сначала пробный, чтобы до пересчёта решить, что делать с заявками,
-// на которые не успеваем: новое окно, отменить или оставить неназначенной ----
+// ---- пересчёт: сначала пробный, чтобы до пересчёта обзвонить клиентов заявок,
+// на которые не успеваем: второй расчёт подбирает время, оператор решает по каждой
+// (docs/algoV2.md, шаги 3-4) ----
 
 const preview = ref(null) // ответ пробного пересчёта; null — ещё не проверяли
 const previewing = ref(false)
 const previewError = ref('')
-// решение по каждой проблемной заявке: { action: 'reschedule' | 'cancel' | 'keep', date, from, to }
+// решение по каждой невлезшей заявке: { action: 'agree' | 'move' | 'cancel' | 'no_answer', date, from, to, reason }
 const decisions = reactive({})
+// со слов бригады: когда она освободится, если застряла на заявке (шаг 10)
+const freeAt = reactive({})
 
-// поменяли момент или решатель — прошлая проверка уже не про этот расчёт
-watch([replanTime, params], () => {
+// поменяли решатель или время «освободится в» — прошлая проверка уже не про этот расчёт
+watch([params, freeAt], () => {
   preview.value = null
   previewError.value = ''
 })
 
 const problems = computed(() => preview.value?.unassigned ?? [])
+const tolerance = computed(() => preview.value?.promise_tolerance_minutes ?? 30)
+
+// бригады, которые выбились из плана: им звонят и уточняют, когда освободятся
+const waitingRoutes = computed(() =>
+  props.routes.filter((route) => route.waiting_reason || route.delay_minutes > 0),
+)
 
 async function checkReplan() {
   previewing.value = true
@@ -98,12 +94,13 @@ async function checkReplan() {
   try {
     const result = await previewReplan(props.replanOf.id, basePayload())
     for (const problem of result.unassigned) {
-      // по умолчанию — то же время завтра: клиенту обычно удобен тот же интервал
+      // есть предложение из второго расчёта — начинаем разговор с него, иначе остаётся завтра
       decisions[problem.request_id] = {
-        action: 'reschedule',
+        action: problem.suggested_start ? 'agree' : 'move',
         date: nextDay(props.planDate),
         from: moscowTimeOf(problem.window_start),
         to: moscowTimeOf(problem.window_end),
+        reason: '',
       }
     }
     preview.value = result
@@ -116,20 +113,51 @@ async function checkReplan() {
   }
 }
 
-// новое окно из полей: конец не позже начала — окно через полночь, конец на следующие сутки
+// окно на другой день из полей: конец не позже начала — окно через полночь, конец на следующие сутки
 function windowOf(decision) {
   const start = `${decision.date}T${decision.from}`
   const endDate = decision.to <= decision.from ? nextDay(decision.date) : decision.date
   return { window_start: fromMoscowInputValue(start), window_end: fromMoscowInputValue(`${endDate}T${decision.to}`) }
 }
 
-const decisionsReady = computed(() =>
-  problems.value.every((problem) => {
-    const decision = decisions[problem.request_id]
-    if (decision?.action !== 'reschedule') return true
+function decisionReady(problem) {
+  const decision = decisions[problem.request_id]
+  if (!decision) return false
+  if (decision.action === 'agree') return Boolean(problem.suggested_start)
+  if (decision.action === 'move') {
     return decision.date && /^\d\d:\d\d$/.test(decision.from) && /^\d\d:\d\d$/.test(decision.to)
-  }),
-)
+  }
+  if (decision.action === 'cancel') return decision.reason.trim().length > 0
+  return true
+}
+
+const decisionsReady = computed(() => problems.value.every(decisionReady))
+
+function decisionPayload(problem) {
+  const decision = decisions[problem.request_id]
+  if (decision.action === 'agree') {
+    // утверждаем ровно то окно, которое оператор назвал клиенту
+    return {
+      request_id: problem.request_id,
+      action: 'agree',
+      window_start: problem.suggested_start,
+      window_end: problem.suggested_end,
+    }
+  }
+  if (decision.action === 'move') {
+    return { request_id: problem.request_id, action: 'move', ...windowOf(decision) }
+  }
+  return { request_id: problem.request_id, action: decision.action, reason: decision.reason.trim() }
+}
+
+function freeAtPayload() {
+  return Object.entries(freeAt)
+    .filter(([, time]) => /^\d\d:\d\d$/.test(time ?? ''))
+    .map(([engineerId, time]) => ({
+      engineer_id: Number(engineerId),
+      free_at: fromMoscowInputValue(`${props.planDate}T${time}`),
+    }))
+}
 
 async function submit() {
   if (!props.replanOf) {
@@ -142,14 +170,7 @@ async function submit() {
     if (!result || result.unassigned.length) return
   }
   const payload = basePayload()
-  payload.decisions = problems.value
-    .map((problem) => ({ problem, decision: decisions[problem.request_id] }))
-    .filter(({ decision }) => decision.action !== 'keep')
-    .map(({ problem, decision }) =>
-      decision.action === 'cancel'
-        ? { request_id: problem.request_id, action: 'cancel' }
-        : { request_id: problem.request_id, action: 'reschedule', ...windowOf(decision) },
-    )
+  payload.decisions = problems.value.map(decisionPayload)
   emit('build', payload)
 }
 </script>
@@ -163,18 +184,12 @@ async function submit() {
         <button class="close" title="Закрыть" @click="emit('close')">×</button>
       </header>
 
-      <template v-if="replanOf">
-        <label class="field">
-          <span>С какого момента</span>
-          <TimeInput v-model="replanTime" aria-label="момент пересчёта" />
-        </label>
-        <p class="hint">
-          Выполненные и начатые заявки остаются за бригадами. Бригады продолжают оттуда, где они
-          сейчас, — по отметкам в мобильном приложении. Не начатые и новые заявки дня
-          раскладываются заново; куда уже не успеть, останется неназначенным. Получится новый
-          план — утвердите его, и он заменит план №{{ replanOf.id }}.
-        </p>
-      </template>
+      <p v-if="replanOf" class="hint">
+        Считаем с текущего момента. Выполненные и начатые заявки остаются за бригадами. Бригады
+        продолжают оттуда, где они сейчас, — по отметкам в мобильном приложении. Не начатые и новые
+        заявки дня раскладываются заново; куда уже не успеть, останется неназначенным. Получится
+        новый план — утвердите его, и он заменит план №{{ replanOf.id }}.
+      </p>
 
       <label class="field">
         <span>Алгоритм</span>
@@ -189,22 +204,21 @@ async function submit() {
       <fieldset v-if="params.solver === 'cuopt'" class="priority-settings" :disabled="building">
         <legend>Порядок целей</legend>
         <label class="field">
-          <span>Сначала выполнить <InfoHint :text="SERVICE_HINTS[params.servicePriority]" /></span>
-          <select v-model="params.servicePriority">
-            <option value="urgent_requests">По уровням приоритета</option>
-            <option value="assigned_requests">Максимум всех заявок</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>После этого сократить</span>
-          <select v-model="params.resourcePriority">
-            <option value="engineers_used">Количество задействованных бригад</option>
-            <option value="travel_distance">Общий пробег</option>
+          <span>
+            Дальше важнее
+            <InfoHint
+              text="Уровни приоритета и отметки идут первыми всегда: авария и обещанное клиенту время сильнее любой экономии. Дальше выбираете вы. «Меньше бригад» и «меньше пробега» выше заявок — значит обычную заявку ради экономии могут и не взять."
+            />
+          </span>
+          <select v-model="params.nextGoal">
+            <option value="assigned_requests">Максимум заявок</option>
+            <option value="engineers_used">Меньше задействованных бригад</option>
+            <option value="travel_distance">Меньше общего пробега</option>
           </select>
         </label>
         <p class="hint">
-          Все четыре цели остаются в расчёте. Выбор определяет строгий порядок: более важная
-          цель всегда сильнее любых улучшений нижних уровней.
+          Все цели остаются в расчёте, порядок строгий: более важная цель всегда сильнее любых
+          улучшений нижних уровней.
         </p>
       </fieldset>
 
@@ -214,39 +228,82 @@ async function submit() {
           Заявок этого дня закреплено за утверждёнными планами других дней:
           {{ heldRequests.length }} ({{ heldNumbers }}). Забрали: {{ heldHolders }}.
           В расчёт они не пойдут — иначе одну заявку выполнят дважды.
-          Нужны здесь — снимите утверждение с того плана.
+          Нужны здесь — пересчитайте тот план и в его диалоге перенесите заявку на этот день;
+          пока по нему ещё не работают, можно снять утверждение.
         </span>
       </p>
 
       <p v-if="previewError" class="problem-error">{{ previewError }}</p>
 
+      <!-- пересчёт: бригады, выбившиеся из плана, — оператор уточняет по телефону время -->
+      <section v-if="replanOf && waitingRoutes.length" class="waiting">
+        <h4>Выбились из плана: {{ waitingRoutes.length }}</h4>
+        <p class="hint">
+          Застрявшая бригада не уложится в норматив: укажите время со слов бригады, и пересчёт
+          посчитает её свободной с него, а не с планового конца работы.
+        </p>
+        <article v-for="route in waitingRoutes" :key="route.engineer_id" class="waiting-row">
+          <strong>{{ route.engineer_name }}</strong>
+          <a v-if="route.phone" class="phone" :href="`tel:${route.phone}`">{{ route.phone }}</a>
+          <span class="muted">{{ route.waiting_reason || `отстаёт на ${route.delay_minutes} мин` }}</span>
+          <label class="free-at">
+            освободится в
+            <TimeInput
+              v-model="freeAt[route.engineer_id]"
+              :aria-label="`когда освободится бригада ${route.engineer_name}`"
+            />
+          </label>
+        </article>
+      </section>
+
       <!-- пересчёт: заявки, на которые не успеваем, — решение по каждой до пересчёта -->
       <section v-if="problems.length" class="problems">
-        <h4>Не успеваем: {{ problems.length }} — решите до пересчёта</h4>
+        <h4>Не успеваем: {{ problems.length }} — обзвоните клиентов</h4>
         <p class="hint">
-          Пробный расчёт разложил {{ preview.assigned_count }} заявок, а эти не помещаются. Новое окно
-          снимет заявку с плана: сегодня — пересчёт попробует её взять, другой день — она уйдёт в его
-          план. Решения применятся вместе с пересчётом.
+          Пробный расчёт разложил {{ preview.assigned_count }} заявок. По остальным второй расчёт
+          с раскрытыми окнами подобрал время, которое можно предложить клиенту. Решение нужно по
+          каждой: либо согласованное окно, либо завтра, либо отмена. Применятся вместе с пересчётом.
         </p>
         <article v-for="problem in problems" :key="problem.request_id" class="problem">
           <div class="problem-head">
             <strong>№{{ problem.request_id }}</strong>
             <span>{{ problem.address }}</span>
             <span class="muted">окно {{ moscowTimeOf(problem.window_start) }}–{{ moscowTimeOf(problem.window_end) }}</span>
+            <span v-if="problem.expired" class="chip">окно закрылось</span>
           </div>
           <p class="problem-reason">{{ problem.reason }}</p>
+          <p v-if="problem.suggested_start" class="problem-offer">
+            {{ problem.suggested_engineer }} приедет в {{ moscowTimeOf(problem.suggested_start) }} —
+            предложите клиенту {{ moscowTimeOf(problem.suggested_start) }}–{{ moscowTimeOf(problem.suggested_end) }}
+            (допуск {{ tolerance }} мин)
+          </p>
+          <p v-else class="problem-offer muted">Сегодня не успеть ни при каком окне</p>
           <div class="problem-actions">
-            <select v-model="decisions[problem.request_id].action" :aria-label="`что сделать с заявкой №${problem.request_id}`">
-              <option value="reschedule">Новое окно</option>
-              <option value="cancel">Отменить заявку</option>
-              <option value="keep">Оставить неназначенной</option>
+            <select
+              v-model="decisions[problem.request_id].action"
+              :aria-label="`что ответил клиент по заявке №${problem.request_id}`"
+            >
+              <option value="agree" :disabled="!problem.suggested_start">Согласен на предложенное окно</option>
+              <option value="move">Сегодня не может — перенести</option>
+              <option value="cancel">Работа не нужна</option>
+              <option value="no_answer">Не дозвонились</option>
             </select>
-            <template v-if="decisions[problem.request_id].action === 'reschedule'">
+            <template v-if="decisions[problem.request_id].action === 'move'">
               <input v-model="decisions[problem.request_id].date" type="date" aria-label="день нового окна" />
               <TimeInput v-model="decisions[problem.request_id].from" aria-label="начало нового окна" />
               <span>–</span>
               <TimeInput v-model="decisions[problem.request_id].to" aria-label="конец нового окна" />
             </template>
+            <input
+              v-if="decisions[problem.request_id].action === 'cancel'"
+              v-model="decisions[problem.request_id].reason"
+              class="reason"
+              placeholder="причина отмены"
+              :aria-label="`причина отмены заявки №${problem.request_id}`"
+            />
+            <span v-if="decisions[problem.request_id].action === 'no_answer'" class="muted">
+              отменим с отметкой «требует уточнения»
+            </span>
           </div>
         </article>
       </section>
@@ -256,7 +313,7 @@ async function submit() {
         <div class="dialog-actions">
           <button
             class="primary"
-            :disabled="building || previewing || !canSubmit || !decisionsReady"
+            :disabled="building || previewing || !decisionsReady"
             @click="submit"
           >
             {{
@@ -319,7 +376,8 @@ async function submit() {
 }
 
 /* пересчёт с заявками, на которые не успеваем: окно шире, список решений */
-.dialog:has(.problems) {
+.dialog:has(.problems),
+.dialog:has(.waiting) {
   width: min(760px, 94vw);
   max-height: 90vh;
   overflow: auto;
@@ -377,6 +435,66 @@ async function submit() {
 
 .problem-actions input[type='date'] {
   width: 150px;
+}
+
+.problem-offer {
+  margin: 0;
+  color: #166534;
+  font-size: 12px;
+}
+
+.problem-offer.muted,
+.problem-actions .muted,
+.waiting-row .muted {
+  color: #64748b;
+}
+
+.chip {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 11px;
+}
+
+.problem-actions .reason {
+  width: 220px;
+}
+
+.waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
+.waiting h4 {
+  margin: 0;
+  color: #92400e;
+  font-size: 14px;
+}
+
+.waiting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.waiting-row .free-at {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: #334155;
+  font-size: 12px;
 }
 
 .problem-error {

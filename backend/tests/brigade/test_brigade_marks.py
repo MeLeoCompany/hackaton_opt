@@ -25,6 +25,8 @@ def request(status_id=PLANNED, plan_id=22):
         status_id=status_id,
         status=SimpleNamespace(name={DONE: "Выполнена", CANCELLED: "Отменена"}.get(status_id)),
         approved_plan_id=plan_id,
+        departure_allowed_at=None,
+        cancel_reason=None,
     )
 
 
@@ -33,7 +35,9 @@ async def mark(stored, action, reason="", *, in_route=True, fact=None):
         departed_at=None, arrived_at=None, finished_at=None, updated_at=None
     )
     change_status = AsyncMock()
-    assignment = SimpleNamespace(request_id=5, engineer_id=1, plan_id=22)
+    assignment = SimpleNamespace(
+        request_id=5, engineer_id=1, plan_id=22, request=stored, planned_arrival_time=None
+    )
     with (
         patch.object(
             brigade_service.requests_repository, "get_request", AsyncMock(return_value=stored)
@@ -50,7 +54,14 @@ async def mark(stored, action, reason="", *, in_route=True, fact=None):
         patch.object(
             brigade_service.plans_repository,
             "get_plan",
-            AsyncMock(return_value=SimpleNamespace(plan_date="2026-08-17")),
+            AsyncMock(return_value=SimpleNamespace(id=22, plan_date="2026-08-17")),
+        ),
+        # выезд разрешён: бригада идёт по графику, пересчёта нет
+        patch.object(
+            brigade_service.planning_service, "plan_route_delays", AsyncMock(return_value={})
+        ),
+        patch.object(
+            brigade_service.plans_repository, "has_unapproved_replan", AsyncMock(return_value=False)
         ),
         patch.object(brigade_service, "get_route", AsyncMock(return_value="маршрут")),
     ):

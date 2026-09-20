@@ -11,6 +11,7 @@ from src.models import (
     RequestStatusHistory,
     RequestStatusTransition,
 )
+from src.models.request_status import RequestStatusId
 
 
 async def list_statuses(session: AsyncSession) -> list[RequestStatus]:
@@ -69,6 +70,24 @@ async def list_history(
         .order_by(RequestStatusHistory.changed_at, RequestStatusHistory.id)
     )
     return [(entry, user_name) for entry, user_name in result.all()]
+
+
+async def cancellations(
+    session: AsyncSession, request_ids: list[int]
+) -> dict[int, tuple[RequestStatusHistory, str | None]]:
+    """Последняя отмена по каждой заявке: запись истории и роль того, кто отменил."""
+    if not request_ids:
+        return {}
+    result = await session.execute(
+        select(RequestStatusHistory, AppUser.role)
+        .outerjoin(AppUser, AppUser.id == RequestStatusHistory.user_id)
+        .where(
+            RequestStatusHistory.request_id.in_(request_ids),
+            RequestStatusHistory.to_status_id == RequestStatusId.CANCELLED,
+        )
+        .order_by(RequestStatusHistory.changed_at, RequestStatusHistory.id)
+    )
+    return {entry.request_id: (entry, role) for entry, role in result.all()}
 
 
 async def list_routes_of(session: AsyncSession, requests: list[Request]) -> list[list[Request]]:

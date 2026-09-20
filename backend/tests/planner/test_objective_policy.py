@@ -9,7 +9,20 @@ from src.services.planner.objective_policy import (
 
 
 def test_default_policy_has_business_name():
-    assert objective_policy_name(DEFAULT_OBJECTIVE_ORDER) == "Срочность · минимум бригад"
+    assert objective_policy_name(DEFAULT_OBJECTIVE_ORDER) == "Срочность · максимум заявок"
+
+
+def test_dispatcher_may_put_crews_or_distance_right_after_priorities():
+    """Ярусы приоритетов остаются первыми, дальше порядок выбирает диспетчер."""
+    order = [
+        ObjectiveCriterion.URGENT_REQUESTS,
+        ObjectiveCriterion.ENGINEERS_USED,
+        ObjectiveCriterion.ASSIGNED_REQUESTS,
+        ObjectiveCriterion.TRAVEL_DISTANCE,
+    ]
+
+    assert validate_objective_order(order) == tuple(order)
+    assert objective_policy_name(order) == "Срочность · минимум бригад"
 
 
 @pytest.mark.parametrize(
@@ -17,10 +30,17 @@ def test_default_policy_has_business_name():
     [
         list(DEFAULT_OBJECTIVE_ORDER[:-1]),
         [*DEFAULT_OBJECTIVE_ORDER[:3], ObjectiveCriterion.ENGINEERS_USED],
+        # уровни приоритета не первые: экономия бригад перевесила бы аварийную заявку
         [
             ObjectiveCriterion.ENGINEERS_USED,
             ObjectiveCriterion.ASSIGNED_REQUESTS,
             ObjectiveCriterion.URGENT_REQUESTS,
+            ObjectiveCriterion.TRAVEL_DISTANCE,
+        ],
+        [
+            ObjectiveCriterion.ASSIGNED_REQUESTS,
+            ObjectiveCriterion.URGENT_REQUESTS,
+            ObjectiveCriterion.ENGINEERS_USED,
             ObjectiveCriterion.TRAVEL_DISTANCE,
         ],
     ],

@@ -32,8 +32,7 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_problem import (
-    PRIORITY_LEVELS,
-    TOP_PRIORITY_LEVEL,
+    RANK_EMERGENCY,
     ProblemInstance,
 )
 
@@ -64,13 +63,13 @@ class ObjectivePolicy:
     """Коэффициенты строгой иерархии выбранных диспетчером критериев."""
 
     criteria: tuple[ObjectiveCriterion, ...]
-    # награда за выполненную заявку по уровню приоритета: 1 — авария, 2 — подключение;
-    # остальные уровни получают regular_reward
-    level_rewards: dict[int, float]
+    # награда за выполненную заявку по ярусу (planner_problem.RANK_*): авария, обещание,
+    # перенос, приоритет. Самый нижний ярус отдельной ступени не получает — ему regular_reward
+    rank_rewards: dict[int, float]
     regular_reward: float
 
-    def reward_for(self, priority_level: int) -> float:
-        return self.level_rewards.get(priority_level, self.regular_reward)
+    def reward_for(self, rank: int) -> float:
+        return self.rank_rewards.get(rank, self.regular_reward)
     vehicle_cost: float
     distance_weight: float
     distance_scale: float
@@ -116,7 +115,10 @@ async def solve_day(
     instance: ProblemInstance,
     *,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+    ranks: dict[int, int] | None = None,
 ) -> DaySolution:
+    """ranks — ярус каждой заявки по номеру в instance.requests; нет — берётся из самой заявки
+    (objective_rank). Второй расчёт при синхронизации передаёт свои ярусы (docs/algoV2.md)."""
     task_request_indices = schedulable_request_indices(instance)
     if not task_request_indices or instance.n_engineers == 0:
         return DaySolution()
@@ -128,6 +130,7 @@ async def solve_day(
             task_request_indices,
             distance_weight=settings.cuopt_distance_weight,
             objective_order=objective_order,
+            ranks=ranks,
         )
         route_records = await asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
         solution = parse_route_records(route_records, task_request_indices)
@@ -159,6 +162,7 @@ def build_solver_inputs(
     *,
     distance_weight: float | None = None,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+    ranks: dict[int, int] | None = None,
 ) -> SolverInputs:
     """ProblemInstance -> массивы для DataModel. task_request_indices — какие заявки отправляем."""
     transport_ids = sorted({engineer.transport_id for engineer in instance.engineers})
@@ -170,11 +174,13 @@ def build_solver_inputs(
         + [instance.request_node(index) for index in task_request_indices],
         dtype=np.int32,
     )
+    request_ranks = rank_by_index(instance, task_request_indices, ranks)
     objective = build_objective_policy(
         instance,
         task_request_indices,
         settings.cuopt_distance_weight if distance_weight is None else distance_weight,
         objective_order,
+        request_ranks,
     )
 
     return SolverInputs(
@@ -216,9 +222,7 @@ def build_solver_inputs(
             [request.duration_min for request in requests], dtype=np.int32
         ),
         order_prizes=np.array(
-            [
-                objective.reward_for(request.priority_level) for request in requests
-            ],
+            [objective.reward_for(request_ranks[index]) for index in task_request_indices],
             dtype=np.float32,
         ),
         order_allowed_vehicles=[
@@ -252,11 +256,24 @@ def _validate_transport_matrices(instance: ProblemInstance, transport_ids: list[
                 )
 
 
+def rank_by_index(
+    instance: ProblemInstance,
+    task_request_indices: list[int],
+    ranks: dict[int, int] | None,
+) -> dict[int, int]:
+    """Ярус каждой заявки: переданный снаружи или её собственный."""
+    return {
+        index: (ranks or {}).get(index, instance.requests[index].objective_rank)
+        for index in task_request_indices
+    }
+
+
 def build_objective_policy(
     instance: ProblemInstance,
     task_request_indices: list[int],
     distance_weight: float,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+    ranks: dict[int, int] | None = None,
 ) -> ObjectivePolicy:
     """Строит безопасные Big-M коэффициенты для выбранной строгой иерархии.
 
@@ -269,9 +286,10 @@ def build_objective_policy(
     criteria = validate_objective_order(objective_order)
 
     request_count = len(task_request_indices)
-    level_counts = Counter(
-        instance.requests[index].priority_level for index in task_request_indices
-    )
+    request_ranks = rank_by_index(instance, task_request_indices, ranks)
+    rank_counts = Counter(request_ranks.values())
+    # самый нижний ярус — базовый: отдельной ступени ему не нужно, он получает assigned_reward
+    tier_ranks = sorted(rank_counts)[:-1] if rank_counts else []
     maximum_changes = {
         ObjectiveCriterion.ASSIGNED_REQUESTS: request_count,
         ObjectiveCriterion.ENGINEERS_USED: instance.n_engineers,
@@ -283,7 +301,7 @@ def build_objective_policy(
     tiers: list[tuple[object, float]] = []
     for criterion in criteria:
         if criterion is ObjectiveCriterion.URGENT_REQUESTS:
-            tiers += [(level, level_counts.get(level, 0)) for level in PRIORITY_LEVELS]
+            tiers += [(("rank", rank), rank_counts[rank]) for rank in tier_ranks]
         else:
             tiers.append((criterion, maximum_changes[criterion]))
 
@@ -296,8 +314,8 @@ def build_objective_policy(
         lower_levels += maximum * coefficient
 
     assigned_reward = coefficients[ObjectiveCriterion.ASSIGNED_REQUESTS]
-    level_rewards = {level: assigned_reward + coefficients[level] for level in PRIORITY_LEVELS}
-    urgent_reward = level_rewards[TOP_PRIORITY_LEVEL]
+    rank_rewards = {rank: assigned_reward + coefficients[("rank", rank)] for rank in tier_ranks}
+    urgent_reward = rank_rewards.get(RANK_EMERGENCY, assigned_reward)
     vehicle_cost = coefficients[ObjectiveCriterion.ENGINEERS_USED]
     effective_distance_weight = coefficients[ObjectiveCriterion.TRAVEL_DISTANCE]
     maximum_objective_magnitude = lower_levels
@@ -352,7 +370,7 @@ def build_objective_policy(
 
     return ObjectivePolicy(
         criteria=criteria,
-        level_rewards=level_rewards,
+        rank_rewards=rank_rewards,
         regular_reward=assigned_reward,
         vehicle_cost=vehicle_cost,
         distance_weight=effective_distance_weight,

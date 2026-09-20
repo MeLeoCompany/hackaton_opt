@@ -38,6 +38,18 @@ async def list_requests_in_period(
     return list(result.scalars().all())
 
 
+async def list_requests_moved_from(
+    session: AsyncSession, plan_date: date, *, office_id: int
+) -> list[Request]:
+    """Заявки, перенесённые с этого дня: их окно уже в другом дне (docs/algoV2.md, шаг 4)."""
+    result = await session.execute(
+        select(Request)
+        .where(Request.office_id == office_id, Request.moved_from == plan_date)
+        .order_by(Request.window_start, Request.id)
+    )
+    return list(result.scalars().all())
+
+
 async def list_active_requests(session: AsyncSession, *, office_id: int) -> list[Request]:
     result = await session.execute(
         select(Request)

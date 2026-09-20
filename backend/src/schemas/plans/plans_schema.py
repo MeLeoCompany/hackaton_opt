@@ -39,21 +39,24 @@ class PlanBuildRequest(BaseModel):
 
 
 class ReplanDecision(BaseModel):
-    """Что сделать перед пересчётом с заявкой, на которую не успеваем.
+    """Что оператор решил по заявке, на которую не успеваем (docs/algoV2.md, шаг 4).
 
-    reschedule — новое окно (заявка снимается с плана и становится «Новой» с этим окном:
-    если окно сегодня, пересчёт попробует её разложить, если другой день — она уйдёт в его
-    планирование); cancel — отменить.
+    agree — клиент согласен на предложенное время: окно сужается до обещанного, заявка
+    получает отметку «согласовано»; move — клиент сегодня не может: окно уезжает на другой
+    день, отметка «перенесена»; cancel — работа не нужна; no_answer — не дозвонились,
+    тоже отмена, но с отметкой «требует уточнения».
     """
 
     request_id: int
-    action: Literal["reschedule", "cancel"]
+    action: Literal["agree", "move", "cancel", "no_answer"]
     window_start: datetime | None = None
     window_end: datetime | None = None
+    # почему отменили — словами; у no_answer подставляется сама
+    reason: str = ""
 
     @model_validator(mode="after")
     def check_window(self) -> "ReplanDecision":
-        if self.action != "reschedule":
+        if self.action not in ("agree", "move"):
             return self
         if self.window_start is None or self.window_end is None:
             raise ValueError(f"заявке №{self.request_id} нужно новое окно")
@@ -65,7 +68,7 @@ class ReplanDecision(BaseModel):
 
 
 class ReplanProblem(BaseModel):
-    """Заявка, на которую при пересчёте не успеваем, — и почему."""
+    """Заявка, на которую при пересчёте не успеваем, — и что можно предложить клиенту."""
 
     request_id: int
     address: str
@@ -73,13 +76,42 @@ class ReplanProblem(BaseModel):
     window_end: datetime
     status_id: int
     reason: str
+    # окно уже закрылось к моменту пересчёта: разговор с клиентом другой
+    expired: bool = False
+    # предложение из второго расчёта: когда и кто может приехать; пусто — «сегодня никак»
+    suggested_start: datetime | None = None
+    suggested_end: datetime | None = None
+    suggested_engineer: str | None = None
 
 
 class ReplanPreview(BaseModel):
-    """Пробный пересчёт без сохранения: сколько разложится и на какие заявки не успеваем."""
+    """Пробный пересчёт без сохранения: сколько разложится и на какие заявки не успеваем.
+
+    По невлезшим заявкам второй расчёт подбирает время, которое оператор называет клиенту.
+    """
 
     assigned_count: int
     unassigned: list[ReplanProblem] = []
+    # ширина обещанного окна: предложенное время плюс этот допуск
+    promise_tolerance_minutes: int = 30
+
+
+class BrigadeFreeAt(BaseModel):
+    """Оператор узнал по телефону, когда бригада освободится (docs/algoV2.md, шаг 10).
+
+    Застрявшая бригада не уложится в норматив, поэтому новый план считается от этого времени,
+    а не от планового окончания работы.
+    """
+
+    engineer_id: int
+    free_at: datetime
+
+    @field_validator("free_at")
+    @classmethod
+    def with_time_zone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("время освобождения бригады должно быть с часовым поясом")
+        return value
 
 
 class PlanReplanRequest(BaseModel):
@@ -93,6 +125,8 @@ class PlanReplanRequest(BaseModel):
     at: datetime | None = None
     # решения по заявкам, на которые не успеваем (из пробного пересчёта): применяются до расчёта
     decisions: list[ReplanDecision] = []
+    # когда бригады освободятся — со слов бригады, если она застряла
+    free_at: list[BrigadeFreeAt] = []
 
     @field_validator("objective_order")
     @classmethod
@@ -123,6 +157,17 @@ class WithdrawnRequest(BaseModel):
     status_id: int
 
 
+class BrokenPromise(BaseModel):
+    """Заявка, которой обещали время, а расчёт его не удержал."""
+
+    request_id: int
+    address: str
+    promised_from: datetime
+    promised_to: datetime
+    # когда работа начнётся по новому плану; пусто — заявка в план не попала
+    planned_start: datetime | None = None
+
+
 class PlanSummary(BaseModel):
     id: int
     run_type: str  # optimized / replanned
@@ -143,6 +188,10 @@ class PlanSummary(BaseModel):
     replanned_at: datetime | None = None
     # план заменён утверждённым пересчётом: бригады ездят уже по новому
     superseded_at: datetime | None = None
+    # какой пересчёт его заменил: по цепочке планов видно, что происходило за день
+    replaced_by_plan_id: int | None = None
+    # можно ли снять утверждение: у плана, по которому уже работают, — нельзя, только пересчёт
+    can_cancel_approval: bool = False
     # только у утверждённого плана: что изменилось с утверждения — повод его пересчитать.
     # Сняты — заявки его маршрутов отменены или возвращены в «Новая» (со статусом: как сняли);
     # новые — заявки дня офиса, которые ждут планирования, а расчёт плана их не видел
@@ -152,6 +201,9 @@ class PlanSummary(BaseModel):
     urgent_request_ids: list[int] = []
     # бригады отстают: к этим заявкам по плану уже не успеть до конца окна
     at_risk_request_ids: list[int] = []
+    # обещания клиентам, которые этот расчёт не удержал: заявка согласована на время,
+    # но в план не попала или стоит вне обещанного окна (docs/algoV2.md, шаг 5)
+    broken_promises: list["BrokenPromise"] = []
 
 
 class HeldRequest(BaseModel):
@@ -194,6 +246,8 @@ class PlanVisit(BaseModel):
     departed_at: datetime | None = None
     arrived_at: datetime | None = None
     finished_at: datetime | None = None
+    # оператор разрешил выезд, хотя бригада отстаёт (docs/algoV2.md, шаг 9)
+    departure_allowed_at: datetime | None = None
     # факты этого визита — из них интерфейс объясняет, почему он стоит здесь
     available_from: datetime  # когда исполнитель освободился: конец прошлой работы или начало смены
     window_slack_minutes: int  # запас до закрытия окна заявки
@@ -218,6 +272,11 @@ class EngineerRoute(BaseModel):
     # маршрута уже не успеет к концу окна (route_delay.py)
     delay_minutes: int = 0
     at_risk_request_ids: list[int] = []
+    # телефон бригады: оператор звонит прямо из плана (docs/algoV2.md, шаг 8)
+    phone: str | None = None
+    # бригада выбилась из плана и ждёт нового: выезд на следующую заявку закрыт
+    waiting_request_id: int | None = None
+    waiting_reason: str | None = None
     shift_start: datetime
     shift_end: datetime
     visits: list[PlanVisit]

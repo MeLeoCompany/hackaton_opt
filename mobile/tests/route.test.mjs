@@ -1,7 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { currentVisit, departurePoint, formatDay, mapsLink, moscowTime, nextAction, progress } from '../src/route.js'
+import {
+  currentVisit,
+  departurePoint,
+  formatDay,
+  mapsLink,
+  moscowTime,
+  nextAction,
+  progress,
+  routeChanges,
+} from '../src/route.js'
 
 const visit = (id, status_code, extra = {}) => ({ request_id: id, status_code, removed: false, ...extra })
 
@@ -38,4 +47,23 @@ test('маршрут в картах строится от прошлой зая
   assert.equal(departurePoint(route, route.visits[1]).request_id, 1)
   assert.match(mapsLink(route.visits[1], route.visits[0]), /rtext=55\.8,37\.7~55\.9,37\.8/)
   assert.match(mapsLink(route.visits[0], null), /rtext=~55\.8,37\.7/)
+})
+
+test('бригада узнаёт, что диспетчер отменил заявку или снял её при пересчёте', () => {
+  const before = { plan_date: '2026-08-17', visits: [visit(1, 'planned'), visit(2, 'planned'), visit(3, 'planned')] }
+  const after = {
+    plan_date: '2026-08-17',
+    visits: [
+      visit(1, 'cancelled', { cancelled_by: 'диспетчером' }),
+      visit(2, 'planned', { removed: true }),
+      visit(3, 'planned'),
+    ],
+  }
+  assert.deepEqual(routeChanges(before, after), [
+    'Заявка №1 отменена диспетчером',
+    'Заявка №2 снята при пересчёте — к ней не едем',
+  ])
+  // другой день — не изменение маршрута, а другой маршрут
+  assert.deepEqual(routeChanges(before, { ...after, plan_date: '2026-08-18' }), [])
+  assert.deepEqual(routeChanges(null, after), [])
 })

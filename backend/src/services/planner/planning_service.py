@@ -14,14 +14,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
 from src.core.errors import DataError, ExternalServiceError, InUseError, NotFoundError
-from src.core.local_day import intersected_local_dates
+from src.core.local_day import intersected_local_dates, local_timezone
 from src.models import Assignment, Engineer, Plan, PlanRunType, Request, RequestStatusId
 from src.repositories.brigade import brigade_repository
+from src.repositories.brigades import brigades_repository
 from src.repositories.plans import plans_repository
 from src.repositories.references import references_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
 from src.schemas.plans import (
+    BrokenPromise,
     EngineerRoute,
     HeldRequest,
     PlanDayCheck,
@@ -34,7 +36,13 @@ from src.schemas.plans import (
     WithdrawnRequest,
 )
 from src.schemas.travel import Point, TransportKind, TravelProvider
-from src.services.planner import baseline_solver, cuopt_solver, planner_loader, transit_schedule
+from src.services.planner import (
+    baseline_solver,
+    cuopt_solver,
+    departure_gate,
+    planner_loader,
+    transit_schedule,
+)
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -140,11 +148,16 @@ async def solve_with(
     solver: SolverName,
     loaded: LoadedDay,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
+    ranks: dict[int, int] | None = None,
 ) -> cuopt_solver.DaySolution:
-    """cuOpt считает на видеокарте в отдельном потоке, базовый алгоритм — прямо здесь."""
+    """cuOpt считает на видеокарте в отдельном потоке, базовый алгоритм — прямо здесь.
+
+    ranks — ярусы заявок для целевой функции; нужны второму расчёту при синхронизации
+    (docs/algoV2.md). Базовый алгоритм ярусы не использует.
+    """
     if solver is SolverName.BASELINE:
         return baseline_solver.solve_day(loaded.instance)
-    return await transit_schedule.solve_day(loaded, objective_order)
+    return await transit_schedule.solve_day(loaded, objective_order, ranks)
 
 
 @dataclass(frozen=True)
@@ -230,7 +243,8 @@ async def delete_plan(session: AsyncSession, plan_id: int, *, office_id: int) ->
     if plan.approved_at is not None:
         raise PlanInUseError(
             f"План №{plan_id} утверждён: сначала снимите утверждение, иначе заявки останутся "
-            "закреплёнными за несуществующим планом"
+            "закреплёнными за несуществующим планом. По плану, который бригады уже видят, "
+            "утверждение не снимают — он остаётся в истории дня"
         )
     await plans_repository.delete_plan(session, plan)
     await session.commit()
@@ -266,8 +280,9 @@ async def approve_plan(
     approved = await plans_repository.get_approved_plan(session, plan_date, office_id=office_id)
     if approved is not None:
         raise PlanInUseError(
-            f"На {plan_date:%d.%m.%Y} уже утверждён план №{approved.id}: "
-            "снимите утверждение с него, чтобы утвердить другой"
+            f"На {plan_date:%d.%m.%Y} уже утверждён план №{approved.id}. Пока по нему "
+            "не работают, утверждение можно снять; если работают — пересчитайте его, "
+            "и утверждённый пересчёт его заменит"
         )
 
     # заявки плана переходят «Новая» -> «В плане»: переход системный, он должен быть в таблице
@@ -428,6 +443,11 @@ async def cancel_plan_approval(
     if getattr(plan, "superseded_at", None) is not None:
         raise PlanInUseError(
             f"План №{plan_id} заменён утверждённым пересчётом — снимайте утверждение с действующего"
+        )
+    if await plan_in_work(session, plan):
+        raise PlanInUseError(
+            f"По плану №{plan_id} уже работают: бригады видят его маршруты в приложении. "
+            "Утверждение не снимают — пересчитайте план, и пересчёт его заменит"
         )
     if plan.approved_at is not None:
         # заявки «В плане» возвращаются в «Новые»: переход системный, он должен быть в таблице
@@ -624,10 +644,24 @@ async def list_plans(
     return await summarize_plans(session, plans)
 
 
+async def plan_in_work(session: AsyncSession, plan: Plan) -> bool:
+    """По утверждённому плану уже работают: настал его день или бригада отметилась.
+
+    Такой план снятием утверждения не трогают — маршрут пропал бы прямо у едущей бригады.
+    Менять его можно только пересчётом (docs/algoV2.md).
+    """
+    if plan.approved_at is None or plan.plan_date is None:
+        return False
+    if plan.plan_date <= clock.now().astimezone(local_timezone()).date():
+        return True
+    return await plans_repository.has_brigade_marks(session, plan.id)
+
+
 async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[PlanSummary]:
     plan_ids = [plan.id for plan in plans]
     counts = await plans_repository.count_assignments_by_plan(session, plan_ids)
     assigned_request_ids = await plans_repository.assigned_request_ids_by_plan(session, plan_ids)
+    replaced_by = await plans_repository.approved_replan_of(session, plan_ids)
     summaries = []
     for plan in plans:
         engineers_used, assigned, unassigned = counts.get(plan.id, (0, 0, 0))
@@ -657,10 +691,99 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 parent_plan_id=getattr(plan, "parent_plan_id", None),
                 replanned_at=getattr(plan, "replanned_at", None),
                 superseded_at=getattr(plan, "superseded_at", None),
+                replaced_by_plan_id=replaced_by.get(plan.id),
+                can_cancel_approval=(
+                    plan.approved_at is not None
+                    and getattr(plan, "superseded_at", None) is None
+                    and not await plan_in_work(session, plan)
+                ),
+                broken_promises=await broken_promises(session, plan),
                 **(await replan_reasons(session, plan)),
             )
         )
     return summaries
+
+
+def set_waiting(route: EngineerRoute, facts: dict, replan_pending: bool) -> None:
+    """Бригада ждёт нового плана: выезд на ближайшую незакрытую заявку закрыт."""
+    next_visit = next(
+        (
+            visit
+            for visit in route.visits
+            if visit.status_id in (RequestStatusId.NEW, RequestStatusId.PLANNED)
+        ),
+        None,
+    )
+    if next_visit is None:
+        return
+    fact = facts.get(next_visit.request_id)
+    check = departure_gate.check_departure(
+        planned_start=next_visit.planned_arrival_time,
+        departed_at=fact.departed_at if fact else None,
+        at_risk=next_visit.request_id in route.at_risk_request_ids,
+        allowed_at=next_visit.departure_allowed_at,
+        replan_pending=replan_pending,
+        now=clock.now(),
+    )
+    if not check.allowed:
+        # оператору нужно, с какого времени бригада стоит и к какой заявке она не выехала
+        since = next_visit.planned_arrival_time.astimezone(local_timezone()).strftime("%H:%M")
+        cause = departure_gate.OPERATOR_REASON.get(check.reason, check.reason)
+        route.waiting_request_id = next_visit.request_id
+        route.waiting_reason = f"с {since} · {cause} · ближайшая заявка №{next_visit.request_id}"
+
+
+async def allow_departure(
+    session: AsyncSession, plan_id: int, request_id: int, *, office_id: int, user_id: int | None
+) -> PlanDetail:
+    """Оператор отпускает отстающую бригаду: клиент согласился подождать (docs/algoV2.md)."""
+    plan = await find_plan(session, plan_id, office_id=office_id)
+    request = await requests_repository.get_request(session, request_id)
+    if request is None or request.office_id != office_id or request.approved_plan_id != plan.id:
+        raise PlanDataError([f"заявки №{request_id} нет в маршрутах плана №{plan_id}"])
+    request.departure_allowed_at = clock.now()
+    request_statuses_repository.add_history(
+        session,
+        [request.id],
+        request.status_id,
+        request.status_id,
+        manual=True,
+        user_id=user_id,
+        plan_id=plan.id,
+        comment="Оператор разрешил выезд: клиент согласился подождать",
+    )
+    await session.commit()
+    return await get_plan_detail(session, plan_id, office_id=office_id)
+
+
+async def broken_promises(session: AsyncSession, plan: Plan) -> list[BrokenPromise]:
+    """Обещания клиентам, которые этот расчёт не удержал (docs/algoV2.md, шаг 5).
+
+    Заявку согласовали на время: она должна стоять в плане и начинаться внутри обещанного
+    окна. Не попала или уехала — оператор увидит это до утверждения и решит сам.
+    """
+    assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    promised = [
+        assignment
+        for assignment in assignments
+        if assignment.request is not None and assignment.request.promised_from is not None
+    ]
+    broken = []
+    for assignment in promised:
+        request = assignment.request
+        start = assignment.planned_arrival_time if assignment.engineer_id is not None else None
+        kept = start is not None and request.promised_from <= start <= request.promised_to
+        if not kept:
+            broken.append(
+                BrokenPromise(
+                    request_id=request.id,
+                    address=request.address,
+                    promised_from=request.promised_from,
+                    promised_to=request.promised_to,
+                    planned_start=start,
+                )
+            )
+    return broken
 
 
 async def replan_reasons(session: AsyncSession, plan: Plan) -> dict[str, list]:
@@ -758,10 +881,16 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
         session, [assignment.request_id for assignment in stored_assignments]
     )
     delays = await plan_route_delays(session, plan, stored_assignments)
+    phones = await brigades_repository.phones_by_engineer(
+        session, [route.engineer_id for route in routes]
+    )
+    replan_pending = await plans_repository.has_unapproved_replan(session, plan.id)
     for route in routes:
+        route.phone = phones.get(route.engineer_id)
         if route.engineer_id in delays:
             route.delay_minutes = delays[route.engineer_id].delay_minutes
             route.at_risk_request_ids = delays[route.engineer_id].at_risk_request_ids
+        set_waiting(route, facts, replan_pending)
         for visit in route.visits:
             fact = facts.get(visit.request_id)
             if fact is not None:
@@ -989,6 +1118,7 @@ def to_plan_visit(
         window_slack_minutes=round((request.window_end - work_start).total_seconds() / 60),
         shift_slack_minutes=round((shift_end - work_end).total_seconds() / 60),
         candidate_engineers=candidate_engineers,
+        departure_allowed_at=getattr(request, "departure_allowed_at", None),
     )
 
 

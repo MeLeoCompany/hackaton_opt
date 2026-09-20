@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models import Assignment, Plan, PlanRunType, Request, RequestStatusId
+from src.models import Assignment, Plan, PlanRunType, Request, RequestFact, RequestStatusId
 
 
 def add_plan(
@@ -238,3 +238,36 @@ async def list_bound_requests(session: AsyncSession, plan_id: int) -> list[Reque
         select(Request).where(Request.approved_plan_id == plan_id).order_by(Request.id)
     )
     return list(result.scalars().all())
+
+
+async def has_brigade_marks(session: AsyncSession, plan_id: int) -> bool:
+    """Отмечалась ли хоть одна бригада по заявкам этого плана: выехала, прибыла, закрыла."""
+    result = await session.execute(
+        select(RequestFact.request_id)
+        .join(Assignment, Assignment.request_id == RequestFact.request_id)
+        .where(Assignment.plan_id == plan_id)
+    )
+    return result.first() is not None
+
+
+async def approved_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[int, int]:
+    """Какой утверждённый пересчёт заменил каждый из планов: id родителя -> id пересчёта."""
+    if not plan_ids:
+        return {}
+    result = await session.execute(
+        select(Plan.parent_plan_id, Plan.id).where(
+            Plan.parent_plan_id.in_(plan_ids), Plan.approved_at.is_not(None)
+        )
+    )
+    return {parent_id: plan_id for parent_id, plan_id in result.all()}
+
+
+async def has_unapproved_replan(session: AsyncSession, plan_id: int) -> bool:
+    """Есть ли у плана посчитанный, но не утверждённый пересчёт (docs/algoV2.md, шаг 8)."""
+    result = await session.execute(
+        select(Plan.id).where(
+            Plan.parent_plan_id == plan_id,
+            Plan.approved_at.is_(None),
+        )
+    )
+    return result.first() is not None

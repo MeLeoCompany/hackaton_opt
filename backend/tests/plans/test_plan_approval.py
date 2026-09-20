@@ -138,12 +138,14 @@ async def test_second_plan_of_the_day_is_not_approved():
 
 @pytest.mark.asyncio
 async def test_cancelling_approval_releases_requests():
-    target = plan(9, datetime.now(UTC))
+    # план будущего дня, по которому ни одна бригада не отмечалась: снять утверждение можно
+    target = plan(9, datetime.now(UTC), plan_date=date(2099, 1, 1))
     session = SimpleNamespace(commit=AsyncMock())
     repository = planning_service.plans_repository
 
     with (
         patch.object(repository, "get_plan", AsyncMock(return_value=target)),
+        patch.object(repository, "has_brigade_marks", AsyncMock(return_value=False)),
         patch.object(repository, "release_plan_requests", AsyncMock(return_value=[])) as release,
         patch.object(planning_service, "summarize_plans", AsyncMock(return_value=[summary(9)])),
     ):
@@ -151,6 +153,35 @@ async def test_cancelling_approval_releases_requests():
 
     release.assert_awaited_once_with(session, target)
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_approval_of_a_plan_in_work_is_not_cancelled():
+    """День плана настал — бригады видят его в приложении; менять план можно только пересчётом."""
+    session = SimpleNamespace(commit=AsyncMock())
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=plan(9, datetime.now(UTC)))),
+        patch.object(repository, "release_plan_requests", AsyncMock()) as release,
+        pytest.raises(PlanInUseError, match="уже работают"),
+    ):
+        await planning_service.cancel_plan_approval(session, 9, office_id=OFFICE)
+
+    release.assert_not_awaited()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_plan_with_brigade_marks_is_in_work_before_its_day():
+    """Бригада уже отметилась по заявке плана — он в работе, даже если день ещё не наступил."""
+    target = plan(9, datetime.now(UTC), plan_date=date(2099, 1, 1))
+    repository = planning_service.plans_repository
+
+    with patch.object(repository, "has_brigade_marks", AsyncMock(return_value=True)) as marks:
+        assert await planning_service.plan_in_work(AsyncMock(), target) is True
+
+    marks.assert_awaited_once()
 
 
 @pytest.mark.asyncio

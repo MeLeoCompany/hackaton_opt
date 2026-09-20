@@ -13,6 +13,7 @@ import ReplanNotice from '../components/ReplanNotice.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
+import { planChain } from '../utils/planChain.js'
 
 const {
   selectedDay,
@@ -39,10 +40,15 @@ const {
   replan,
   selectEngineer,
   markVisitStatus,
+  allowDeparture,
 } = usePlans()
 
 // пересчёт утверждённого плана с момента: окно параметров с временем пересчёта
 const replanTarget = ref(null)
+// маршруты пересчитываемого плана, если он открыт: в диалоге по ним видно, кто выбился из плана
+const replanRoutes = computed(() =>
+  plan.value && plan.value.id === replanTarget.value?.id ? plan.value.routes : [],
+)
 
 async function startReplan(params) {
   const summary = replanTarget.value
@@ -75,6 +81,8 @@ const planOpened = computed(() => selectedPlanId.value !== null)
 
 // сводка открытого плана — та же строка, что в списке: чтобы было видно, что за план
 const openedSummary = computed(() => plans.value.find((summary) => summary.id === selectedPlanId.value) ?? null)
+// исходный план дня и его пересчёты по порядку: видно, что происходило за день
+const openedChain = computed(() => planChain(plans.value, selectedPlanId.value))
 
 // «что не так» с утверждённым планом — открывается по клику на его «!»
 const replanPlanId = ref(null)
@@ -84,6 +92,13 @@ function openPlan(planId) {
   viewMode.value = 'details'
   focusedRequestId.value = null
   selectPlan(planId)
+}
+
+// чем этот план кончился: когда его заменили, что он действует или ещё ждёт утверждения
+function chainWhen(summary) {
+  if (summary.superseded_at) return `до ${moscowTimeOf(summary.superseded_at)}`
+  if (summary.approved_at) return 'действует'
+  return 'не утверждён'
 }
 
 function backToPlans() {
@@ -148,13 +163,33 @@ onMounted(async () => {
           План №{{ selectedPlanId }}
           <ReplanMark :summary="openedSummary" large @show="replanPlanId = selectedPlanId" />
           <span v-if="openedSummary?.superseded_at" class="badge superseded" title="Бригады ездят по утверждённому пересчёту">
-            заменён пересчётом
+            заменён в {{ moscowTimeOf(openedSummary.superseded_at) }}
           </span>
           <span v-else-if="openedSummary?.approved_at" class="badge approved">утверждён</span>
           <span v-if="openedSummary?.parent_plan_id" class="replan-title">
-            пересчёт плана №{{ openedSummary.parent_plan_id }} на {{ moscowTimeOf(openedSummary.replanned_at) }}
+            пересчёт плана
+            <button class="link plan-link" @click="openPlan(openedSummary.parent_plan_id)">
+              №{{ openedSummary.parent_plan_id }}
+            </button>
+            на {{ moscowTimeOf(openedSummary.replanned_at) }}
+          </span>
+          <span v-if="openedSummary?.replaced_by_plan_id" class="replan-title">
+            заменён пересчётом
+            <button class="link plan-link" @click="openPlan(openedSummary.replaced_by_plan_id)">
+              №{{ openedSummary.replaced_by_plan_id }}
+            </button>
           </span>
         </h1>
+        <!-- планы дня по порядку: исходный, его пересчёты и тот, по которому ездят сейчас -->
+        <nav v-if="openedChain.length" class="plan-chain">
+          Планы дня:
+          <template v-for="(item, index) in openedChain" :key="item.id">
+            <span v-if="index" class="chain-arrow" aria-hidden="true">→</span>
+            <strong v-if="item.id === selectedPlanId">№{{ item.id }}</strong>
+            <button v-else class="link plan-link" @click="openPlan(item.id)">№{{ item.id }}</button>
+            <span class="chain-when">{{ chainWhen(item) }}</span>
+          </template>
+        </nav>
         <p v-if="openedSummary">
           {{ openedSummary.solver ?? '—' }} · назначено {{ openedSummary.assigned_count }} · не назначено
           {{ openedSummary.unassigned_count }} · исполнителей {{ openedSummary.engineers_used }}<template
@@ -289,6 +324,7 @@ onMounted(async () => {
               :approved="Boolean(openedSummary?.approved_at)"
               :focused-request-id="focusedRequestId"
               @visit-status-changed="markVisitStatus"
+              @allow-departure="allowDeparture"
               @focus-request="focusVisit"
               @select-engineer="viewMode === 'details' ? showRouteOnMap($event) : selectEngineer($event)"
             />
@@ -301,6 +337,7 @@ onMounted(async () => {
       v-if="replanTarget"
       :plan-date="selectedDay"
       :replan-of="replanTarget"
+      :routes="replanRoutes"
       :building="building"
       @build="startReplan"
       @close="replanTarget = null"
@@ -331,6 +368,31 @@ onMounted(async () => {
   color: #64748b;
   font-size: 14px;
   font-weight: 400;
+}
+
+/* планы дня по порядку: №19 → №22 → №41 (действует) */
+.plan-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.plan-chain strong {
+  color: #0f172a;
+}
+
+.chain-when {
+  margin-right: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.plan-link {
+  font-size: inherit;
 }
 
 .replan-button {

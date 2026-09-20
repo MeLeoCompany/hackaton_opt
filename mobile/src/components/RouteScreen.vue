@@ -10,8 +10,21 @@ import { useBrigade } from '../useBrigade.js'
 import FailSheet from './FailSheet.vue'
 import VisitCard from './VisitCard.vue'
 
-const { user, days, day, route, lastUpdatedAt, loading, busy, errorMessage, logout, refresh, selectDay, mark } =
-  useBrigade()
+const {
+  user,
+  days,
+  day,
+  route,
+  lastUpdatedAt,
+  loading,
+  busy,
+  errorMessage,
+  changes,
+  logout,
+  refresh,
+  selectDay,
+  mark,
+} = useBrigade()
 
 // время московское, как и всё в приложении: часы телефона могут стоять в другом поясе
 const updatedText = computed(() =>
@@ -100,6 +113,14 @@ onBeforeUnmount(() => {
     </div>
 
     <main>
+      <!-- диспетчер поменял маршрут, пока бригада работала: говорим, что именно -->
+      <p v-if="changes.length" class="changed" role="status">
+        <span>
+          <template v-for="(text, index) in changes" :key="index">{{ text }}<br /></template>
+        </span>
+        <button class="close" aria-label="закрыть" @click="changes = []">×</button>
+      </p>
+
       <p v-if="errorMessage" class="error" role="alert">
         {{ errorMessage }}
         <button class="close" aria-label="закрыть" @click="errorMessage = ''">×</button>
@@ -148,6 +169,20 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.changed {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #fcd535;
+  border-radius: 12px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .screen {
   display: flex;
   flex-direction: column;

@@ -33,7 +33,7 @@ export function useBrigades() {
   function startCreate() {
     clearMessages()
     editingId.value = NEW_BRIGADE
-    form.value = { name: '', login: '', password: '', is_active: true, hasLogin: false }
+    form.value = { name: '', phone: '', login: '', password: '', is_active: true, hasLogin: false }
   }
 
   function startEdit(brigade) {
@@ -41,6 +41,7 @@ export function useBrigades() {
     editingId.value = brigade.id
     form.value = {
       name: brigade.name,
+      phone: brigade.phone ?? '',
       login: brigade.login ?? '',
       password: '',
       is_active: brigade.is_active,
@@ -57,6 +58,8 @@ export function useBrigades() {
     const values = form.value
     const payload = {
       name: values.name.trim(),
+      // телефон бригады: по нему оператор звонит, когда бригада выбилась из плана
+      phone: values.phone.trim() || null,
       login: values.login.trim() || null,
       password: values.password || null,
       is_active: values.is_active,
