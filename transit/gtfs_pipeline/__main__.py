@@ -4,6 +4,7 @@ import argparse
 from datetime import date
 from pathlib import Path
 
+from .bus_weekly import prepare_bus
 from .gtfs import build_gtfs
 from .night_weekly import generate_night_weekly
 from .osm_mcc import collect_mcc_to_file
@@ -48,6 +49,16 @@ def main() -> None:
     batch.add_argument(
         "--catalog", type=Path, help="каталог для проверки ID и названий маршрутов"
     )
+    prepared_bus = commands.add_parser(
+        "prepare-bus",
+        help="получить оба направления и создать ежедневный шаблон автобуса",
+    )
+    prepared_bus.add_argument("--route-id", required=True, type=int)
+    prepared_bus.add_argument("--short-name", required=True)
+    prepared_bus.add_argument("--weekday-date", required=True, type=date.fromisoformat)
+    prepared_bus.add_argument("--start-date", required=True, type=date.fromisoformat)
+    prepared_bus.add_argument("--end-date", required=True, type=date.fromisoformat)
+    prepared_bus.add_argument("--output-dir", required=True, type=Path)
     night_batch = commands.add_parser(
         "collect-night-bus-batch", help="получить все ночные автобусы из каталога"
     )
@@ -79,6 +90,10 @@ def main() -> None:
     build = commands.add_parser("build", help="сформировать архив GTFS")
     build.add_argument("inputs", type=Path, nargs="+")
     build.add_argument("--output", required=True, type=Path)
+    pilot = commands.add_parser(
+        "build-pilot", help="собрать весь локальный пилотный GTFS"
+    )
+    pilot.add_argument("--output", required=True, type=Path)
     validate = commands.add_parser("validate", help="проверить структуру архива GTFS")
     validate.add_argument("feed", type=Path)
     args = parser.parse_args()
@@ -96,6 +111,16 @@ def main() -> None:
         print(f"Успешно: {report['successful']}; с ошибкой: {report['failed']}")
         if report["failed"]:
             raise SystemExit(1)
+    elif args.command == "prepare-bus":
+        output = prepare_bus(
+            args.route_id,
+            args.short_name,
+            args.weekday_date,
+            args.start_date,
+            args.end_date,
+            args.output_dir,
+        )
+        print(f"Создан ежедневный шаблон: {output}")
     elif args.command == "collect-night-bus-batch":
         from .common import read_json
 
@@ -132,6 +157,15 @@ def main() -> None:
         collect_mcc_to_file(args.output)
     elif args.command == "build":
         build_gtfs(args.inputs, args.output)
+    elif args.command == "build-pilot":
+        root = Path(__file__).parents[1] / "data"
+        inputs = sorted((root / "bus").glob("route-*.json"))
+        inputs += sorted((root / "bus").glob("e10-*.json"))
+        inputs += sorted((root / "bus" / "night").glob("route-*.json"))
+        inputs += sorted((root / "metro").glob("line-*.json"))
+        if not inputs:
+            raise ValueError("локальные данные для GTFS не найдены")
+        build_gtfs(inputs, args.output)
     elif args.command == "validate":
         for name, count in sorted(validate_gtfs(args.feed).items()):
             print(f"{name}: {count}")

@@ -137,6 +137,23 @@ PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline collect-bus-batch \
 останавливает остальные, но команда возвращает ненулевой код, если хотя бы один
 маршрут не был собран.
 
+Для добавления обычного автобуса одной командой укажи его ID и номер на портале,
+проверенный будний день и период повторения. Команда получает оба направления,
+проверяет исходный файл и создаёт один ежедневный шаблон:
+
+```bash
+PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline prepare-bus \
+  --route-id 1048 --short-name А \
+  --weekday-date 2026-09-18 \
+  --start-date 2026-09-21 --end-date 2026-12-31 \
+  --output-dir transit/data/bus
+```
+
+Маршрут А использует расписание одного буднего дня ежедневно, в том числе в
+выходные. Это сознательное приближение, отмеченное в исходном JSON. Уже
+сохранённая точная дата повторно не скачивается. Для её обновления удали
+соответствующий `route-ID-ДАТА.json` перед командой.
+
 Получение первой линии метро из двух направленных отношений OSM:
 
 ```bash
@@ -161,18 +178,10 @@ PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline collect-mcc \
   --output transit/data/metro/line-14-mcc.json
 ```
 
-Сборка и структурная проверка:
+Сборка всех локальных автобусов и линий метро одной командой и структурная проверка:
 
 ```bash
-PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline build \
-  transit/data/bus/e10-2026-09-18.json \
-  transit/data/bus/route-1054-2026-09-19.json \
-  transit/data/bus/route-1054-2026-09-20.json \
-  transit/data/bus/e10-weekday-weekly.json \
-  transit/data/bus/e10-weekend-weekly.json \
-  transit/data/bus/route-{204,684}-*.json \
-  transit/data/bus/night/route-*.json \
-  transit/data/metro/line-*.json \
+PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline build-pilot \
   --output transit/generated/moscow-pilot.gtfs.zip
 PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline validate \
   transit/generated/moscow-pilot.gtfs.zip

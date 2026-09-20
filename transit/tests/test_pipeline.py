@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from gtfs_pipeline.bus_weekly import prepare_bus
 from gtfs_pipeline.gtfs import build_gtfs
 from gtfs_pipeline.metro_transfers import (
     TRANSFER_TIME_SECONDS,
@@ -141,6 +142,44 @@ def test_night_weekly_repeats_only_checked_in_routes(tmp_path: Path) -> None:
     with zipfile.ZipFile(output) as archive:
         calendar = archive.read("calendar.txt").decode("utf-8-sig")
         assert "bus-1335-weekly-2026-09-21-0-1-2-3-4-5-6-morning" in calendar
+
+
+def test_prepare_bus_requires_both_directions_and_repeats_daily(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).parents[2]
+    source = root / "transit/data/bus/route-1048-2026-09-18.json"
+    (tmp_path / source.name).write_bytes(source.read_bytes())
+
+    created = prepare_bus(
+        1048,
+        "А",
+        date(2026, 9, 18),
+        date(2026, 9, 21),
+        date(2026, 12, 31),
+        tmp_path,
+    )
+
+    weekly = json.loads(created.read_text())
+    assert weekly["template"] == source.name
+    assert weekly["service"]["weekdays"] == list(range(7))
+    assert "приближение" == weekly["source"]["quality"]
+    output = tmp_path / "bus.zip"
+    build_gtfs([source, created], output)
+    validate_gtfs(output)
+
+    broken = json.loads((tmp_path / source.name).read_text())
+    broken["patterns"].pop()
+    (tmp_path / source.name).write_text(json.dumps(broken), encoding="utf-8")
+    with pytest.raises(ValueError, match="неполные"):
+        prepare_bus(
+            1048,
+            "А",
+            date(2026, 9, 18),
+            date(2026, 9, 21),
+            date(2026, 12, 31),
+            tmp_path,
+        )
 
 
 def test_transport_mos_parser_rejects_inconsistent_trip_count() -> None:
