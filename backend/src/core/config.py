@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     r5_url: str = "http://localhost:8003"
     r5_gtfs_path: Path = Path("transit/generated/moscow-pilot.gtfs.zip")
     r5_timeout_seconds: float = Field(default=180.0, gt=0.0, allow_inf_nan=False)
-    r5_matrix_block_origins: int = Field(default=20, ge=1, le=1000)
-    r5_matrix_block_max_pairs: int = Field(default=2500, ge=1, le=100_000)
+    r5_matrix_block_origins: int = Field(default=5, ge=1, le=1000)
+    r5_matrix_block_max_pairs: int = Field(default=500, ge=1, le=100_000)
     r5_matrix_single_max_points: int = Field(default=100, ge=2, le=1000)
     walking_speed_kmh: float = Field(default=4.8, ge=0.5, le=25, allow_inf_nan=False)
     # подпись токенов входа; в любом общем окружении задайте свой AUTH_SECRET

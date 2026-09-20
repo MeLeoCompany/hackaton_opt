@@ -116,6 +116,36 @@ async def test_large_matrix_is_assembled_from_rectangular_blocks():
 
 
 @pytest.mark.asyncio
+async def test_pair_limit_switches_to_blocks_before_point_limit():
+    points = [Point(latitude=55.7 + index * 0.01, longitude=37.6) for index in range(3)]
+
+    async def post(path, *, json):
+        assert path == "/matrix-block"
+        origins = [point["id"] for point in json["origins"]]
+        destinations = [point["id"] for point in json["destinations"]]
+        assert len(origins) * len(destinations) <= 4
+        return FakeResponse(
+            {
+                "origin_ids": origins,
+                "destination_ids": destinations,
+                "durations_seconds": [[0] * len(destinations) for _ in origins],
+            }
+        )
+
+    client = AsyncMock()
+    client.__aenter__.return_value.post = AsyncMock(side_effect=post)
+    with (
+        patch.object(r5_provider.httpx, "AsyncClient", return_value=client),
+        patch.object(r5_provider.settings, "r5_matrix_single_max_points", 100),
+        patch.object(r5_provider.settings, "r5_matrix_block_origins", 2),
+        patch.object(r5_provider.settings, "r5_matrix_block_max_pairs", 4),
+    ):
+        result = await r5_provider.build_duration_matrix(points, DEPARTURE)
+
+    assert result == [[0.0] * 3 for _ in range(3)]
+
+
+@pytest.mark.asyncio
 async def test_large_matrix_rejects_incorrect_block_ids():
     points = [*POINTS, Point(latitude=55.75, longitude=37.65)]
     client = AsyncMock()

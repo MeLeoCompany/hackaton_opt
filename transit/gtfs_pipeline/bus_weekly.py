@@ -14,13 +14,17 @@ def prepare_bus(
     start_date: date,
     end_date: date,
     output_dir: Path,
+    *,
+    retrospective: bool = False,
 ) -> Path:
     if not short_name.strip():
         raise ValueError("номер маршрута не может быть пустым")
     if weekday_date.weekday() >= 5:
         raise ValueError("шаблон буднего дня должен быть собран в будний день")
-    if start_date <= weekday_date or end_date < start_date:
-        raise ValueError("период повторения должен начинаться после точных дат")
+    if end_date < start_date:
+        raise ValueError("конец периода повторения раньше начала")
+    if start_date < weekday_date and not retrospective:
+        raise ValueError("для дат до снимка требуется --retrospective")
 
     def exact_path(service_date: date) -> Path:
         path = output_dir / f"route-{route_id}-{service_date.isoformat()}.json"
@@ -54,7 +58,13 @@ def prepare_bus(
             "source": {
                 "template_date": weekday_date.isoformat(),
                 "quality": "приближение",
-                "note": "Расписание одного буднего дня повторяется ежедневно до ручного обновления.",
+                "retrospective": retrospective,
+                "note": (
+                    "Расписание одного буднего дня повторяется ежедневно. "
+                    "Даты до исходного снимка являются ретроспективной оценкой."
+                    if retrospective
+                    else "Расписание одного буднего дня повторяется ежедневно до ручного обновления."
+                ),
             },
         },
     )

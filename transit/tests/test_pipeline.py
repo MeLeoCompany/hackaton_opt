@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import zipfile
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -131,7 +132,12 @@ def test_night_weekly_repeats_only_checked_in_routes(tmp_path: Path) -> None:
     catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
 
     created, missing = generate_night_weekly(
-        catalog_path, tmp_path, date(2026, 9, 20), date(2026, 9, 21), date(2026, 12, 31)
+        catalog_path,
+        tmp_path,
+        date(2026, 9, 20),
+        date(2026, 8, 1),
+        date(2026, 12, 31),
+        retrospective=True,
     )
 
     assert created == 1
@@ -141,7 +147,7 @@ def test_night_weekly_repeats_only_checked_in_routes(tmp_path: Path) -> None:
     validate_gtfs(output)
     with zipfile.ZipFile(output) as archive:
         calendar = archive.read("calendar.txt").decode("utf-8-sig")
-        assert "bus-1335-weekly-2026-09-21-0-1-2-3-4-5-6-morning" in calendar
+        assert "bus-1335-weekly-2026-08-01-0-1-2-3-4-5-6-morning" in calendar
 
 
 def test_prepare_bus_requires_both_directions_and_repeats_daily(
@@ -155,15 +161,17 @@ def test_prepare_bus_requires_both_directions_and_repeats_daily(
         1048,
         "А",
         date(2026, 9, 18),
-        date(2026, 9, 21),
+        date(2026, 8, 1),
         date(2026, 12, 31),
         tmp_path,
+        retrospective=True,
     )
 
     weekly = json.loads(created.read_text())
     assert weekly["template"] == source.name
     assert weekly["service"]["weekdays"] == list(range(7))
     assert "приближение" == weekly["source"]["quality"]
+    assert weekly["source"]["retrospective"] is True
     output = tmp_path / "bus.zip"
     build_gtfs([source, created], output)
     validate_gtfs(output)
@@ -311,9 +319,14 @@ def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
             ("0", "0", "1", "1"),
         }
         assert {row["end_date"] for row in calendars} == {"20261231"}
+        assert {row["start_date"] for row in calendars} == {"20260801"}
+        assert any(
+            row["monday"] == "1" and row["start_date"] <= "20260817" <= row["end_date"]
+            for row in calendars
+        )
         exceptions = rows("calendar_dates.txt")
-        assert len(exceptions) == 3
-        assert {row["exception_type"] for row in exceptions} == {"1"}
+        assert len(exceptions) == 6
+        assert Counter(row["exception_type"] for row in exceptions) == {"1": 3, "2": 3}
         trips = rows("trips.txt")
         assert len({row["trip_id"] for row in trips}) == len(trips)
 
@@ -346,6 +359,20 @@ def test_exact_bus_day_overrides_weekly_template(tmp_path: Path) -> None:
         ("20260918", "1"),
         ("20260918", "2"),
     }
+
+
+def test_backdated_bus_calendar_requires_explicit_retrospective_mark(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).parents[2] / "transit/data/bus/e10-weekday-weekly.json"
+    manifest = json.loads(source.read_text(encoding="utf-8"))
+    manifest["source"].pop("retrospective")
+    path = tmp_path / "e10-weekday-weekly.json"
+    path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    template = source.parent / manifest["template"]
+    (tmp_path / template.name).write_bytes(template.read_bytes())
+    with pytest.raises(ValueError, match="ретроспективное"):
+        build_gtfs([path], tmp_path / "invalid.zip")
 
 
 def test_weekly_bus_rejects_different_control_day(tmp_path: Path) -> None:

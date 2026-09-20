@@ -68,6 +68,11 @@ def _load_datasets(inputs: list[Path]) -> list[dict[str, Any]]:
         template = read_json(path.parent / dataset["template"])
         if template["kind"] != "bus_exact":
             raise ValueError(f"шаблон автобуса должен быть точным днём: {path}")
+        template_date = date.fromisoformat(template["source"]["service_date"])
+        if start < template_date and dataset["source"].get("retrospective") is not True:
+            raise ValueError(
+                f"ретроспективное расписание автобуса должно быть явно помечено: {path}"
+            )
         for example in dataset.get("matching_examples", []):
             observed = read_json(path.parent / example)
             if (
