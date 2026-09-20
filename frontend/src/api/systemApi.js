@@ -24,3 +24,8 @@ export function listPlanRuns(limit = 50) {
 export function fetchPlanRun(runId) {
   return apiRequest('GET', `/system/runs/${runId}`)
 }
+
+// прервать идущий расчёт: он остановится на ближайшем шаге, ничего не сохранив
+export function cancelPlanRun(runId) {
+  return apiRequest('POST', `/system/runs/${runId}/cancel`)
+}

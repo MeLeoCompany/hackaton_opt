@@ -2,9 +2,10 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core import clock
 from src.models import AppUser, PlanRun, PlanRunEvent
 
 
@@ -38,3 +39,20 @@ async def list_events(session: AsyncSession, run_id: uuid.UUID) -> list[PlanRunE
         select(PlanRunEvent).where(PlanRunEvent.run_id == run_id).order_by(PlanRunEvent.id)
     )
     return list(result.scalars().all())
+
+
+async def request_cancel(session: AsyncSession, run_id: uuid.UUID, *, user_id: int | None) -> None:
+    """Ставит флаг «Прервать» и пишет об этом в журнал: видно, кто остановил расчёт."""
+    await session.execute(
+        update(PlanRun).where(PlanRun.id == run_id).values(cancel_requested=True)
+    )
+    session.add(
+        PlanRunEvent(
+            run_id=run_id,
+            at=clock.now(),
+            level="warning",
+            source="operator",
+            step="",
+            message="Оператор нажал «Прервать расчёт»",
+        )
+    )

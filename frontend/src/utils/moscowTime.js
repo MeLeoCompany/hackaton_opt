@@ -19,6 +19,12 @@ export function moscowTimeOf(isoString) {
   return asMoscowIso(isoString).slice(11, 16)
 }
 
+// "2026-08-17T15:00:00.312Z" -> "18:00:00.312" — для журнала расчёта: события идут
+// внутри одной секунды, и без долей непонятно, что за чем
+export function moscowLogTimeOf(isoString) {
+  return asMoscowIso(isoString).slice(11, 23)
+}
+
 // "2026-08-17" -> "17.08.2026"
 export function formatDay(day) {
   return `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`

@@ -7,7 +7,13 @@ from fastapi.responses import JSONResponse
 
 from src.api.v1.router import router as v1_router
 from src.core.config import settings
-from src.core.errors import DataError, ExternalServiceError, InUseError, NotFoundError
+from src.core.errors import (
+    CalculationCancelled,
+    DataError,
+    ExternalServiceError,
+    InUseError,
+    NotFoundError,
+)
 from src.db.session import async_session_maker
 from src.services.system import system_service
 
@@ -37,6 +43,11 @@ async def handle_not_found(_: HttpRequest, error: NotFoundError) -> JSONResponse
 
 @app.exception_handler(InUseError)
 async def handle_in_use(_: HttpRequest, error: InUseError) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(error)})
+
+
+@app.exception_handler(CalculationCancelled)
+async def handle_cancelled(_: HttpRequest, error: CalculationCancelled) -> JSONResponse:
     return JSONResponse(status_code=409, content={"detail": str(error)})
 
 

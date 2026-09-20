@@ -45,15 +45,24 @@ class SystemInfo(BaseModel):
 
 
 class PlanRunEventRead(BaseModel):
-    """Одна строка хода расчёта: что считалось и когда (db/init/038)."""
+    """Строка журнала: шаг расчёта или подробность внутри него (db/init/038, 039).
+
+    Строки складываются в дерево: у подробности parent_id — номер её шага. Level — статус
+    строки (info, warning, error), source — кто её написал (planner, cuopt, r5, valhalla).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
+    id: int
+    parent_id: int | None = None
     at: datetime
     level: str
+    source: str = "planner"
     step: str
     message: str
     progress: int | None = None
+    duration_ms: int | None = None
+    details: dict | None = None
 
 
 class PlanRunRead(BaseModel):
@@ -71,6 +80,8 @@ class PlanRunRead(BaseModel):
     plan_id: int | None
     error: str | None
     user_name: str | None = None
+    # оператор нажал «Прервать»: расчёт останавливается на ближайшем шаге
+    cancel_requested: bool = False
     started_at: datetime
     finished_at: datetime | None
     # сколько заняло, секунд: у незаконченного — сколько идёт прямо сейчас

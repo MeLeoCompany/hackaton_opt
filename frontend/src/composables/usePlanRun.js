@@ -4,7 +4,7 @@
 
 import { ref } from 'vue'
 
-import { fetchPlanRun } from '../api/systemApi.js'
+import { cancelPlanRun, fetchPlanRun } from '../api/systemApi.js'
 
 const POLL_MS = 800
 
@@ -44,6 +44,16 @@ export function usePlanRun() {
     poll()
   }
 
+  // «Прервать»: расчёт увидит флаг и остановится на ближайшем шаге
+  async function cancel() {
+    if (!watched) return
+    try {
+      run.value = await cancelPlanRun(watched)
+    } catch {
+      // не получилось — расчёт продолжается, кнопку можно нажать ещё раз
+    }
+  }
+
   function stop() {
     clearInterval(timer)
     timer = null
@@ -51,5 +61,5 @@ export function usePlanRun() {
     run.value = null
   }
 
-  return { run, newRunId, watch, stop }
+  return { run, newRunId, watch, cancel, stop }
 }

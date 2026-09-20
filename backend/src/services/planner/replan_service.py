@@ -96,17 +96,19 @@ async def replan(
         run_id=run_id,
     ):
         if decisions:
-            await run_log.step("Применяю решения оператора по заявкам", 2, 6)
-            await run_log.note(f"решений по заявкам: {len(decisions)}")
-        await apply_decisions(
-            session, parent, decisions or [], office_id=office_id, user_id=user_id
-        )
+            async with run_log.step("Применяю решения оператора по заявкам", 2, 6):
+                await run_log.note(f"решений по заявкам: {len(decisions)}")
+                await apply_decisions(
+                    session, parent, decisions or [], office_id=office_id, user_id=user_id
+                )
+        else:
+            await apply_decisions(session, parent, [], office_id=office_id, user_id=user_id)
         built = await build_replan(
             session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
         )
         plan = built.plan
-        await run_log.step("Считаю пробег маршрутов", 92, 99)
-        planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
+        async with run_log.step("Считаю пробег маршрутов", 92, 99):
+            planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await planning_service.summarize_plans(session, [plan]))[0]
@@ -161,14 +163,14 @@ async def preview_inside_run(
         )
         assignments = await plans_repository.list_plan_assignments(session, built.plan.id)
         unassigned = [a for a in assignments if a.engineer_id is None]
-        await run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 80, 95)
-        await run_log.note(f"не успеваем по заявкам: {len(unassigned)}")
-        suggestions = await window_suggestions.suggest_windows(
-            built.loaded,
-            solver,
-            validate_objective_order(objective_order),
-            {a.request_id for a in unassigned},
-        )
+        async with run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 80, 95):
+            await run_log.note(f"не успеваем по заявкам: {len(unassigned)}")
+            suggestions = await window_suggestions.suggest_windows(
+                built.loaded,
+                solver,
+                validate_objective_order(objective_order),
+                {a.request_id for a in unassigned},
+            )
         tolerance = timedelta(minutes=settings.promise_tolerance_minutes)
         preview = ReplanPreview(
             assigned_count=sum(1 for a in assignments if a.engineer_id is not None),

@@ -6,6 +6,12 @@
   box-sizing: border-box;
 }
 
+/* место под полосу прокрутки держим всегда: иначе страница дёргается, когда раскрытие
+   длинного журнала добавляет её */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;

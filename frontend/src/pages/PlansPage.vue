@@ -62,7 +62,7 @@ async function startReplan(params) {
 }
 
 // ход расчёта: номер запуска придумываем здесь, по нему журнал показывает шаги и проценты
-const { run: planRun, newRunId, watch: watchRun, stop: stopRun } = usePlanRun()
+const { run: planRun, newRunId, watch: watchRun, cancel: cancelRun, stop: stopRun } = usePlanRun()
 
 async function withRunLog(params, action) {
   params.run_id = newRunId()
@@ -232,7 +232,7 @@ onMounted(async () => {
       </section>
 
       <!-- расчёт идёт: видно, что именно считается и сколько уже прошло -->
-      <PlanRunProgress v-if="building" :run="planRun" />
+      <PlanRunProgress v-if="building" :run="planRun" @cancel="cancelRun" />
 
       <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
       <ReplanNotice
@@ -287,7 +287,7 @@ onMounted(async () => {
         @replan="replanTarget = replanSummary"
       />
 
-      <PlanRunProgress v-if="building" :run="planRun" />
+      <PlanRunProgress v-if="building" :run="planRun" @cancel="cancelRun" />
 
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 

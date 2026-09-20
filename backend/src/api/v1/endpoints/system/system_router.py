@@ -77,3 +77,20 @@ async def get_run(
     _: AppUser = Depends(current_user),
 ) -> PlanRunRead:
     return await system_service.get_run(session, run_id, office_id=office_id)
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=PlanRunRead,
+    summary="Прервать идущий расчёт",
+)
+async def cancel_run(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+) -> PlanRunRead:
+    """Расчёт останавливается на ближайшем шаге: ничего не сохраняется."""
+    return await system_service.cancel_run(
+        session, run_id, office_id=office_id, user_id=user.id
+    )

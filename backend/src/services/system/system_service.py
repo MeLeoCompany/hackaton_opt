@@ -200,8 +200,26 @@ def run_summary(run, user_name: str | None) -> PlanRunRead:
         progress=run.progress,
         plan_id=run.plan_id,
         error=run.error,
+        cancel_requested=run.cancel_requested,
         user_name=user_name,
         started_at=run.started_at,
         finished_at=run.finished_at,
         duration_seconds=max((finished - run.started_at).total_seconds(), 0.0),
     )
+
+
+async def cancel_run(session: AsyncSession, run_id: UUID, *, office_id: int, user_id: int | None):
+    """Оператор нажал «Прервать»: расчёт увидит флаг и остановится на ближайшем шаге.
+
+    cuOpt на видеокарте остановить снаружи нельзя, поэтому расчёт перестаёт его ждать —
+    оператор сразу получает управление, а поток досчитает вхолостую.
+    """
+    row = await plan_runs_repository.get_run(session, run_id, office_id=office_id)
+    if row is None:
+        raise NotFoundError(f"Расчёт {run_id} не найден")
+    run, user_name = row
+    if run.status == "running":
+        await plan_runs_repository.request_cancel(session, run_id, user_id=user_id)
+        await session.commit()
+        await session.refresh(run)
+    return run_summary(run, user_name)

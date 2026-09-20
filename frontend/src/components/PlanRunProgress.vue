@@ -4,11 +4,12 @@
 // выглядит зависшим.
 import { computed } from 'vue'
 
-import { moscowTimeOf } from '../utils/moscowTime.js'
+import { moscowLogTimeOf } from '../utils/moscowTime.js'
 
 const props = defineProps({
   run: { type: Object, default: null }, // ответ /system/runs/{id}; null — журнал ещё не ответил
 })
+const emit = defineEmits(['cancel'])
 
 const percent = computed(() => Math.min(100, Math.max(0, props.run?.progress ?? 0)))
 const step = computed(() => props.run?.step || 'Готовлю расчёт')
@@ -25,13 +26,27 @@ function seconds(value) {
     <div class="run-head">
       <strong>{{ step }}</strong>
       <span class="muted">{{ percent }}% · {{ seconds(run?.duration_seconds) }}</span>
+      <!-- расчёт завис или идёт слишком долго — оператор останавливает его сам -->
+      <button
+        class="danger cancel"
+        :disabled="run?.cancel_requested"
+        :title="
+          run?.cancel_requested
+            ? 'Расчёт остановится на ближайшем шаге'
+            : 'Прервать расчёт: ничего не будет сохранено'
+        "
+        @click="emit('cancel')"
+      >
+        {{ run?.cancel_requested ? 'Прерываю…' : 'Прервать расчёт' }}
+      </button>
     </div>
     <div class="bar">
       <span :style="{ width: `${percent}%` }"></span>
     </div>
     <ol v-if="lastEvents.length" class="events">
       <li v-for="(event, index) in lastEvents" :key="index" :class="event.level">
-        <span class="at">{{ moscowTimeOf(event.at) }}</span>
+        <span class="at">{{ moscowLogTimeOf(event.at) }}</span>
+        <span class="source">{{ event.source }}</span>
         <span>{{ event.message }}</span>
       </li>
     </ol>
@@ -98,8 +113,24 @@ function seconds(value) {
 
 .at {
   flex: none;
+  width: 84px;
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
+}
+
+/* чья это строка: cuopt, r5, valhalla */
+.source {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+}
+
+.cancel {
+  padding: 2px 10px;
+  font-size: 12px;
 }
 
 .muted {

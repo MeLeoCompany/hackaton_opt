@@ -19,3 +19,7 @@ class DataError(Exception):
     def __init__(self, messages: list[str]) -> None:
         super().__init__("; ".join(messages))
         self.messages = messages
+
+
+class CalculationCancelled(Exception):
+    """Оператор нажал «Прервать расчёт» -> 409. Ничего не сохраняется."""

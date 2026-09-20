@@ -97,6 +97,7 @@ async def check_schedule(
             previous = next_node
         routes[engineer_index] = actual_visits
         checked_routes += 1
+        await run_log.check_cancelled()
         await run_log.note(
             f"R5: маршрут {checked_routes} из {transit_routes} — бригада {engineer.name}"
         )
@@ -123,6 +124,7 @@ async def solve_day(
     cache: dict[tuple[int, int, int], int] = {}
     instance: ProblemInstance = loaded.instance
     for attempt in range(settings.transit_plan_max_attempts):
+        await run_log.check_cancelled()
         await run_log.note(
             f"Попытка {attempt + 1} из {settings.transit_plan_max_attempts}: "
             "решаю и сверяю с расписанием",

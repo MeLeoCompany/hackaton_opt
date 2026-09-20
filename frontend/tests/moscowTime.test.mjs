@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 
 import {
   completeTime,
-  moscowTimeRangeParts,
   joinMoscowInputValue,
   maskTimeInput,
+  moscowLogTimeOf,
+  moscowTimeRangeParts,
   nextDay,
   splitMoscowInputValue,
 } from '../src/utils/moscowTime.js'
@@ -81,4 +82,9 @@ test('время можно стереть до конца: двоеточие �
   assert.equal(maskTimeInput('1', { deleting: true }), '1')
   assert.equal(maskTimeInput('18:3', { deleting: true }), '18:3')
   assert.equal(maskTimeInput('18'), '18:') // при наборе двоеточие по-прежнему дописывается
+})
+
+test('в журнале расчёта время с секундами и долями', () => {
+  assert.equal(moscowLogTimeOf('2026-08-17T15:00:00.312Z'), '18:00:00.312')
+  assert.equal(moscowLogTimeOf('2026-08-17T23:59:59.000Z'), '02:59:59.000')
 })

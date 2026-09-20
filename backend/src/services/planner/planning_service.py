@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -142,18 +142,18 @@ async def build_plan_for_day(
         solution = await solve_with(solver, loaded, policy)
         duration_ms = (time.perf_counter() - started) * 1000
 
-        await run_log.step("Сохраняю план", 80, 92)
-        plan = await save_solution(
-            session,
-            loaded,
-            solution,
-            run_type=RUN_TYPE_BY_SOLVER[solver],
-            solver=solver.value,
-            solve_duration_ms=duration_ms,
-            objective_order=policy if solver is SolverName.CUOPT else None,
-        )
-        await run_log.step("Считаю пробег маршрутов", 92, 99)
-        set_plan_distance(plan, await total_route_distance(loaded, solution))
+        async with run_log.step("Сохраняю план", 80, 92):
+            plan = await save_solution(
+                session,
+                loaded,
+                solution,
+                run_type=RUN_TYPE_BY_SOLVER[solver],
+                solver=solver.value,
+                solve_duration_ms=duration_ms,
+                objective_order=policy if solver is SolverName.CUOPT else None,
+            )
+        async with run_log.step("Считаю пробег маршрутов", 92, 99):
+            set_plan_distance(plan, await total_route_distance(loaded, solution))
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await summarize_plans(session, [plan]))[0]
@@ -170,16 +170,16 @@ async def solve_with(
     ranks — ярусы заявок для целевой функции; нужны второму расчёту при синхронизации
     (docs/algoV2.md). Базовый алгоритм ярусы не использует.
     """
-    await run_log.step(
+    async with run_log.step(
         "Базовый расчёт: первый подходящий исполнитель"
         if solver is SolverName.BASELINE
         else "Решаю задачу маршрутизации (cuOpt)",
         45,
         80,
-    )
-    if solver is SolverName.BASELINE:
-        return baseline_solver.solve_day(loaded.instance)
-    return await transit_schedule.solve_day(loaded, objective_order, ranks)
+    ):
+        if solver is SolverName.BASELINE:
+            return baseline_solver.solve_day(loaded.instance)
+        return await transit_schedule.solve_day(loaded, objective_order, ranks)
 
 
 @dataclass(frozen=True)
@@ -611,6 +611,20 @@ async def save_solution(
         )
 
     await session.flush()
+    assigned_count = len(assigned_request_indices)
+    unassigned = [
+        unassigned_reason(loaded, index)
+        for index in range(len(loaded.requests))
+        if index not in assigned_request_indices
+    ]
+    await run_log.note(
+        f"В план вошло {assigned_count} из "
+        f"{run_log.plural(len(loaded.requests), 'заявки', 'заявок', 'заявок')}; "
+        f"задействовано {run_log.plural(len(solution.routes), 'бригада', 'бригады', 'бригад')}",
+        details={"assigned": assigned_count, "unassigned": len(unassigned)},
+    )
+    for reason, count in Counter(unassigned).most_common(3):
+        await run_log.note(f"Не назначено {count}: {reason}", level="warning")
     return plan
 
 

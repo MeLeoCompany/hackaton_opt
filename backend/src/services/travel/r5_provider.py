@@ -197,6 +197,7 @@ async def build_duration_matrix(
                 for row_index, row in enumerate(block, start=origin_start):
                     result[row_index][destination_start : destination_start + len(row)] = row
                 blocks_done += 1
+                await run_log.check_cancelled()
                 await run_log.note(
                     f"R5: блок {blocks_done} из {blocks_total}",
                     fraction=blocks_done / max(blocks_total, 1),

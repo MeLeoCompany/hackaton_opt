@@ -4,12 +4,15 @@
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
+import RunEventTable from '../components/RunEventTable.vue'
 import { fetchPlanRun, listPlanRuns } from '../api/systemApi.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
+import { eventTree } from '../utils/runEvents.js'
+import { cancelPlanRun } from '../api/systemApi.js'
 
 const KIND_NAMES = { build: 'расчёт дня', replan: 'пересчёт', preview: 'пробный пересчёт' }
-const STATUS_NAMES = { running: 'идёт', done: 'готов', failed: 'ошибка' }
+const STATUS_NAMES = { running: 'идёт', done: 'готов', failed: 'ошибка', cancelled: 'прерван' }
 
 const runs = ref([])
 const loading = ref(false)
@@ -48,6 +51,18 @@ async function toggle(run) {
 }
 
 const running = computed(() => runs.value.filter((run) => run.status === 'running').length)
+// ход раскрытого расчёта деревом: шаг → его подробности → строки служб
+const openedTree = computed(() => eventTree(opened.value?.events ?? []))
+
+// идущий расчёт можно остановить прямо отсюда: он встанет на ближайшем шаге
+async function cancel(run) {
+  try {
+    const updated = await cancelPlanRun(run.id)
+    Object.assign(run, updated)
+  } catch (error) {
+    errorMessage.value = error.message
+  }
+}
 
 function duration(run) {
   const seconds = run.duration_seconds ?? 0
@@ -63,7 +78,8 @@ onMounted(load)
       <h1>Журнал расчётов</h1>
       <p>
         Записей {{ runs.length }}<template v-if="running"> · сейчас считается {{ running }}</template> ·
-        время московское
+        строка расчёта раскрывается в его шаги, шаг — в свои подробности: блоки матриц,
+        попытки решателя, строки cuOpt и служб · время московское
       </p>
     </header>
 
@@ -74,17 +90,28 @@ onMounted(load)
     </div>
 
     <div class="table-scroll">
-      <table class="data-table">
+      <!-- ширины заданы жёстко: раскрытие расчёта не должно двигать колонки -->
+      <table class="data-table runs-table">
+        <colgroup>
+          <col style="width: 72px" />
+          <col style="width: 130px" />
+          <col style="width: 104px" />
+          <col style="width: 88px" />
+          <col />
+          <col style="width: 112px" />
+          <col style="width: 74px" />
+          <col style="width: 140px" />
+        </colgroup>
         <thead>
           <tr>
             <th>Начат</th>
-            <th>Что считали</th>
+            <th>Тип расчёта</th>
             <th>День</th>
             <th>Решатель</th>
             <th>Состояние</th>
             <th>Длительность</th>
             <th>План</th>
-            <th>Кто запустил</th>
+            <th>Пользователь</th>
           </tr>
         </thead>
         <tbody>
@@ -99,8 +126,16 @@ onMounted(load)
               <td>{{ run.solver ?? '—' }}</td>
               <td>
                 <span :class="['badge', `run-${run.status}`]">{{ STATUS_NAMES[run.status] ?? run.status }}</span>
-                <span v-if="run.status === 'running'" class="muted"> · {{ run.step }} ({{ run.progress }}%)</span>
+                <span v-if="run.status === 'running'" class="muted"> · {{ run.step }}</span>
                 <span v-else-if="run.error" class="run-error">{{ run.error }}</span>
+                <button
+                  v-if="run.status === 'running'"
+                  class="link cancel"
+                  :disabled="run.cancel_requested"
+                  @click.stop="cancel(run)"
+                >
+                  {{ run.cancel_requested ? 'прерываю…' : 'прервать' }}
+                </button>
               </td>
               <td class="nowrap">{{ duration(run) }}</td>
               <td class="nowrap">
@@ -113,13 +148,7 @@ onMounted(load)
             <tr v-if="run.id === openedId" class="steps-row">
               <td colspan="8">
                 <p v-if="!opened" class="muted">Читаю ход расчёта…</p>
-                <ol v-else class="steps">
-                  <li v-for="(event, index) in opened.events" :key="index" :class="event.level">
-                    <span class="at">{{ moscowTimeOf(event.at) }}</span>
-                    <span class="percent">{{ event.progress ?? '' }}<template v-if="event.progress !== null">%</template></span>
-                    <span :class="{ title: event.message === event.step }">{{ event.message }}</span>
-                  </li>
-                </ol>
+                <RunEventTable v-else :nodes="openedTree" />
               </td>
             </tr>
           </template>
@@ -130,6 +159,16 @@ onMounted(load)
 </template>
 
 <style scoped>
+.runs-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+/* ход расчёта раскрывается внутри строки — своя таблица не должна толкать внешнюю */
+.steps-row td {
+  padding: 0 10px 6px;
+}
+
 .badge.run-running {
   background: #dbeafe;
   color: #1d4ed8;

@@ -10,6 +10,7 @@
 """
 
 import math
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
@@ -41,7 +42,8 @@ MINUTES_IN_DAY = 24 * 60
 UNREACHABLE_MINUTES = 100_000
 UNREACHABLE_KM = 100_000.0
 
-# как транспорт называется в журнале расчёта
+# как приоритет и транспорт называются в журнале расчёта
+PRIORITY_NAMES = {1: "аварийные", 2: "высокий", 3: "обычный"}
 TRANSPORT_NAMES = {
     TransportKind.CAR.value: "автомобиль",
     TransportKind.PEDESTRIAN.value: "пешком",
@@ -120,14 +122,18 @@ async def load_day(
     # офисы изолированы: бригады офиса берут только заявки своего офиса.
     # Заявки, закреплённые за утверждённым планом другого дня, в задачу не попадают:
     # окно через полночь иначе выполнялось бы дважды
-    await run_log.step("Читаю заявки и смены дня", 2, 10)
-    requests = await requests_repository.list_active_requests_in_period(
-        session, day.day_start, day.day_end, plan_date=day.plan_date, office_id=office_id
-    )
-    engineers = await engineers_repository.list_engineers_in_period(
-        session, day.day_start, day.day_end, office_id=office_id
-    )
-    await run_log.note(f"заявок к планированию {len(requests)}, смен бригад {len(engineers)}")
+    async with run_log.step("Читаю заявки и смены дня", 2, 10):
+        requests = await requests_repository.list_active_requests_in_period(
+            session, day.day_start, day.day_end, plan_date=day.plan_date, office_id=office_id
+        )
+        engineers = await engineers_repository.list_engineers_in_period(
+            session, day.day_start, day.day_end, office_id=office_id
+        )
+        await run_log.note(
+            f"заявок к планированию {len(requests)}, смен бригад {len(engineers)}",
+            details={"requests": len(requests), "engineers": len(engineers)},
+        )
+
 
     def free_from(engineer: Engineer) -> datetime:
         start = starts.get(engineer.id)
@@ -148,6 +154,7 @@ async def load_day(
     transports = await references_repository.list_transports(session)
     priorities = await references_repository.list_priorities(session)
     priority_levels = {priority.id: priority.level for priority in priorities}
+    await describe_day(requests, engineers, priority_levels)
 
     start_points = [
         Point(latitude=starts[e.id].latitude, longitude=starts[e.id].longitude)
@@ -204,6 +211,82 @@ async def load_day(
     )
 
 
+async def describe_day(
+    requests: list[Request], engineers: list[Engineer], priority_levels: dict[int, int]
+) -> None:
+    """Пишет в журнал состав дня: из чего вообще складывается задача."""
+    if not requests and not engineers:
+        return
+    levels = Counter(
+        priority_levels.get(request.priority_id, LOWEST_PRIORITY_LEVEL) for request in requests
+    )
+    by_level = ", ".join(
+        f"{PRIORITY_NAMES.get(level, level)} — {count}" for level, count in sorted(levels.items())
+    )
+    promised = sum(1 for request in requests if request.promised_from is not None)
+    moved = sum(1 for request in requests if request.moved_from is not None)
+    work_minutes = sum(request.duration_minutes for request in requests)
+    await run_log.note(
+        f"Заявки по приоритетам: {by_level}" if requests else "Заявок на день нет",
+        details={"by_priority": {str(level): count for level, count in levels.items()}},
+    )
+    if promised or moved:
+        await run_log.note(
+            f"С отметками: согласовано — {promised}, перенесённых — {moved}",
+            details={"promised": promised, "moved": moved},
+        )
+    if engineers:
+        transports = Counter(engineer.transport_id for engineer in engineers)
+        by_transport = ", ".join(
+            f"{TRANSPORT_NAMES.get(transport_id, transport_id)} — {count}"
+            for transport_id, count in sorted(transports.items())
+        )
+        shift_start = min(engineer.shift_start for engineer in engineers)
+        shift_end = max(engineer.shift_end for engineer in engineers)
+        await run_log.note(
+            f"Бригады: {by_transport}; смены с {local_text(shift_start)} до {local_text(shift_end)}",
+            details={"by_transport": {str(key): value for key, value in transports.items()}},
+        )
+    await run_log.note(
+        f"Работы в заявках на {work_minutes // 60} ч {work_minutes % 60} мин",
+        details={"work_minutes": work_minutes},
+    )
+
+
+async def describe_matrix(travel_min: np.ndarray, provider=None) -> None:
+    """Что получилось в матрице: сколько ехать между точками и куда дороги нет."""
+    reachable = travel_min[travel_min < UNREACHABLE_MINUTES]
+    unreachable = int((travel_min >= UNREACHABLE_MINUTES).sum())
+    pairs = travel_min.size
+    if reachable.size == 0:
+        await run_log.note(
+            f"Матрица {pairs} пар: доехать нельзя ни до одной точки", level="warning"
+        )
+        return
+    await run_log.note(
+        f"Матрица {pairs} пар{provider_text(provider)}: в пути в среднем "
+        f"{reachable.mean():.0f} мин, дольше всего {reachable.max():.0f} мин"
+        + (f", без дороги {unreachable} пар" if unreachable else ""),
+        level="warning" if unreachable else "info",
+        details={
+            "pairs": pairs,
+            "unreachable": unreachable,
+            "mean_minutes": round(float(reachable.mean()), 1),
+            "max_minutes": int(reachable.max()),
+        },
+    )
+
+
+def provider_text(provider) -> str:
+    """Чем посчитана матрица: valhalla, r5, haversine — если провайдер известен."""
+    name = getattr(provider, "value", provider)
+    return f" ({name})" if name else ""
+
+
+def local_text(moment: datetime) -> str:
+    return moment.astimezone(local_timezone()).strftime("%H:%M")
+
+
 async def build_day_matrices(
     engineers: list[Engineer],
     requests: list[Request],
@@ -240,36 +323,37 @@ async def build_day_matrices(
     transport_ids = sorted({engineer.transport_id for engineer in engineers})
     matrix_span = (45 - 10) / len(transport_ids)
     for order, transport_id in enumerate(transport_ids):
-        await run_log.step(
+        async with run_log.step(
             f"Считаю матрицу расстояний: {TRANSPORT_NAMES[transport_id]} ({len(points)} точек)",
             round(10 + matrix_span * order),
             round(10 + matrix_span * (order + 1)),
-        )
-        transport_engineers = [
-            engineer for engineer in engineers if engineer.transport_id == transport_id
-        ]
-        departure_time = min(
-            max(engineer.shift_start, day_start)
-            if day_start is not None
-            else engineer.shift_start
-            for engineer in transport_engineers
-        )
-        try:
-            matrix = await build_matrix(
-                points,
-                TransportKind(transport_id),
-                departure_time=departure_time,
-                allow_fallback=False,
+        ):
+            transport_engineers = [
+                engineer for engineer in engineers if engineer.transport_id == transport_id
+            ]
+            departure_time = min(
+                max(engineer.shift_start, day_start)
+                if day_start is not None
+                else engineer.shift_start
+                for engineer in transport_engineers
             )
-        except (httpx.HTTPError, KeyError, ValueError) as error:
-            raise ExternalServiceError(
-                f"Маршрутизатор недоступен, матрицу расстояний посчитать нельзя: {error}"
-            ) from error
+            try:
+                matrix = await build_matrix(
+                    points,
+                    TransportKind(transport_id),
+                    departure_time=departure_time,
+                    allow_fallback=False,
+                )
+            except (httpx.HTTPError, KeyError, ValueError) as error:
+                raise ExternalServiceError(
+                    f"Маршрутизатор недоступен, матрицу расстояний посчитать нельзя: {error}"
+                ) from error
 
-        distance_km[transport_id] = replace_unreachable(matrix.distances_km, UNREACHABLE_KM)
-        travel_min[transport_id] = np.ceil(
-            replace_unreachable(matrix.durations_min, UNREACHABLE_MINUTES)
-        ).astype(np.int32)
+            distance_km[transport_id] = replace_unreachable(matrix.distances_km, UNREACHABLE_KM)
+            travel_min[transport_id] = np.ceil(
+                replace_unreachable(matrix.durations_min, UNREACHABLE_MINUTES)
+            ).astype(np.int32)
+            await describe_matrix(travel_min[transport_id], getattr(matrix, "provider", None))
 
     return distance_km, travel_min
 

@@ -34,8 +34,23 @@ from src.services.planner.objective_policy import (
 )
 from src.services.planner.planner_problem import (
     RANK_EMERGENCY,
+    RANK_HIGH,
+    RANK_MOVED_HIGH,
+    RANK_MOVED_NORMAL,
+    RANK_NORMAL,
+    RANK_PROMISED,
     ProblemInstance,
 )
+
+# ярусы заявок словами — для журнала расчёта (docs/algoV2.md)
+RANK_NAMES = {
+    RANK_EMERGENCY: "аварийные",
+    RANK_PROMISED: "согласовано с клиентом",
+    RANK_MOVED_HIGH: "перенесённые P2",
+    RANK_MOVED_NORMAL: "перенесённые P3",
+    RANK_HIGH: "высокий приоритет",
+    RANK_NORMAL: "обычные",
+}
 
 # Objective cuOpt хранится в float32. Ограничиваем суммарный масштаб половиной точного
 # целочисленного диапазона: остаётся запас для сложения и единичных границ Big-M.
@@ -133,13 +148,18 @@ async def solve_day(
             objective_order=objective_order,
             ranks=ranks,
         )
-        await run_log.note(
-            f"cuOpt: {len(task_request_indices)} заявок, {instance.n_engineers} бригад, "
-            f"лимит {inputs.time_limit_seconds:.0f} c"
+        await describe_model(instance, inputs, task_request_indices, objective_order, ranks)
+        solving = asyncio.create_task(
+            asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
         )
-        route_records = await asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
+        route_records = await run_log.wait_cancellable(solving)
         solution = parse_route_records(route_records, task_request_indices)
-        await run_log.note(f"cuOpt вернул маршрутов: {len(solution.routes)}")
+        assigned = sum(len(visits) for visits in solution.routes.values())
+        await run_log.note(
+            f"cuOpt вернул: назначено {assigned} из {len(task_request_indices)}, "
+            f"задействовано {run_log.plural(len(solution.routes), 'бригада', 'бригады', 'бригад')}",
+            details={"assigned": assigned, "vehicles": len(solution.routes)},
+        )
     except ExternalServiceError:
         raise
     except (RuntimeError, ValueError, KeyError, IndexError, OSError) as error:
@@ -455,6 +475,72 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
         time_limit_seconds,
     )
     return assignment.get_route().to_pandas().to_dict("records")
+
+
+async def describe_model(
+    instance: ProblemInstance,
+    inputs: SolverInputs,
+    task_request_indices: list[int],
+    objective_order: tuple[ObjectiveCriterion, ...],
+    ranks: dict[int, int] | None,
+) -> None:
+    """Пишет в журнал параметры задачи: по ним видно, что именно решает cuOpt.
+
+    Без этого при долгом расчёте непонятно, большая ли задача, какие у неё ярусы и во что
+    превратился выбранный порядок целей.
+    """
+    request_ranks = rank_by_index(instance, task_request_indices, ranks)
+    by_rank = Counter(request_ranks.values())
+    tiers = ", ".join(
+        f"{RANK_NAMES.get(rank, rank)} — {count}" for rank, count in sorted(by_rank.items())
+    )
+    windows = [
+        instance.requests[index].window_end_min - instance.requests[index].window_start_min
+        for index in task_request_indices
+    ]
+    work = sum(instance.requests[index].duration_min for index in task_request_indices)
+    shifts = sum(
+        engineer.shift_end_min - engineer.shift_start_min for engineer in instance.engineers
+    )
+    await run_log.note(
+        f"Задача: {run_log.plural(len(task_request_indices), 'заявка', 'заявки', 'заявок')}, "
+        f"{run_log.plural(instance.n_engineers, 'бригада', 'бригады', 'бригад')}, "
+        f"{run_log.plural(inputs.location_count, 'точка', 'точки', 'точек')}, "
+        f"лимит решателя {inputs.time_limit_seconds:.0f} c",
+        details={
+            "orders": len(task_request_indices),
+            "vehicles": instance.n_engineers,
+            "locations": inputs.location_count,
+            "time_limit_seconds": round(inputs.time_limit_seconds, 1),
+        },
+    )
+    await run_log.note(f"Ярусы заявок: {tiers}", details={"tiers": dict(by_rank)})
+    await run_log.note(
+        f"Работы на {work // 60} ч {work % 60} мин при сменах на {shifts // 60} ч, "
+        f"окно заявки в среднем {round(sum(windows) / max(len(windows), 1))} мин",
+        details={"work_minutes": work, "shift_minutes": shifts},
+    )
+    await run_log.note(
+        "Порядок целей: " + " → ".join(criterion.value for criterion in objective_order),
+        details={"objective_order": [criterion.value for criterion in objective_order]},
+    )
+    objective = inputs.objective
+    # веса ярусов — это и есть «под капотом» algoV2: у каждой ступени награда больше суммы нижних
+    rewards = ", ".join(
+        f"{RANK_NAMES.get(rank, rank)} {reward:.3g}"
+        for rank, reward in sorted(objective.rank_rewards.items())
+    )
+    await run_log.note(
+        f"Награды: {rewards + ', ' if rewards else ''}обычная заявка "
+        f"{objective.regular_reward:.3g}; цена бригады {objective.vehicle_cost:.3g}, "
+        f"вес пробега {objective.distance_weight:.3g}",
+        details={
+            "rank_rewards": {str(rank): value for rank, value in objective.rank_rewards.items()},
+            "regular_reward": objective.regular_reward,
+            "vehicle_cost": objective.vehicle_cost,
+            "distance_weight": objective.distance_weight,
+        },
+    )
 
 
 def parse_route_records(route_records: list[dict], task_request_indices: list[int]) -> DaySolution:
