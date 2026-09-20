@@ -6,7 +6,9 @@ import { computed, onMounted, watch } from 'vue'
 
 import AppSidebar from './components/AppSidebar.vue'
 import { useAuth } from './composables/useAuth.js'
+import SystemClock from './components/SystemClock.vue'
 import { usePlanFocus } from './composables/usePlanFocus.js'
+import { useSystemTime } from './composables/useSystemTime.js'
 import { useSelectedDay } from './composables/useSelectedDay.js'
 import BrigadesPage from './pages/BrigadesPage.vue'
 import EngineersPage from './pages/EngineersPage.vue'
@@ -18,6 +20,7 @@ import OfficesPage from './pages/OfficesPage.vue'
 import PlanComparisonPage from './pages/PlanComparisonPage.vue'
 import PlansPage from './pages/PlansPage.vue'
 import PrioritiesPage from './pages/PrioritiesPage.vue'
+import SystemPage from './pages/SystemPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
 import UsersPage from './pages/UsersPage.vue'
@@ -48,13 +51,14 @@ const ALL_SECTIONS = [
       { key: 'users', label: 'Пользователи', adminOnly: true },
     ],
   },
+  { key: 'system', label: 'Система', icon: '⚙', adminOnly: true },
   { key: 'import', label: 'Загрузка CSV (тестовая)', icon: '⇪' },
   { key: 'routes', label: 'Маршруты (тестовые)', icon: '➤' },
 ]
 
 const TAB_STORAGE_KEY = 'routing.activeTab'
 const TABS = [
-  'requests', 'engineers', 'plans', 'comparison', 'offices', 'brigades', 'norms', 'priorities', 'equipment', 'users', 'import',
+  'requests', 'engineers', 'plans', 'comparison', 'offices', 'brigades', 'norms', 'priorities', 'equipment', 'users', 'system', 'import',
   'routes',
 ]
 // вкладка «Справочники» была одной страницей — теперь это «Офисы» внутри раздела
@@ -78,7 +82,7 @@ const { user, isAdmin, offices, currentOfficeId, currentOfficeName, chooseOffice
 
 // диспетчеру справочники офисов и учёток не показываются вовсе
 const sections = computed(() =>
-  ALL_SECTIONS.map((section) =>
+  ALL_SECTIONS.filter((section) => isAdmin.value || !section.adminOnly).map((section) =>
     section.items ? { ...section, items: section.items.filter((item) => isAdmin.value || !item.adminOnly) } : section,
   ),
 )
@@ -101,6 +105,15 @@ const { loadDaysWithRequests, refreshDaysWithRequests } = useSelectedDay()
 watch(currentOfficeId, (officeId, previous) => {
   if (user.value && officeId !== null && officeId !== previous) refreshDaysWithRequests()
 })
+
+const { start: startClock, stop: stopClock } = useSystemTime()
+
+// часы идут, пока кто-то вошёл: время берётся с сервера
+watch(
+  user,
+  (value) => (value ? startClock() : stopClock()),
+  { immediate: true },
+)
 
 onMounted(async () => {
   await restore()
@@ -126,6 +139,9 @@ onMounted(async () => {
     />
 
     <div class="app-main">
+      <!-- системное время: одно на все вкладки, администратор может перемотать его для показа.
+           Часы стоят на уровне заголовка страницы, отдельной полосы под них нет -->
+      <SystemClock class="clock-corner" />
       <!-- сменили офис — страница собирается заново и грузит данные уже этого офиса -->
       <div :key="currentOfficeId ?? 'none'" class="page">
         <RequestsPage v-if="activeTab === 'requests'" />
@@ -138,6 +154,7 @@ onMounted(async () => {
         <PrioritiesPage v-else-if="activeTab === 'priorities'" />
         <EquipmentPage v-else-if="activeTab === 'equipment'" />
         <UsersPage v-else-if="activeTab === 'users'" />
+        <SystemPage v-else-if="activeTab === 'system'" />
         <ImportPage v-else-if="activeTab === 'import'" />
         <RouteStandPage v-else />
       </div>
@@ -152,6 +169,7 @@ onMounted(async () => {
 }
 
 .app-main {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -161,5 +179,13 @@ onMounted(async () => {
 .page {
   flex: 1;
   min-height: 0;
+}
+
+/* часы в правом верхнем углу рабочей области, на одной строке с заголовком страницы */
+.clock-corner {
+  position: absolute;
+  top: 17px;
+  right: 20px;
+  z-index: 900;
 }
 </style>

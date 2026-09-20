@@ -68,8 +68,6 @@ async def change_status(
             )
     if problems:
         raise StatusTransitionError(problems)
-    if to_status_id == RequestStatusId.PLANNED and manual:
-        await check_return_to_plan(session, [r for r in requests if r.status_id != to_status_id])
     await check_route_chain(session, requests, to_status_id)
 
     for request in requests:
@@ -111,19 +109,6 @@ async def require_transition(
     )
 
 
-async def check_return_to_plan(session: AsyncSession, requests: list[Request]) -> None:
-    """Вернуть «В план» руками можно только на прежнее место в утверждённом плане."""
-    placed = await request_statuses_repository.list_placed_in_approved_plan(session, requests)
-    problems = [
-        f"заявка №{request.id}: утверждённого плана, где у неё есть место в маршруте, нет — "
-        "верните её в «Новая» и пересчитайте план"
-        for request in requests
-        if request.id not in placed
-    ]
-    if problems:
-        raise StatusTransitionError(problems)
-
-
 async def check_route_chain(
     session: AsyncSession, requests: list[Request], to_status_id: int
 ) -> None:
@@ -133,12 +118,7 @@ async def check_route_chain(
     заявке, только если все заявки перед ней в маршруте уже закрыты — выполнены или
     отменены (отменённая пропускается). Если меняют сразу несколько заявок маршрута,
     проверяется итоговое состояние: отметить выполненными первую и вторую вместе можно.
-    И наоборот: вернуть «В план» заявку, после которой бригада уже в работе или закончила, —
-    значит оставить её позади; такую заявку нужно пересчитывать.
     """
-    if to_status_id == RequestStatusId.PLANNED:
-        await check_nobody_passed(session, requests)
-        return
     if to_status_id not in STARTED_STATUSES:
         return
     changing = {request.id for request in requests}
@@ -155,32 +135,5 @@ async def check_route_chain(
                 )
             if status_id not in CLOSED_STATUSES and blocking is None:
                 blocking = (visit_number, request)
-    if problems:
-        raise StatusTransitionError(problems)
-
-
-async def check_nobody_passed(session: AsyncSession, requests: list[Request]) -> None:
-    """Заявку возвращают «В план»: бригада не должна была уйти дальше неё по маршруту."""
-    changing = {request.id for request in requests}
-    problems = []
-    for route in await request_statuses_repository.list_routes_of(session, requests):
-        for index, request in enumerate(route):
-            if request.id not in changing:
-                continue
-            passed = next(
-                (
-                    (number, later)
-                    for number, later in enumerate(route[index + 1 :], start=index + 2)
-                    if later.id not in changing and later.status_id in STARTED_STATUSES
-                ),
-                None,
-            )
-            if passed is not None:
-                number, later = passed
-                problems.append(
-                    f"заявка №{request.id}: бригада уже дальше по маршруту — заявка №{later.id} "
-                    f"(визит {number}) в работе или выполнена. Верните заявку в «Новая» и "
-                    "пересчитайте план"
-                )
     if problems:
         raise StatusTransitionError(problems)

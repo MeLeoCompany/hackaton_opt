@@ -4,13 +4,14 @@ import asyncio
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core import clock
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates
 from src.models import Assignment, Engineer, Plan, PlanRunType, Request, RequestStatusId
@@ -264,7 +265,7 @@ async def approve_plan(
         session, RequestStatusId.NEW, RequestStatusId.PLANNED, manual=False
     )
     held_count, assigned_count, planned_ids = await plans_repository.hold_plan_requests(
-        session, plan, datetime.now(UTC)
+        session, plan, clock.now()
     )
     if held_count != assigned_count:
         await session.rollback()
@@ -362,7 +363,7 @@ async def approve_replan(
     statuses = {
         status.id: status for status in await request_statuses_repository.list_statuses(session)
     }
-    now = datetime.now(UTC)
+    now = clock.now()
     moment = planner_loader.planning_day(plan.plan_date).to_minutes(plan.replanned_at or now)
     at_text = f"{moment // 60:02d}:{moment % 60:02d}"
 
@@ -785,7 +786,7 @@ async def plan_route_delays(
         status.id: status.code
         for status in await request_statuses_repository.list_statuses(session)
     }
-    moment = datetime.now(UTC)
+    moment = clock.now()
     now = moment if planner_loader.local_date_of(moment) == plan.plan_date else None
 
     routes: dict[int, list[Assignment]] = defaultdict(list)

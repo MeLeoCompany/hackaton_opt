@@ -86,7 +86,8 @@ onMounted(() => {
   }).addTo(map)
 
   markerLayer = L.layerGroup().addTo(map)
-  routeLayer = L.layerGroup().addTo(map)
+  // featureGroup, а не layerGroup: только у него есть getBounds для подгонки масштаба
+  routeLayer = L.featureGroup().addTo(map)
 
   map.on('click', (event) => emit('add-point', event.latlng.lat, event.latlng.lng))
 })

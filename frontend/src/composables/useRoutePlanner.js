@@ -36,6 +36,8 @@ export function useRoutePlanner() {
     loading.value = true
     error.value = ''
     try {
+      // время выезда — системное: у общественного транспорта от него зависит расписание,
+      // а перематывают его часами в правом верхнем углу
       target.value = await request(points.value, transport.value)
     } catch (e) {
       error.value = e.message

@@ -39,9 +39,6 @@ TRANSITIONS = [
     ),
     SimpleNamespace(from_status_id=CANCELLED, to_status_id=NEW, manual=True, description="Возврат"),
     SimpleNamespace(
-        from_status_id=CANCELLED, to_status_id=PLANNED, manual=True, description="В план"
-    ),
-    SimpleNamespace(
         from_status_id=PLANNED, to_status_id=IN_PROGRESS, manual=True, description="Выехала"
     ),
     SimpleNamespace(
@@ -53,25 +50,17 @@ TRANSITIONS = [
 ]
 # маршрут бригады утверждённого плана, по которому проверяются разрывы; по умолчанию пусто
 ROUTES: list = []
-# заявки, у которых есть место в маршруте утверждённого плана — их можно вернуть «В план»
-PLACED: set = set()
 
 
 @pytest.fixture(autouse=True)
 def status_tables():
     repository = request_status_service.request_statuses_repository
     ROUTES.clear()
-    PLACED.clear()
     with (
         patch.object(repository, "list_statuses", AsyncMock(return_value=STATUSES)),
         patch.object(repository, "list_transitions", AsyncMock(return_value=TRANSITIONS)),
         patch.object(
             repository, "list_routes_of", AsyncMock(side_effect=lambda session, requests: ROUTES)
-        ),
-        patch.object(
-            repository,
-            "list_placed_in_approved_plan",
-            AsyncMock(side_effect=lambda session, requests: PLACED),
         ),
         patch.object(repository, "add_history") as add_history,
     ):
@@ -217,35 +206,6 @@ async def test_several_visits_of_the_route_can_be_closed_together():
     await request_status_service.change_status(object(), [first, second], DONE, manual=True)
 
     assert (first.status_id, second.status_id) == (DONE, DONE)
-
-
-@pytest.mark.asyncio
-async def test_cancelled_request_returns_to_its_place_in_approved_plan():
-    _, cancelled, _ = route(DONE, CANCELLED, PLANNED)
-    PLACED.add(cancelled.id)
-
-    await request_status_service.change_status(object(), [cancelled], PLANNED, manual=True)
-
-    assert (cancelled.status_id, cancelled.approved_plan_id) == (PLANNED, 22)
-
-
-@pytest.mark.asyncio
-async def test_cancelled_request_without_place_in_approved_plan_cannot_return_there():
-    cancelled = request(9, CANCELLED, plan_id=22)  # план сняли с утверждения — места нет
-
-    with pytest.raises(request_status_service.StatusTransitionError, match="верните её в «Новая»"):
-        await request_status_service.change_status(object(), [cancelled], PLANNED, manual=True)
-
-    assert cancelled.status_id == CANCELLED
-
-
-@pytest.mark.asyncio
-async def test_request_cannot_return_behind_brigade_that_went_further():
-    cancelled, _ = route(CANCELLED, IN_PROGRESS)
-    PLACED.add(cancelled.id)
-
-    with pytest.raises(request_status_service.StatusTransitionError, match="бригада уже дальше"):
-        await request_status_service.change_status(object(), [cancelled], PLANNED, manual=True)
 
 
 @pytest.mark.asyncio

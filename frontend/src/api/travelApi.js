@@ -20,10 +20,11 @@ export const TRAVEL_MODES = {
   walk: { label: 'Пешком', color: '#059669' },
 }
 
-export function fetchRoute(points, transport) {
-  return apiRequest('POST', '/travel/route', { json: { points, transport } })
+// departureTime — когда выезжаем: для общественного транспорта от него зависит расписание
+export function fetchRoute(points, transport, departureTime) {
+  return apiRequest('POST', '/travel/route', { json: { points, transport, departure_time: departureTime } })
 }
 
-export function fetchMatrix(points, transport) {
-  return apiRequest('POST', '/travel/matrix', { json: { points, transport } })
+export function fetchMatrix(points, transport, departureTime) {
+  return apiRequest('POST', '/travel/matrix', { json: { points, transport, departure_time: departureTime } })
 }

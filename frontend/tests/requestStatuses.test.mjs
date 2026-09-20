@@ -17,8 +17,6 @@ const REFERENCES = {
     { from_status_id: 2, to_status_id: 3, manual: true, description: 'Выполнена' },
     { from_status_id: 2, to_status_id: 5, manual: true, description: 'Выехала' },
     { from_status_id: 1, to_status_id: 4, manual: true, description: 'Отмена' },
-    { from_status_id: 4, to_status_id: 2, manual: true, description: 'В план' },
-    { from_status_id: 4, to_status_id: 1, manual: true, description: 'Новая' },
   ],
 }
 
@@ -35,7 +33,6 @@ test('статусы идут в порядке работы, а не в пор�
   assert.equal(statusIdByCode(REFERENCES, 'new'), 1)
 })
 
-test('вернуть «В план» предлагается только заявке, у которой есть утверждённый план', () => {
-  assert.deepEqual(manualTransitions(REFERENCES, 4).map((item) => item.name), ['Новая'])
-  assert.deepEqual(manualTransitions(REFERENCES, 4, 22).map((item) => item.name), ['Новая', 'В плане'])
+test('из «Отменена» переходов нет: отмена окончательна, работу повторяют копией', () => {
+  assert.deepEqual(manualTransitions(REFERENCES, 4), [])
 })

@@ -1,7 +1,8 @@
 <script setup>
 // Маршрут бригады на день: шапка с днём и прогрессом, текущая заявка с кнопками сверху,
-// ниже — весь маршрут по порядку. Маршрут обновляется сам раз в минуту: диспетчер мог
-// пересчитать план.
+// ниже — весь маршрут по порядку. Диспетчер может пересчитать план в любой момент, поэтому
+// маршрут обновляется сам: раз в полминуты, при возврате в приложение и по кнопке ⟳.
+// Рядом с кнопкой — время последнего обновления, чтобы бригада видела, насколько данные свежие.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { currentVisit, departurePoint, formatDay, isClosed, moscowTime, progress } from '../route.js'
@@ -9,7 +10,13 @@ import { useBrigade } from '../useBrigade.js'
 import FailSheet from './FailSheet.vue'
 import VisitCard from './VisitCard.vue'
 
-const { user, days, day, route, loading, busy, errorMessage, logout, loadRoute, selectDay, mark } = useBrigade()
+const { user, days, day, route, lastUpdatedAt, loading, busy, errorMessage, logout, refresh, selectDay, mark } =
+  useBrigade()
+
+// время московское, как и всё в приложении: часы телефона могут стоять в другом поясе
+const updatedText = computed(() =>
+  lastUpdatedAt.value ? `обновлено ${moscowTime(lastUpdatedAt.value.toISOString())}` : '',
+)
 
 const current = computed(() => currentVisit(route.value))
 const counts = computed(() => progress(route.value))
@@ -26,14 +33,26 @@ async function confirmFail(reason) {
   await mark(visit, 'fail', reason)
 }
 
-const REFRESH_MS = 60_000
+const REFRESH_MS = 30_000
 let timer = null
+
+function refreshIfIdle() {
+  if (!busy.value && !failing.value && !loading.value) refresh()
+}
+
+// вернулись в приложение (свернули телефон, погасили экран) — сразу свежий маршрут
+function onVisible() {
+  if (document.visibilityState === 'visible') refreshIfIdle()
+}
+
 onMounted(() => {
-  timer = setInterval(() => {
-    if (!busy.value && !failing.value) loadRoute()
-  }, REFRESH_MS)
+  timer = setInterval(refreshIfIdle, REFRESH_MS)
+  document.addEventListener('visibilitychange', onVisible)
 })
-onBeforeUnmount(() => clearInterval(timer))
+onBeforeUnmount(() => {
+  clearInterval(timer)
+  document.removeEventListener('visibilitychange', onVisible)
+})
 </script>
 
 <template>
@@ -61,7 +80,16 @@ onBeforeUnmount(() => clearInterval(timer))
       <span v-if="route?.shift_start" class="shift">
         смена {{ moscowTime(route.shift_start) }}–{{ moscowTime(route.shift_end) }}
       </span>
-      <button class="ghost light refresh" :disabled="loading" aria-label="обновить" @click="loadRoute">⟳</button>
+      <span v-if="updatedText" class="updated">{{ loading ? 'обновляю…' : updatedText }}</span>
+      <button
+        :class="['ghost', 'light', 'refresh', { spinning: loading }]"
+        :disabled="loading"
+        aria-label="обновить маршрут"
+        title="Обновить маршрут"
+        @click="refresh"
+      >
+        ⟳
+      </button>
     </div>
 
     <div v-if="counts.total" class="progress">
@@ -95,7 +123,8 @@ onBeforeUnmount(() => clearInterval(timer))
             @fail="failing = $event"
           />
         </section>
-        <p v-else class="empty done">Все заявки маршрута закрыты. Хорошая работа!</p>
+        <!-- маршрут могут пересчитать в любой момент, поэтому не прощаемся: задач просто нет -->
+        <p v-else class="empty done">Задач пока нет — все заявки закрыты.</p>
 
         <section v-if="upcoming.length" class="block">
           <h2>Дальше по маршруту · {{ upcoming.length }}</h2>
@@ -159,6 +188,22 @@ onBeforeUnmount(() => clearInterval(timer))
   font-size: 13px;
 }
 
+.updated {
+  margin-left: auto;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.refresh.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .day-name {
   font-size: 14px;
   font-weight: 600;
@@ -177,6 +222,11 @@ onBeforeUnmount(() => clearInterval(timer))
 .refresh {
   margin-left: auto;
   font-size: 16px;
+}
+
+/* время обновления уже прижато вправо — кнопка встаёт вплотную к нему */
+.updated + .refresh {
+  margin-left: 8px;
 }
 
 .progress {

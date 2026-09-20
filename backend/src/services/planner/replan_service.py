@@ -19,10 +19,11 @@
 import asyncio
 import time
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core import clock
 from src.core.local_day import local_timezone
 from src.models import Assignment, Plan, PlanRunType, RequestStatusId
 from src.repositories.brigade import brigade_repository
@@ -130,7 +131,7 @@ async def replannable(
         raise PlanInUseError(
             f"Пересчитать можно только действующий утверждённый план, а план №{plan_id} — нет"
         )
-    at = at or datetime.now(UTC)
+    at = at or clock.now()
     day = planner_loader.planning_day(parent.plan_date)
     if at >= day.day_end:
         raise PlanDataError([f"день {parent.plan_date:%d.%m.%Y} на этот момент уже закончился"])

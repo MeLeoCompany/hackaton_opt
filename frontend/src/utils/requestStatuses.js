@@ -31,13 +31,10 @@ export function orderedStatuses(references) {
 }
 
 // куда оператор может перевести заявку из этого статуса: [{ to_status_id, name, description }].
-// «В плане» руками — только возврат отменённой заявки на её место в утверждённом плане:
-// без плана (planId пуст) этот переход не предлагаем
-export function manualTransitions(references, fromStatusId, planId = null) {
-  const plannedId = statusIdByCode(references, 'planned')
+// Из «Отменена» переходов нет: отмена окончательна, работу повторяют копией заявки
+export function manualTransitions(references, fromStatusId) {
   return (references.request_status_transitions ?? [])
     .filter((transition) => transition.manual && transition.from_status_id === fromStatusId)
-    .filter((transition) => transition.to_status_id !== plannedId || planId !== null)
     .map((transition) => ({ ...transition, name: referenceName(references, 'request_statuses', transition.to_status_id) }))
     .sort((first, second) => statusRank(references, first.to_status_id) - statusRank(references, second.to_status_id))
 }

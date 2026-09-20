@@ -234,7 +234,7 @@ export function usePlans() {
   watch(selectedDay, loadPlans)
 
   // оператор сменил статус заявки в маршруте — показываем его у визита без перезагрузки плана.
-  // «Новая» бэкенд отвязывает от плана, возврат «В план» — закрепляет за этим планом снова
+  // «Новая» бэкенд отвязывает от плана
   function markVisitStatus(requestId, statusId) {
     const code = references.value.request_statuses?.find((status) => status.id === statusId)?.code
     for (const route of plan.value?.routes ?? []) {

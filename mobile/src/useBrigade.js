@@ -9,6 +9,7 @@ const days = ref([])
 const day = ref(null)
 const route = ref(null)
 const loading = ref(false)
+const lastUpdatedAt = ref(null) // когда маршрут последний раз пришёл с сервера
 const busy = ref(false) // отметка уходит на сервер — кнопки ждут
 const errorMessage = ref('')
 const noticeMessage = ref('')
@@ -70,6 +71,7 @@ function logout() {
   route.value = null
   days.value = []
   day.value = null
+  lastUpdatedAt.value = null
 }
 
 async function loadDays() {
@@ -77,6 +79,28 @@ async function loadDays() {
   days.value = loaded.days
   day.value = loaded.default_day
   await loadRoute()
+}
+
+// обновление по кнопке, по таймеру и при возврате в приложение: диспетчер мог пересчитать
+// план или утвердить его на новый день, поэтому перечитываем и список дней, и маршрут
+async function refresh() {
+  if (!user.value) return
+  loading.value = true
+  try {
+    const loaded = await routeDays()
+    days.value = loaded.days
+    // выбранный день оставляем, если он ещё есть; иначе открываем тот, что предложил сервер
+    if (day.value && !loaded.days.includes(day.value) && loaded.default_day) {
+      day.value = loaded.default_day
+    }
+    route.value = await routeOf(day.value)
+    lastUpdatedAt.value = new Date()
+    errorMessage.value = ''
+  } catch (error) {
+    handle(error)
+  } finally {
+    loading.value = false
+  }
 }
 
 async function loadRoute() {
@@ -87,6 +111,7 @@ async function loadRoute() {
   loading.value = true
   try {
     route.value = await routeOf(day.value)
+    lastUpdatedAt.value = new Date()
   } catch (error) {
     handle(error)
   } finally {
@@ -112,6 +137,7 @@ async function mark(visit, action, reason = '') {
   busy.value = true
   try {
     route.value = await markVisit(visit.request_id, action, reason)
+    lastUpdatedAt.value = new Date()
     showNotice(DONE_TEXT[action])
   } catch (error) {
     handle(error)
@@ -128,6 +154,7 @@ export function useBrigade() {
     days,
     day,
     route,
+    lastUpdatedAt,
     loading,
     busy,
     errorMessage,
@@ -136,6 +163,7 @@ export function useBrigade() {
     restore,
     logout,
     loadRoute,
+    refresh,
     selectDay,
     mark,
   }

@@ -4,6 +4,7 @@ from itertools import pairwise
 
 import httpx
 
+from src.core import clock
 from src.core.local_day import local_timezone
 from src.schemas.travel import (
     Point,
@@ -34,7 +35,7 @@ async def build_matrix(
     if transport is TransportKind.PUBLIC_TRANSPORT:
         return await _public_transport_matrix(
             points,
-            departure_time or datetime.now(local_timezone()),
+            departure_time or clock.now().astimezone(local_timezone()),
             allow_fallback=allow_fallback,
         )
 
@@ -125,7 +126,7 @@ async def build_route(
         try:
             return await _r5_route(
                 points,
-                departure_time or datetime.now(local_timezone()),
+                departure_time or clock.now().astimezone(local_timezone()),
                 leg_departure_times=leg_departure_times,
             )
         except (httpx.HTTPError, KeyError, ValueError):

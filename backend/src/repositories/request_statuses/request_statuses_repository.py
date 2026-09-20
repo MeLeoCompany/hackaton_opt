@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models import (
     AppUser,
     Assignment,
-    Plan,
     Request,
     RequestStatus,
     RequestStatusHistory,
@@ -102,26 +101,3 @@ async def list_routes_of(session: AsyncSession, requests: list[Request]) -> list
         )
         routes.append(list(result.scalars().all()))
     return routes
-
-
-async def list_placed_in_approved_plan(session: AsyncSession, requests: list[Request]) -> set[int]:
-    """Какие из заявок стоят в маршруте бригады своего плана и этот план всё ещё утверждён.
-
-    Только такую отменённую заявку можно вернуть «В план» без пересчёта: её место в маршруте цело.
-    """
-    held = [
-        (request.approved_plan_id, request.id) for request in requests if request.approved_plan_id
-    ]
-    if not held:
-        return set()
-    result = await session.execute(
-        select(Assignment.request_id)
-        .join(Plan, Plan.id == Assignment.plan_id)
-        .where(
-            tuple_(Assignment.plan_id, Assignment.request_id).in_(held),
-            Assignment.engineer_id.is_not(None),
-            Plan.approved_at.is_not(None),
-            Plan.superseded_at.is_(None),
-        )
-    )
-    return set(result.scalars().all())

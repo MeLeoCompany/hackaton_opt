@@ -11,10 +11,11 @@
 на карте плана, отставание от плана и пересчитывает остаток дня.
 """
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core import clock
 from src.core.errors import DataError, NotFoundError
 from src.core.local_day import local_timezone
 from src.models import AppUser, Assignment, Request, RequestStatusId
@@ -37,7 +38,8 @@ class BrigadeVisitNotFoundError(NotFoundError):
 
 
 def now() -> datetime:
-    return datetime.now(UTC)
+    """Системное время: для демонстрации его можно перемотать (core/clock.py)."""
+    return clock.now()
 
 
 async def route_days(session: AsyncSession, user: AppUser) -> BrigadeDays:

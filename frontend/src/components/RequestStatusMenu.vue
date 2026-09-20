@@ -16,7 +16,7 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   withHistory: { type: Boolean, default: true },
-  // утверждённый план заявки: пункт «Открыть в плане» и возврат отменённой «В план»
+  // утверждённый план заявки: пункт «Открыть в плане»
   planId: { type: Number, default: null },
   // в самом плане ссылка «Открыть в плане» не нужна
   withPlanLink: { type: Boolean, default: true },
@@ -32,7 +32,7 @@ const position = ref({ top: 0, left: 0 })
 
 const name = computed(() => referenceName(props.references, 'request_statuses', props.statusId))
 const code = computed(() => statusCode(props.references, props.statusId))
-const transitions = computed(() => manualTransitions(props.references, props.statusId, props.planId))
+const transitions = computed(() => manualTransitions(props.references, props.statusId))
 
 // переходов руками нет — объясняем почему и что делать
 const noTransitionsText = computed(() => {

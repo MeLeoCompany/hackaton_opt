@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,8 +8,19 @@ from fastapi.responses import JSONResponse
 from src.api.v1.router import router as v1_router
 from src.core.config import settings
 from src.core.errors import DataError, ExternalServiceError, InUseError, NotFoundError
+from src.db.session import async_session_maker
+from src.services.system import system_service
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # системное время могли перемотать для демонстрации — поднимаем сдвиг из базы
+    async with async_session_maker() as session:
+        await system_service.load_offset(session)
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

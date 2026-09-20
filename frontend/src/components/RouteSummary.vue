@@ -1,10 +1,17 @@
 <script setup>
+import { computed } from 'vue'
+
 import { TRAVEL_MODES } from '../api/travelApi.js'
 
 const props = defineProps({
   route: { type: Object, default: null },
   matrix: { type: Object, default: null },
 })
+
+// маршрут общественным транспортом целиком пеший: в это время рейсов в расписании нет
+const onlyWalking = computed(
+  () => props.route?.transport === 4 && props.route.legs?.every((leg) => leg.mode === 'walk'),
+)
 
 function formatDuration(minutes) {
   const hours = Math.floor(minutes / 60)
@@ -62,6 +69,11 @@ function matrixLegSum(matrix) {
     </p>
     <p v-else-if="route.provider === 'transit_estimate'" class="warn">
       R5 недоступен: использована приближённая модель общественного транспорта.
+    </p>
+    <!-- рейсов в это время нет (ночь, выходной вне расписания) — R5 вернул только пешие участки -->
+    <p v-else-if="onlyWalking" class="warn">
+      На это время рейсов в расписании нет — показан пеший маршрут. Поменяйте время выезда:
+      метро в данных ходит с 05:00 до 02:00.
     </p>
   </div>
 

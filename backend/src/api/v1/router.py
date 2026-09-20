@@ -12,6 +12,7 @@ from src.api.v1.endpoints import (
     plans,
     references,
     requests,
+    system,
     travel,
     users,
 )
@@ -25,6 +26,7 @@ router.include_router(auth.router, prefix="/auth", tags=["auth"])
 # Depends(current_office_id). Учётка бригады работает только с /brigade (мобильное приложение)
 signed_in = [Depends(require_staff)]
 router.include_router(users.router, prefix="/users", tags=["users"], dependencies=signed_in)
+router.include_router(system.router, prefix="/system", tags=["system"], dependencies=signed_in)
 router.include_router(
     references.router, prefix="/references", tags=["references"], dependencies=signed_in
 )
