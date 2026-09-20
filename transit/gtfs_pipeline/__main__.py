@@ -58,6 +58,7 @@ def main() -> None:
     prepared_bus.add_argument("--weekday-date", required=True, type=date.fromisoformat)
     prepared_bus.add_argument("--start-date", required=True, type=date.fromisoformat)
     prepared_bus.add_argument("--end-date", required=True, type=date.fromisoformat)
+    prepared_bus.add_argument("--retrospective", action="store_true")
     prepared_bus.add_argument("--output-dir", required=True, type=Path)
     night_batch = commands.add_parser(
         "collect-night-bus-batch", help="получить все ночные автобусы из каталога"
@@ -74,6 +75,7 @@ def main() -> None:
     night_weekly.add_argument("--template-date", required=True, type=date.fromisoformat)
     night_weekly.add_argument("--start-date", required=True, type=date.fromisoformat)
     night_weekly.add_argument("--end-date", required=True, type=date.fromisoformat)
+    night_weekly.add_argument("--retrospective", action="store_true")
     night_weekly.add_argument("--output-dir", required=True, type=Path)
     metro = commands.add_parser("collect-metro", help="получить топологию линии метро")
     metro.add_argument("--relations", required=True, type=int, nargs="+")
@@ -119,6 +121,7 @@ def main() -> None:
             args.start_date,
             args.end_date,
             args.output_dir,
+            retrospective=args.retrospective,
         )
         print(f"Создан ежедневный шаблон: {output}")
     elif args.command == "collect-night-bus-batch":
@@ -144,6 +147,7 @@ def main() -> None:
             args.template_date,
             args.start_date,
             args.end_date,
+            retrospective=args.retrospective,
         )
         print(f"Создано недельных шаблонов: {created}")
         if missing:

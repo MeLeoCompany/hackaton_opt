@@ -3,7 +3,7 @@
   "kind": "bus_weekly",
   "template": "route-1348-2026-09-20.json",
   "service": {
-    "start_date": "2026-09-21",
+    "start_date": "2026-08-01",
     "end_date": "2026-12-31",
     "weekdays": [
       0,
@@ -19,6 +19,7 @@
     "template_date": "2026-09-20",
     "night_service": true,
     "quality": "приближение",
+    "retrospective": true,
     "note": "Расписание одной ночи повторяется ежедневно до ручного обновления. Различия между днями недели не подтверждены."
   }
 }

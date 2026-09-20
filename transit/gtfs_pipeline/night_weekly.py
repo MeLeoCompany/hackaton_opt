@@ -12,9 +12,13 @@ def generate_night_weekly(
     template_date: date,
     start_date: date,
     end_date: date,
+    *,
+    retrospective: bool = False,
 ) -> tuple[int, list[str]]:
-    if start_date <= template_date or end_date < start_date:
-        raise ValueError("недельный шаблон должен начинаться после точной даты")
+    if end_date < start_date:
+        raise ValueError("конец периода повторения раньше начала")
+    if start_date < template_date and not retrospective:
+        raise ValueError("для дат до снимка требуется --retrospective")
     catalog = read_json(catalog_path)
     if catalog["source"]["url"] != "https://transport.mos.ru/transport/schedule/night":
         raise ValueError("нужен каталог ночных автобусов")
@@ -50,8 +54,13 @@ def generate_night_weekly(
                     "template_date": template_date.isoformat(),
                     "night_service": True,
                     "quality": "приближение",
+                    "retrospective": retrospective,
                     "note": (
                         "Расписание одной ночи повторяется ежедневно до ручного обновления. "
+                        "Различия между днями недели не подтверждены. "
+                        "Даты до снимка являются ретроспективной оценкой."
+                        if retrospective
+                        else "Расписание одной ночи повторяется ежедневно до ручного обновления. "
                         "Различия между днями недели не подтверждены."
                     ),
                 },
