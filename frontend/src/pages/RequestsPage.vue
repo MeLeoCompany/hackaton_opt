@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
@@ -12,6 +12,7 @@ import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
 import RequestsTable from '../components/RequestsTable.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
+import { useDayPlanWarning } from '../composables/useDayPlanWarning.js'
 import { useSelectedDay } from '../composables/useSelectedDay.js'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
 import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
@@ -102,7 +103,15 @@ function showOnMap(requestId) {
   viewMode.value = 'map'
 }
 
-const { selectedDay } = useSelectedDay()
+const { selectedDay, refreshDaysWithRequests } = useSelectedDay()
+
+// утверждённый план дня: если с ним что-то разошлось, предупреждаем прямо здесь
+const { planSummary, needsReplan, load: loadDayPlan } = useDayPlanWarning()
+
+// обновить всё, что могло измениться: заявки, план дня и дни с заявками
+async function refreshDay() {
+  await Promise.all([load(), loadDayPlan(), refreshDaysWithRequests()])
+}
 
 // файл, который переносят в выбранный день: ждёт ответа про отменённые заявки
 const transferFile = ref(null)
@@ -141,8 +150,11 @@ function focusRequest(requestId) {
   selectRequest(requestId)
 }
 
+// сменили день — перечитываем и план дня: предупреждение относится к новому дню
+watch(selectedDay, loadDayPlan)
+
 onMounted(async () => {
-  await load()
+  await Promise.all([load(), loadDayPlan()])
   const requestId = takeRequestId()
   if (requestId !== null) focusRequest(requestId)
 })
@@ -164,10 +176,18 @@ onMounted(async () => {
       :summary="`заявок на этот день ${requests.length}, к планированию ${activeTotal}`"
       transfer="заявки"
       :disabled="saving"
+      refreshable
+      @refresh="refreshDay"
       @export-day="exportDay"
       @import-day="transferFile = $event"
     />
 
+
+    <!-- с утверждённым планом дня что-то разошлось: оператор видит это, не заходя в планы -->
+    <p v-if="needsReplan" class="replan-warning">
+      <span>⚠ Рекомендуется пересчитать план</span>
+      <button type="button" class="link" @click="openPlan(planSummary.id)">Открыть план №{{ planSummary.id }} →</button>
+    </p>
 
     <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
@@ -294,3 +314,25 @@ onMounted(async () => {
     </Transition>
   </div>
 </template>
+
+<style scoped>
+/* предупреждение про утверждённый план дня: жёлтая полоса, заметная, но не красная ошибка */
+.replan-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.replan-warning .link {
+  color: #b45309;
+  font-weight: 600;
+}
+</style>

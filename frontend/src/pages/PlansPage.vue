@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
+import IconButton from '../components/IconButton.vue'
 import PlanBuildDialog from '../components/PlanBuildDialog.vue'
 import PlanMap from '../components/PlanMap.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
@@ -167,7 +168,12 @@ onMounted(async () => {
 
     <!-- список планов дня: отсюда строят, утверждают, удаляют и открывают план -->
     <template v-if="!planOpened">
-      <DayPanel :disabled="building" :summary="`планов на этот день ${plans.length}`" />
+      <DayPanel
+        :disabled="building"
+        :summary="`планов на этот день ${plans.length}`"
+        refreshable
+        @refresh="loadPlans"
+      />
 
       <section class="plan-toolbar">
         <button class="primary" :disabled="!selectedDay || building" @click="buildDialogOpen = true">
@@ -210,6 +216,13 @@ onMounted(async () => {
         <button class="back-button" :title="`Вернуться к списку планов на ${formatDay(selectedDay)}`" @click="backToPlans">
           <span aria-hidden="true">←</span> Планы на {{ formatDay(selectedDay) }}
         </button>
+        <!-- бригады отмечаются в приложении, а диспетчер мог снять заявку: перечитываем план -->
+        <IconButton
+          icon="refresh"
+          label="Обновить план: отметки бригад и снятые заявки"
+          :disabled="loadingPlan"
+          @click="selectPlan(plan.id)"
+        />
       </section>
 
       <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
@@ -336,6 +349,8 @@ onMounted(async () => {
 .plan-day-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   min-height: 56px;
   padding: 10px 14px;
   border: 1px solid #e2e8f0;

@@ -15,8 +15,11 @@ defineProps({
   // слепок дня: выгрузить день в CSV и загрузить файл копией в выбранный день.
   // '' — кнопок нет (например, на вкладке планов); иначе текст для подсказок: «заявки», «смены»
   transfer: { type: String, default: '' },
+  // кнопка «обновить» нужна там, где данные меняются снаружи: заявки, планы, отметки бригад.
+  // Смены исполнителей так не меняются — там её нет
+  refreshable: { type: Boolean, default: false },
 })
-const emit = defineEmits(['export-day', 'import-day'])
+const emit = defineEmits(['refresh', 'export-day', 'import-day'])
 
 const fileInput = ref(null)
 
@@ -41,6 +44,15 @@ const { selectedDay, selectDay } = useSelectedDay()
       @change="selectDay($event.target.value)"
     />
     <button :disabled="disabled" title="Следующий день" @click="selectDay(nextDay(selectedDay))">›</button>
+
+    <IconButton
+      v-if="refreshable"
+      icon="refresh"
+      class="refresh"
+      label="Обновить данные дня: заявки, планы и отметки бригад"
+      :disabled="disabled"
+      @click="emit('refresh')"
+    />
 
     <span v-if="summary" class="muted">{{ summary }}</span>
 
@@ -80,6 +92,15 @@ const { selectedDay, selectDay } = useSelectedDay()
 
 .day-label {
   font-weight: 600;
+}
+
+/* кнопка «обновить» — того же размера, что стрелки дня рядом с календарём */
+.day-panel :deep(.refresh) {
+  width: 30px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
 }
 
 /* Слепок дня прижат к правому краю и стоит ровно над кнопками последней колонки таблицы.
