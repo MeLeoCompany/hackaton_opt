@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from .gtfs import build_gtfs
+from .osm_mcc import collect_mcc_to_file
 from .osm_metro import collect_metro_network, collect_metro_to_file
 from .transport_mos import (
     collect_bus_batch,
@@ -51,6 +52,8 @@ def main() -> None:
     metro_network.add_argument(
         "--cache-dir", type=Path, help="кеш ответов Overpass для продолжения после сбоя"
     )
+    mcc = commands.add_parser("collect-mcc", help="получить обе стороны МЦК")
+    mcc.add_argument("--output", required=True, type=Path)
     build = commands.add_parser("build", help="сформировать архив GTFS")
     build.add_argument("inputs", type=Path, nargs="+")
     build.add_argument("--output", required=True, type=Path)
@@ -74,6 +77,8 @@ def main() -> None:
     elif args.command == "collect-metro-network":
         report = collect_metro_network(args.output_dir, args.cache_dir)
         print(f"Собрано линий: {report['line_count']}")
+    elif args.command == "collect-mcc":
+        collect_mcc_to_file(args.output)
     elif args.command == "build":
         build_gtfs(args.inputs, args.output)
     elif args.command == "validate":

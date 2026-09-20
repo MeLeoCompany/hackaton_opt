@@ -1,0 +1,465 @@
+{
+  "schema_version": 1,
+  "kind": "metro_frequency",
+  "source": {
+    "topology": "OpenStreetMap через Overpass API (ODbL)",
+    "topology_url": "https://www.openstreetmap.org/",
+    "relation_ids": [
+      6548266,
+      6548267
+    ],
+    "operating_hours": "Единый транспортный портал Москвы",
+    "operating_hours_url": "https://transport.mos.ru/transport/faq",
+    "retrieved_at": "2026-09-20T01:04:24.770593+00:00",
+    "headways_url": "https://transport.mos.ru/transport/faq"
+  },
+  "route": {
+    "source_route_id": "mcc-14",
+    "short_name": "МЦК",
+    "long_name": "Московское центральное кольцо",
+    "route_type": 2,
+    "color": "E87EA1"
+  },
+  "service": {
+    "start_date": "2026-09-20",
+    "end_date": "2026-12-31",
+    "daily": true,
+    "official_operating_window": [
+      "05:30:00",
+      "25:00:00"
+    ],
+    "headways": [
+      {
+        "start": "05:30:00",
+        "end": "06:30:00",
+        "seconds": 480
+      },
+      {
+        "start": "06:30:00",
+        "end": "10:00:00",
+        "seconds": 240
+      },
+      {
+        "start": "10:00:00",
+        "end": "16:00:00",
+        "seconds": 480
+      },
+      {
+        "start": "16:00:00",
+        "end": "20:00:00",
+        "seconds": 240
+      },
+      {
+        "start": "20:00:00",
+        "end": "25:00:00",
+        "seconds": 480
+      }
+    ],
+    "headway_note": "Официальные интервалы: 4 минуты в часы пик, 8 минут в остальное время. Границы часов пик и конкретные отправления приняты для расчёта.",
+    "duration_note": "88 минут на полный круг из направленных отношений OSM."
+  },
+  "patterns": [
+    {
+      "pattern_id": "6548266",
+      "direction_id": 0,
+      "headsign": "Лихоборы",
+      "duration_minutes": 88,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-2610974306",
+          "name": "Лихоборы",
+          "lat": 55.8471762,
+          "lon": 37.5514506
+        },
+        {
+          "source_stop_id": "osm-node-4375773786",
+          "name": "Коптево",
+          "lat": 55.8396552,
+          "lon": 37.5200279
+        },
+        {
+          "source_stop_id": "osm-node-4375878113",
+          "name": "Балтийская",
+          "lat": 55.825943,
+          "lon": 37.4962984
+        },
+        {
+          "source_stop_id": "osm-node-1241651089",
+          "name": "Стрешнево",
+          "lat": 55.8136972,
+          "lon": 37.4869307
+        },
+        {
+          "source_stop_id": "osm-node-4375871513",
+          "name": "Панфиловская",
+          "lat": 55.7989987,
+          "lon": 37.4989889
+        },
+        {
+          "source_stop_id": "osm-node-4375871615",
+          "name": "Зорге",
+          "lat": 55.788491,
+          "lon": 37.5043228
+        },
+        {
+          "source_stop_id": "osm-node-4016217286",
+          "name": "Хорошёво",
+          "lat": 55.7771405,
+          "lon": 37.5073364
+        },
+        {
+          "source_stop_id": "osm-node-4375869577",
+          "name": "Шелепиха",
+          "lat": 55.7573,
+          "lon": 37.5256294
+        },
+        {
+          "source_stop_id": "osm-node-4375864373",
+          "name": "Москва-Сити",
+          "lat": 55.7475488,
+          "lon": 37.5319053
+        },
+        {
+          "source_stop_id": "osm-node-1810711553",
+          "name": "Кутузовская",
+          "lat": 55.7399001,
+          "lon": 37.5339703
+        },
+        {
+          "source_stop_id": "osm-node-4379061180",
+          "name": "Лужники",
+          "lat": 55.7203702,
+          "lon": 37.5620246
+        },
+        {
+          "source_stop_id": "osm-node-4375858274",
+          "name": "Площадь Гагарина",
+          "lat": 55.7069533,
+          "lon": 37.5863689
+        },
+        {
+          "source_stop_id": "osm-node-1545803521",
+          "name": "Крымская",
+          "lat": 55.6898152,
+          "lon": 37.6056884
+        },
+        {
+          "source_stop_id": "osm-node-1545803532",
+          "name": "Верхние Котлы",
+          "lat": 55.6901033,
+          "lon": 37.6188836
+        },
+        {
+          "source_stop_id": "osm-node-4375847053",
+          "name": "ЗИЛ",
+          "lat": 55.6978389,
+          "lon": 37.6476178
+        },
+        {
+          "source_stop_id": "osm-node-3599514901",
+          "name": "Автозаводская",
+          "lat": 55.7069582,
+          "lon": 37.6643858
+        },
+        {
+          "source_stop_id": "osm-node-4375839542",
+          "name": "Дубровка",
+          "lat": 55.7126284,
+          "lon": 37.6778432
+        },
+        {
+          "source_stop_id": "osm-node-2106173841",
+          "name": "Угрешская",
+          "lat": 55.7184419,
+          "lon": 37.6976978
+        },
+        {
+          "source_stop_id": "osm-node-220239168",
+          "name": "Новохохловская",
+          "lat": 55.7241224,
+          "lon": 37.717096
+        },
+        {
+          "source_stop_id": "osm-node-4375836994",
+          "name": "Нижегородская",
+          "lat": 55.7317002,
+          "lon": 37.7280012
+        },
+        {
+          "source_stop_id": "osm-node-1951369473",
+          "name": "Андроновка",
+          "lat": 55.7470353,
+          "lon": 37.7377804
+        },
+        {
+          "source_stop_id": "osm-node-4406706054",
+          "name": "Шоссе Энтузиастов",
+          "lat": 55.7589081,
+          "lon": 37.746114
+        },
+        {
+          "source_stop_id": "osm-node-4375787483",
+          "name": "Соколиная Гора",
+          "lat": 55.7713279,
+          "lon": 37.7450696
+        },
+        {
+          "source_stop_id": "osm-node-1324648632",
+          "name": "Измайлово",
+          "lat": 55.7899783,
+          "lon": 37.7432997
+        },
+        {
+          "source_stop_id": "osm-node-5176376259",
+          "name": "Локомотив",
+          "lat": 55.8046531,
+          "lon": 37.7459751
+        },
+        {
+          "source_stop_id": "osm-node-2893566001",
+          "name": "Бульвар Рокоссовского",
+          "lat": 55.8170621,
+          "lon": 37.7373761
+        },
+        {
+          "source_stop_id": "osm-node-4398441626",
+          "name": "Белокаменная",
+          "lat": 55.8293531,
+          "lon": 37.7025067
+        },
+        {
+          "source_stop_id": "osm-node-4375779705",
+          "name": "Ростокино",
+          "lat": 55.8396965,
+          "lon": 37.6668881
+        },
+        {
+          "source_stop_id": "osm-node-4375780036",
+          "name": "Ботанический сад",
+          "lat": 55.8455674,
+          "lon": 37.6396766
+        },
+        {
+          "source_stop_id": "osm-node-4375778124",
+          "name": "Владыкино",
+          "lat": 55.8473612,
+          "lon": 37.5926904
+        },
+        {
+          "source_stop_id": "osm-node-4375770077",
+          "name": "Окружная",
+          "lat": 55.8489482,
+          "lon": 37.571148
+        },
+        {
+          "source_stop_id": "osm-node-2610974306",
+          "name": "Лихоборы",
+          "lat": 55.8471762,
+          "lon": 37.5514506
+        }
+      ]
+    },
+    {
+      "pattern_id": "6548267",
+      "direction_id": 1,
+      "headsign": "Нижегородская",
+      "duration_minutes": 88,
+      "duration_estimated": false,
+      "stops": [
+        {
+          "source_stop_id": "osm-node-5176376258",
+          "name": "Нижегородская",
+          "lat": 55.7317398,
+          "lon": 37.7277458
+        },
+        {
+          "source_stop_id": "osm-node-5176376257",
+          "name": "Новохохловская",
+          "lat": 55.7242098,
+          "lon": 37.7169021
+        },
+        {
+          "source_stop_id": "osm-node-1157754373",
+          "name": "Угрешская",
+          "lat": 55.7185512,
+          "lon": 37.6975826
+        },
+        {
+          "source_stop_id": "osm-node-4375839543",
+          "name": "Дубровка",
+          "lat": 55.7127297,
+          "lon": 37.6777625
+        },
+        {
+          "source_stop_id": "osm-node-4375847052",
+          "name": "Автозаводская",
+          "lat": 55.7057591,
+          "lon": 37.6619513
+        },
+        {
+          "source_stop_id": "osm-node-5176376256",
+          "name": "ЗИЛ",
+          "lat": 55.6979151,
+          "lon": 37.6474898
+        },
+        {
+          "source_stop_id": "osm-node-1545803496",
+          "name": "Верхние Котлы",
+          "lat": 55.6901588,
+          "lon": 37.6188482
+        },
+        {
+          "source_stop_id": "osm-node-1387771678",
+          "name": "Крымская",
+          "lat": 55.6899099,
+          "lon": 37.6057799
+        },
+        {
+          "source_stop_id": "osm-node-4375858275",
+          "name": "Площадь Гагарина",
+          "lat": 55.7069793,
+          "lon": 37.586421
+        },
+        {
+          "source_stop_id": "osm-node-4379061182",
+          "name": "Лужники",
+          "lat": 55.7210678,
+          "lon": 37.5599088
+        },
+        {
+          "source_stop_id": "osm-node-253745256",
+          "name": "Кутузовская",
+          "lat": 55.7399367,
+          "lon": 37.5341278
+        },
+        {
+          "source_stop_id": "osm-node-4375864374",
+          "name": "Москва-Сити",
+          "lat": 55.7475577,
+          "lon": 37.5321096
+        },
+        {
+          "source_stop_id": "osm-node-4375869578",
+          "name": "Шелепиха",
+          "lat": 55.7573112,
+          "lon": 37.5257011
+        },
+        {
+          "source_stop_id": "osm-node-4016217287",
+          "name": "Хорошёво",
+          "lat": 55.777151,
+          "lon": 37.5074274
+        },
+        {
+          "source_stop_id": "osm-node-4375871616",
+          "name": "Зорге",
+          "lat": 55.7884973,
+          "lon": 37.5044021
+        },
+        {
+          "source_stop_id": "osm-node-4375871514",
+          "name": "Панфиловская",
+          "lat": 55.7990209,
+          "lon": 37.4990655
+        },
+        {
+          "source_stop_id": "osm-node-2535259339",
+          "name": "Стрешнево",
+          "lat": 55.8137012,
+          "lon": 37.4870395
+        },
+        {
+          "source_stop_id": "osm-node-4375878112",
+          "name": "Балтийская",
+          "lat": 55.8258363,
+          "lon": 37.4964797
+        },
+        {
+          "source_stop_id": "osm-node-4375773785",
+          "name": "Коптево",
+          "lat": 55.8395754,
+          "lon": 37.5201861
+        },
+        {
+          "source_stop_id": "osm-node-2610974305",
+          "name": "Лихоборы",
+          "lat": 55.847134,
+          "lon": 37.5514841
+        },
+        {
+          "source_stop_id": "osm-node-4375770076",
+          "name": "Окружная",
+          "lat": 55.848903,
+          "lon": 37.5711233
+        },
+        {
+          "source_stop_id": "osm-node-5176376255",
+          "name": "Владыкино",
+          "lat": 55.8472947,
+          "lon": 37.5926826
+        },
+        {
+          "source_stop_id": "osm-node-4375780035",
+          "name": "Ботанический сад",
+          "lat": 55.8455319,
+          "lon": 37.63967
+        },
+        {
+          "source_stop_id": "osm-node-4375779704",
+          "name": "Ростокино",
+          "lat": 55.8396083,
+          "lon": 37.6667836
+        },
+        {
+          "source_stop_id": "osm-node-4398441625",
+          "name": "Белокаменная",
+          "lat": 55.8292495,
+          "lon": 37.7024202
+        },
+        {
+          "source_stop_id": "osm-node-2893563799",
+          "name": "Бульвар Рокоссовского",
+          "lat": 55.8170306,
+          "lon": 37.7373343
+        },
+        {
+          "source_stop_id": "osm-node-4375786518",
+          "name": "Локомотив",
+          "lat": 55.803621,
+          "lon": 37.7459602
+        },
+        {
+          "source_stop_id": "osm-node-1403531061",
+          "name": "Измайлово",
+          "lat": 55.7891802,
+          "lon": 37.7430119
+        },
+        {
+          "source_stop_id": "osm-node-4375787482",
+          "name": "Соколиная Гора",
+          "lat": 55.7713234,
+          "lon": 37.7449733
+        },
+        {
+          "source_stop_id": "osm-node-4406706053",
+          "name": "Шоссе Энтузиастов",
+          "lat": 55.7589023,
+          "lon": 37.7459149
+        },
+        {
+          "source_stop_id": "osm-node-4375836992",
+          "name": "Андроновка",
+          "lat": 55.7470745,
+          "lon": 37.7376965
+        },
+        {
+          "source_stop_id": "osm-node-5176376258",
+          "name": "Нижегородская",
+          "lat": 55.7317398,
+          "lon": 37.7277458
+        }
+      ]
+    }
+  ]
+}

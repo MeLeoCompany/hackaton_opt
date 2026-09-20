@@ -273,16 +273,41 @@ def test_all_checked_in_metro_lines_build_valid_gtfs(tmp_path: Path) -> None:
     build_gtfs(metro, output)
 
     counts = validate_gtfs(output)
-    assert len(metro) == 17
-    assert counts["routes.txt"] == 17
-    assert counts["trips.txt"] == 14994
+    assert len(metro) == 18
+    assert counts["routes.txt"] == 18
+    assert counts["trips.txt"] == 15402
     assert "frequencies.txt" not in counts
     assert counts["transfers.txt"] > 0
     with zipfile.ZipFile(output) as archive:
+        routes = archive.read("routes.txt").decode("utf-8-sig")
         stops = archive.read("stops.txt").decode("utf-8-sig")
         transfers = archive.read("transfers.txt").decode("utf-8-sig")
+        assert "mcc-14" in routes
         assert "parent_station" in stops
         assert "min_transfer_time" in transfers
+
+
+def test_mcc_has_both_closed_directions_and_metro_transfers() -> None:
+    root = Path(__file__).parents[2]
+    paths = [
+        root / "transit/data/metro/line-14-mcc.json",
+        root / "transit/data/metro/line-1.json",
+    ]
+    datasets = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
+    mcc = datasets[0]
+
+    assert mcc["route"]["route_type"] == 2
+    assert len(mcc["patterns"]) == 2
+    assert all(
+        len(pattern["stops"]) == 32
+        and pattern["stops"][0]["source_stop_id"]
+        == pattern["stops"][-1]["source_stop_id"]
+        for pattern in mcc["patterns"]
+    )
+    assert any(
+        {"mcc-14", "metro-1"} <= set(cluster.routes)
+        for cluster in cluster_metro_stations(datasets)
+    )
 
 
 def test_metro_normalizer_rejects_single_direction() -> None:

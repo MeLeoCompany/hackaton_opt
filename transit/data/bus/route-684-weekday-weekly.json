@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "kind": "bus_weekly",
+  "template": "route-684-2026-09-18.json",
+  "service": {
+    "start_date": "2026-09-21",
+    "end_date": "2026-12-31",
+    "weekdays": [0, 1, 2, 3, 4]
+  },
+  "source": {
+    "template_date": "2026-09-18",
+    "quality": "приближение",
+    "note": "Расписание пятницы используется для обычных будней до ручного обновления."
+  }
+}

@@ -111,7 +111,7 @@ def build_route_response(
             transit += duration
             if not transit_routes or route_id != transit_routes[-1]:
                 transit_routes.append(route_id)
-            uses_metro |= route_id.startswith("metro-")
+            uses_metro |= route_id.startswith(("metro-", "mcc-"))
         waiting += wait
         distance = row.get("distance")
         legs.append(

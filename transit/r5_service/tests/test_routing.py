@@ -83,6 +83,22 @@ def test_bus_route_does_not_receive_metro_entry_penalty() -> None:
     assert result.transit_duration_seconds == 600
 
 
+def test_mcc_route_receives_station_entry_penalty() -> None:
+    departure = datetime(2026, 9, 18, 9, 0, tzinfo=timezone.utc)
+    rows = [
+        {
+            "segment": 0,
+            "transport_mode": "TransportMode.RAIL",
+            "travel_time": 600,
+            "route_id": "mcc-14",
+        }
+    ]
+
+    result = build_route_response(rows, departure, settings())
+
+    assert result.entry_exit_penalty_seconds == 480
+
+
 def test_same_metro_line_split_into_segments_is_not_an_extra_transfer() -> None:
     departure = datetime(2026, 9, 18, 9, 0, tzinfo=timezone.utc)
     rows = [
