@@ -46,7 +46,8 @@ function seconds(value) {
     <ol v-if="lastEvents.length" class="events">
       <li v-for="(event, index) in lastEvents" :key="index" :class="event.level">
         <span class="at">{{ moscowLogTimeOf(event.at) }}</span>
-        <span class="source">{{ event.source }}</span>
+        <!-- почти всё пишет сам планировщик: называем источник, только когда он другой -->
+        <span v-if="event.source !== 'planner'" class="source">{{ event.source }}</span>
         <span>{{ event.message }}</span>
       </li>
     </ol>

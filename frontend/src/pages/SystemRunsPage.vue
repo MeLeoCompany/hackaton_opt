@@ -9,7 +9,6 @@ import { fetchPlanRun, listPlanRuns } from '../api/systemApi.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { eventTree } from '../utils/runEvents.js'
-import { cancelPlanRun } from '../api/systemApi.js'
 
 const KIND_NAMES = { build: 'расчёт дня', replan: 'пересчёт', preview: 'пробный пересчёт' }
 const STATUS_NAMES = { running: 'идёт', done: 'готов', failed: 'ошибка', cancelled: 'прерван' }
@@ -53,16 +52,6 @@ async function toggle(run) {
 const running = computed(() => runs.value.filter((run) => run.status === 'running').length)
 // ход раскрытого расчёта деревом: шаг → его подробности → строки служб
 const openedTree = computed(() => eventTree(opened.value?.events ?? []))
-
-// идущий расчёт можно остановить прямо отсюда: он встанет на ближайшем шаге
-async function cancel(run) {
-  try {
-    const updated = await cancelPlanRun(run.id)
-    Object.assign(run, updated)
-  } catch (error) {
-    errorMessage.value = error.message
-  }
-}
 
 function duration(run) {
   const seconds = run.duration_seconds ?? 0
@@ -128,14 +117,6 @@ onMounted(load)
                 <span :class="['badge', `run-${run.status}`]">{{ STATUS_NAMES[run.status] ?? run.status }}</span>
                 <span v-if="run.status === 'running'" class="muted"> · {{ run.step }}</span>
                 <span v-else-if="run.error" class="run-error">{{ run.error }}</span>
-                <button
-                  v-if="run.status === 'running'"
-                  class="link cancel"
-                  :disabled="run.cancel_requested"
-                  @click.stop="cancel(run)"
-                >
-                  {{ run.cancel_requested ? 'прерываю…' : 'прервать' }}
-                </button>
               </td>
               <td class="nowrap">{{ duration(run) }}</td>
               <td class="nowrap">
