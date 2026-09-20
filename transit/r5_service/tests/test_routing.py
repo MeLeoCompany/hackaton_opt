@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 from app.config import Settings
 from app.models import MatrixPoint
-from app.routing import build_matrix_response, build_route_response, local_departure
+from app.routing import (
+    build_matrix_block_response,
+    build_matrix_response,
+    build_route_response,
+    local_departure,
+)
 
 
 def settings() -> Settings:
@@ -19,6 +24,7 @@ def settings() -> Settings:
         walking_speed_kmh=4.8,
         reliability_buffer_ratio=0.1,
         matrix_max_points=100,
+        matrix_block_max_pairs=2500,
         matrix_time_window_minutes=10,
         max_travel_minutes=240,
     )
@@ -177,3 +183,27 @@ def test_matrix_ignores_rows_with_unknown_point_ids() -> None:
     )
 
     assert result.raw_durations_seconds == [[0, None], [None, 0]]
+
+
+def test_rectangular_block_preserves_direction_and_missing_pairs() -> None:
+    departure = datetime(2026, 9, 18, 9, tzinfo=timezone.utc)
+    origins = [
+        MatrixPoint(id="a", lat=55.7, lon=37.6),
+        MatrixPoint(id="b", lat=55.8, lon=37.7),
+    ]
+    destinations = [
+        MatrixPoint(id="b", lat=55.8, lon=37.7),
+        MatrixPoint(id="c", lat=55.9, lon=37.8),
+    ]
+    result = build_matrix_block_response(
+        [{"from_id": "a", "to_id": "c", "travel_time": 12}],
+        origins,
+        destinations,
+        departure,
+        settings(),
+    )
+
+    assert result.origin_ids == ["a", "b"]
+    assert result.destination_ids == ["b", "c"]
+    assert result.raw_durations_seconds == [[None, 720], [0, None]]
+    assert result.durations_seconds == [[None, 792], [0, None]]

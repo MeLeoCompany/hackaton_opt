@@ -76,6 +76,69 @@ async def test_build_duration_matrix_requires_timezone():
 
 
 @pytest.mark.asyncio
+async def test_large_matrix_is_assembled_from_rectangular_blocks():
+    points = [Point(latitude=55.7 + index * 0.01, longitude=37.6) for index in range(5)]
+
+    async def post(path, *, json):
+        assert path == "/matrix-block"
+        origins = [point["id"] for point in json["origins"]]
+        destinations = [point["id"] for point in json["destinations"]]
+        assert len(origins) * len(destinations) <= 4
+        values = [
+            [
+                None
+                if (origin, destination) == ("point-2", "point-4")
+                else 0
+                if origin == destination
+                else 60 * (10 * int(origin[6:]) + int(destination[6:]))
+                for destination in destinations
+            ]
+            for origin in origins
+        ]
+        return FakeResponse(
+            {"origin_ids": origins, "destination_ids": destinations, "durations_seconds": values}
+        )
+
+    client = AsyncMock()
+    client.__aenter__.return_value.post = AsyncMock(side_effect=post)
+    with (
+        patch.object(r5_provider.httpx, "AsyncClient", return_value=client),
+        patch.object(r5_provider.settings, "r5_matrix_single_max_points", 2),
+        patch.object(r5_provider.settings, "r5_matrix_block_origins", 2),
+        patch.object(r5_provider.settings, "r5_matrix_block_max_pairs", 4),
+    ):
+        result = await r5_provider.build_duration_matrix(points, DEPARTURE)
+
+    assert result[0] == [0, 1, 2, 3, 4]
+    assert result[2] == [20, 21, 0, 23, None]
+    assert result[4] == [40, 41, 42, 43, 0]
+    assert client.__aenter__.return_value.post.await_count == 8
+
+
+@pytest.mark.asyncio
+async def test_large_matrix_rejects_incorrect_block_ids():
+    points = [*POINTS, Point(latitude=55.75, longitude=37.65)]
+    client = AsyncMock()
+    client.__aenter__.return_value.post = AsyncMock(
+        return_value=FakeResponse(
+            {
+                "origin_ids": ["wrong"],
+                "destination_ids": ["point-0"],
+                "durations_seconds": [[0]],
+            }
+        )
+    )
+    with (
+        patch.object(r5_provider.httpx, "AsyncClient", return_value=client),
+        patch.object(r5_provider.settings, "r5_matrix_single_max_points", 2),
+        patch.object(r5_provider.settings, "r5_matrix_block_origins", 1),
+        patch.object(r5_provider.settings, "r5_matrix_block_max_pairs", 1),
+        pytest.raises(ValueError, match="порядок"),
+    ):
+        await r5_provider.build_duration_matrix(points, DEPARTURE)
+
+
+@pytest.mark.asyncio
 async def test_build_route_converts_r5_legs_and_geometry():
     post = AsyncMock(
         return_value=FakeResponse(

@@ -16,6 +16,7 @@ class Settings:
     walking_speed_kmh: float
     reliability_buffer_ratio: float
     matrix_max_points: int
+    matrix_block_max_pairs: int
     matrix_time_window_minutes: int
     max_travel_minutes: int
 
@@ -39,6 +40,7 @@ class Settings:
                 os.getenv("R5_RELIABILITY_BUFFER_RATIO", "0.10")
             ),
             matrix_max_points=int(os.getenv("R5_MATRIX_MAX_POINTS", "100")),
+            matrix_block_max_pairs=int(os.getenv("R5_MATRIX_BLOCK_MAX_PAIRS", "2500")),
             matrix_time_window_minutes=int(
                 os.getenv("R5_MATRIX_TIME_WINDOW_MINUTES", "10")
             ),
@@ -58,6 +60,8 @@ class Settings:
             raise ValueError("R5_RELIABILITY_BUFFER_RATIO должен быть от 0 до 1")
         if not 2 <= settings.matrix_max_points <= 1000:
             raise ValueError("R5_MATRIX_MAX_POINTS должен быть от 2 до 1000")
+        if not 1 <= settings.matrix_block_max_pairs <= 100_000:
+            raise ValueError("R5_MATRIX_BLOCK_MAX_PAIRS должен быть от 1 до 100000")
         if not 5 <= settings.matrix_time_window_minutes <= 120:
             raise ValueError("R5_MATRIX_TIME_WINDOW_MINUTES должен быть от 5 до 120")
         if not 1 <= settings.max_travel_minutes <= 24 * 60:

@@ -10,12 +10,14 @@ from fastapi import FastAPI, HTTPException, Request
 from .config import Settings
 from .models import (
     HealthResponse,
+    MatrixBlockRequest,
+    MatrixBlockResponse,
     MatrixRequest,
     MatrixResponse,
     RouteRequest,
     RouteResponse,
 )
-from .routing import route, travel_time_matrix
+from .routing import route, travel_time_matrix, travel_time_matrix_block
 
 
 def _wait_for_file(path: Path, timeout: int) -> None:
@@ -119,6 +121,34 @@ async def public_transport_matrix(
                 travel_time_matrix,
                 network,
                 payload.points,
+                payload.departure_time,
+                settings,
+            )
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"ошибка R5: {error}") from error
+
+
+@app.post("/matrix-block", response_model=MatrixBlockResponse)
+async def public_transport_matrix_block(
+    payload: MatrixBlockRequest, request: Request
+) -> MatrixBlockResponse:
+    network = request.app.state.network
+    if network is None:
+        raise HTTPException(status_code=503, detail="транспортный граф R5 не загружен")
+    settings = request.app.state.settings
+    pairs = len(payload.origins) * len(payload.destinations)
+    if pairs > settings.matrix_block_max_pairs:
+        raise HTTPException(
+            status_code=422,
+            detail=f"блок содержит {pairs} пар, разрешено не более {settings.matrix_block_max_pairs}",
+        )
+    try:
+        async with request.app.state.routing_lock:
+            return await asyncio.to_thread(
+                travel_time_matrix_block,
+                network,
+                payload.origins,
+                payload.destinations,
                 payload.departure_time,
                 settings,
             )

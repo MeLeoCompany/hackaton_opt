@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from .config import Settings
 from .models import (
     Coordinate,
+    MatrixBlockResponse,
     MatrixPoint,
     MatrixResponse,
     RouteLeg,
@@ -51,31 +52,63 @@ def build_matrix_response(
     settings: Settings,
 ) -> MatrixResponse:
     point_ids = [point.id for point in points]
-    positions = {point_id: index for index, point_id in enumerate(point_ids)}
-    size = len(points)
-    raw: list[list[int | None]] = [[None] * size for _ in range(size)]
-    for index in range(size):
-        raw[index][index] = 0
-
-    for row in rows:
-        from_id = str(row.get("from_id"))
-        to_id = str(row.get("to_id"))
-        if from_id not in positions or to_id not in positions:
-            continue
-        raw[positions[from_id]][positions[to_id]] = _minutes_to_seconds(
-            row.get("travel_time")
-        )
-
-    multiplier = 1 + settings.reliability_buffer_ratio
-    adjusted = [
-        [None if seconds is None else round(seconds * multiplier) for seconds in row]
-        for row in raw
-    ]
+    raw, adjusted = _matrix_values(rows, point_ids, point_ids, settings)
     return MatrixResponse(
         departure_time=departure,
         departure_time_window_minutes=settings.matrix_time_window_minutes,
         reliability_buffer_ratio=settings.reliability_buffer_ratio,
         point_ids=point_ids,
+        raw_durations_seconds=raw,
+        durations_seconds=adjusted,
+    )
+
+
+def _matrix_values(
+    rows: list[dict[str, Any]],
+    origin_ids: list[str],
+    destination_ids: list[str],
+    settings: Settings,
+) -> tuple[list[list[int | None]], list[list[int | None]]]:
+    origin_positions = {point_id: index for index, point_id in enumerate(origin_ids)}
+    destination_positions = {
+        point_id: index for index, point_id in enumerate(destination_ids)
+    }
+    raw: list[list[int | None]] = [
+        [
+            0 if origin_id == destination_id else None
+            for destination_id in destination_ids
+        ]
+        for origin_id in origin_ids
+    ]
+    for row in rows:
+        origin = origin_positions.get(str(row.get("from_id")))
+        destination = destination_positions.get(str(row.get("to_id")))
+        if origin is not None and destination is not None:
+            raw[origin][destination] = _minutes_to_seconds(row.get("travel_time"))
+    multiplier = 1 + settings.reliability_buffer_ratio
+    adjusted = [
+        [None if seconds is None else round(seconds * multiplier) for seconds in row]
+        for row in raw
+    ]
+    return raw, adjusted
+
+
+def build_matrix_block_response(
+    rows: list[dict[str, Any]],
+    origins: list[MatrixPoint],
+    destinations: list[MatrixPoint],
+    departure: datetime,
+    settings: Settings,
+) -> MatrixBlockResponse:
+    origin_ids = [point.id for point in origins]
+    destination_ids = [point.id for point in destinations]
+    raw, adjusted = _matrix_values(rows, origin_ids, destination_ids, settings)
+    return MatrixBlockResponse(
+        departure_time=departure,
+        departure_time_window_minutes=settings.matrix_time_window_minutes,
+        reliability_buffer_ratio=settings.reliability_buffer_ratio,
+        origin_ids=origin_ids,
+        destination_ids=destination_ids,
         raw_durations_seconds=raw,
         durations_seconds=adjusted,
     )
@@ -225,4 +258,41 @@ def travel_time_matrix(
     )
     return build_matrix_response(
         result.to_dict(orient="records"), points, departure, settings
+    )
+
+
+def travel_time_matrix_block(
+    network: Any,
+    origins: list[MatrixPoint],
+    destinations: list[MatrixPoint],
+    departure: datetime,
+    settings: Settings,
+) -> MatrixBlockResponse:
+    import geopandas
+    import r5py
+    from shapely import Point
+
+    def locations(points: list[MatrixPoint]) -> Any:
+        return geopandas.GeoDataFrame(
+            {
+                "id": [point.id for point in points],
+                "geometry": [Point(point.lon, point.lat) for point in points],
+            },
+            crs="EPSG:4326",
+        )
+
+    result = r5py.TravelTimeMatrix(
+        network,
+        origins=locations(origins),
+        destinations=locations(destinations),
+        departure=local_departure(departure),
+        departure_time_window=timedelta(minutes=settings.matrix_time_window_minutes),
+        percentiles=[50],
+        transport_modes=[r5py.TransportMode.TRANSIT, r5py.TransportMode.WALK],
+        speed_walking=settings.walking_speed_kmh,
+        max_time=timedelta(minutes=settings.max_travel_minutes),
+        snap_to_network=True,
+    )
+    return build_matrix_block_response(
+        result.to_dict(orient="records"), origins, destinations, departure, settings
     )

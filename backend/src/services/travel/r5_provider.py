@@ -95,13 +95,18 @@ def _parse_durations(payload: object, point_count: int) -> list[list[float | Non
     if payload.get("point_ids") != expected_ids:
         raise ValueError("R5 изменил порядок или идентификаторы точек матрицы")
 
-    values = payload.get("durations_seconds")
-    if not isinstance(values, list) or len(values) != point_count:
+    return _parse_matrix_values(payload.get("durations_seconds"), point_count, point_count)
+
+
+def _parse_matrix_values(
+    values: object, origin_count: int, destination_count: int
+) -> list[list[float | None]]:
+    if not isinstance(values, list) or len(values) != origin_count:
         raise ValueError("R5 вернул матрицу неправильного размера")
 
     durations: list[list[float | None]] = []
     for row in values:
-        if not isinstance(row, list) or len(row) != point_count:
+        if not isinstance(row, list) or len(row) != destination_count:
             raise ValueError("R5 вернул матрицу неправильного размера")
         parsed_row: list[float | None] = []
         for seconds in row:
@@ -118,6 +123,18 @@ def _parse_durations(payload: object, point_count: int) -> list[list[float | Non
     return durations
 
 
+def _parse_block_durations(
+    payload: object, origin_ids: list[str], destination_ids: list[str]
+) -> list[list[float | None]]:
+    if not isinstance(payload, dict):
+        raise ValueError("R5 вернул ответ неизвестного формата")  # noqa: TRY004
+    if payload.get("origin_ids") != origin_ids or payload.get("destination_ids") != destination_ids:
+        raise ValueError("R5 изменил порядок или идентификаторы точек блока")
+    return _parse_matrix_values(
+        payload.get("durations_seconds"), len(origin_ids), len(destination_ids)
+    )
+
+
 async def build_duration_matrix(
     points: list[Point], departure_time: datetime
 ) -> list[list[float | None]]:
@@ -125,23 +142,48 @@ async def build_duration_matrix(
     if departure_time.tzinfo is None:
         raise ValueError("для матрицы R5 требуется время с часовым поясом")
 
-    request = {
-        "points": [
-            {
-                "id": _point_id(index),
-                "lat": point.latitude,
-                "lon": point.longitude,
-            }
-            for index, point in enumerate(points)
-        ],
-        "departure_time": departure_time.isoformat(),
-    }
+    request_points = [
+        {"id": _point_id(index), "lat": point.latitude, "lon": point.longitude}
+        for index, point in enumerate(points)
+    ]
+    departure = departure_time.isoformat()
     async with httpx.AsyncClient(
         base_url=settings.r5_url, timeout=settings.r5_timeout_seconds
     ) as client:
-        response = await client.post("/matrix", json=request)
-        response.raise_for_status()
-    return _parse_durations(response.json(), len(points))
+        if len(points) <= settings.r5_matrix_single_max_points:
+            response = await client.post(
+                "/matrix", json={"points": request_points, "departure_time": departure}
+            )
+            response.raise_for_status()
+            return _parse_durations(response.json(), len(points))
+
+        size = len(points)
+        result: list[list[float | None]] = [[None] * size for _ in range(size)]
+        origin_size = min(settings.r5_matrix_block_origins, settings.r5_matrix_block_max_pairs)
+        for origin_start in range(0, size, origin_size):
+            origins = request_points[origin_start : origin_start + origin_size]
+            destination_size = min(1000, settings.r5_matrix_block_max_pairs // len(origins))
+            for destination_start in range(0, size, destination_size):
+                destinations = request_points[
+                    destination_start : destination_start + destination_size
+                ]
+                response = await client.post(
+                    "/matrix-block",
+                    json={
+                        "origins": origins,
+                        "destinations": destinations,
+                        "departure_time": departure,
+                    },
+                )
+                response.raise_for_status()
+                block = _parse_block_durations(
+                    response.json(),
+                    [point["id"] for point in origins],
+                    [point["id"] for point in destinations],
+                )
+                for row_index, row in enumerate(block, start=origin_start):
+                    result[row_index][destination_start : destination_start + len(row)] = row
+        return result
 
 
 def _number(value: object, field: str, *, nullable: bool = False) -> float | None:

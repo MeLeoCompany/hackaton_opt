@@ -43,6 +43,22 @@ class MatrixRequest(BaseModel):
         return self
 
 
+class MatrixBlockRequest(BaseModel):
+    origins: list[MatrixPoint] = Field(min_length=1, max_length=1000)
+    destinations: list[MatrixPoint] = Field(min_length=1, max_length=1000)
+    departure_time: datetime
+
+    @model_validator(mode="after")
+    def validate_request(self) -> MatrixBlockRequest:
+        if self.departure_time.tzinfo is None:
+            raise ValueError("departure_time должен содержать часовой пояс")
+        for points in (self.origins, self.destinations):
+            ids = [point.id for point in points]
+            if len(ids) != len(set(ids)):
+                raise ValueError("идентификаторы точек блока должны быть уникальными")
+        return self
+
+
 class RouteLeg(BaseModel):
     mode: str
     duration_seconds: int
@@ -72,6 +88,16 @@ class MatrixResponse(BaseModel):
     departure_time_window_minutes: int
     reliability_buffer_ratio: float
     point_ids: list[str]
+    raw_durations_seconds: list[list[int | None]]
+    durations_seconds: list[list[int | None]]
+
+
+class MatrixBlockResponse(BaseModel):
+    departure_time: datetime
+    departure_time_window_minutes: int
+    reliability_buffer_ratio: float
+    origin_ids: list[str]
+    destination_ids: list[str]
     raw_durations_seconds: list[list[int | None]]
     durations_seconds: list[list[int | None]]
 
