@@ -54,6 +54,7 @@ async def build_plan(
     payload: PlanBuildRequest,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
     return await planning_service.build_plan_for_day(
         session,
@@ -61,6 +62,8 @@ async def build_plan(
         payload.solver,
         payload.objective_order,
         office_id=office_id,
+        run_id=payload.run_id,
+        user_id=user.id,
     )
 
 
@@ -103,6 +106,7 @@ async def replan(
         decisions=payload.decisions,
         free_at=payload.free_at,
         user_id=user.id,
+        run_id=payload.run_id,
     )
 
 
@@ -116,6 +120,7 @@ async def preview_replan(
     payload: PlanReplanRequest,
     session: AsyncSession = Depends(get_db),
     office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
 ):
     """Тот же расчёт, что и пересчёт, но ничего не сохраняется. По заявкам, на которые не
     успеваем, диспетчер решает до пересчёта: новое окно или отмена (decisions пересчёта)."""
@@ -127,6 +132,8 @@ async def preview_replan(
         payload.at,
         office_id=office_id,
         free_at=payload.free_at,
+        user_id=user.id,
+        run_id=payload.run_id,
     )
 
 

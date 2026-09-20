@@ -13,6 +13,7 @@ from src.schemas.travel import (
     TravelProvider,
     TravelRoute,
 )
+from src.services.planner import run_log
 
 # профиль движения Valhalla для каждого нашего транспорта.
 # Расписаний ОТ (GTFS) у Valhalla нет: "bus" едет по дорогам как автобус,
@@ -117,6 +118,8 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
     distances_km: list[list[float | None]] = [[0.0] * size for _ in range(size)]
     durations_min: list[list[float | None]] = [[0.0] * size for _ in range(size)]
 
+    block_count = len(_split_indices(size, block_size)) ** 2
+    await run_log.note(f"Valhalla: {size} точек, {block_count} блоков одним заходом")
     async with httpx.AsyncClient(base_url=settings.valhalla_url, timeout=180.0) as client:
         blocks = await asyncio.gather(
             *(

@@ -4,13 +4,15 @@
 может только администратор: это инструмент демонстрации и наладки.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import current_user, require_admin
+from src.api.deps import current_office_id, current_user, require_admin
 from src.db.session import get_db
 from src.models import AppUser
-from src.schemas.system import SystemInfo, SystemTimeRead, SystemTimeWrite
+from src.schemas.system import PlanRunRead, SystemInfo, SystemTimeRead, SystemTimeWrite
 from src.services.system import system_service
 
 router = APIRouter()
@@ -47,3 +49,31 @@ async def set_time(
 )
 async def read_info(session: AsyncSession = Depends(get_db)) -> SystemInfo:
     return await system_service.read_info(session)
+
+
+@router.get(
+    "/runs",
+    response_model=list[PlanRunRead],
+    summary="Журнал расчётов: что считали, сколько заняло и чем кончилось",
+)
+async def list_runs(
+    limit: int = 50,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    _: AppUser = Depends(current_user),
+) -> list[PlanRunRead]:
+    return await system_service.list_runs(session, office_id=office_id, limit=limit)
+
+
+@router.get(
+    "/runs/{run_id}",
+    response_model=PlanRunRead,
+    summary="Ход одного расчёта по шагам: по нему рисуется прогресс",
+)
+async def get_run(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    _: AppUser = Depends(current_user),
+) -> PlanRunRead:
+    return await system_service.get_run(session, run_id, office_id=office_id)

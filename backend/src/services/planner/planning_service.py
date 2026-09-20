@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from uuid import UUID
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -41,6 +42,7 @@ from src.services.planner import (
     cuopt_solver,
     departure_gate,
     planner_loader,
+    run_log,
     transit_schedule,
 )
 from src.services.planner.objective_policy import (
@@ -116,6 +118,8 @@ async def build_plan_for_day(
     | tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
     *,
     office_id: int,
+    run_id: UUID | None = None,
+    user_id: int | None = None,
 ) -> PlanSummary:
     """Считает план дня выбранным решателем и сохраняет его отдельной записью.
 
@@ -123,25 +127,36 @@ async def build_plan_for_day(
     пробег, сколько заявок назначено). Пары для сравнения не создаются: сравнить можно любые
     два уже посчитанных плана.
     """
-    loaded = await load_planning_day(session, plan_date, office_id)
-    policy = validate_objective_order(objective_order)
-
-    started = time.perf_counter()
-    solution = await solve_with(solver, loaded, policy)
-    duration_ms = (time.perf_counter() - started) * 1000
-
-    plan = await save_solution(
-        session,
-        loaded,
-        solution,
-        run_type=RUN_TYPE_BY_SOLVER[solver],
+    async with run_log.track(
+        "build",
+        office_id=office_id,
+        plan_date=plan_date,
         solver=solver.value,
-        solve_duration_ms=duration_ms,
-        objective_order=policy if solver is SolverName.CUOPT else None,
-    )
-    set_plan_distance(plan, await total_route_distance(loaded, solution))
-    await session.commit()
-    return (await summarize_plans(session, [plan]))[0]
+        user_id=user_id,
+        run_id=run_id,
+    ):
+        loaded = await load_planning_day(session, plan_date, office_id)
+        policy = validate_objective_order(objective_order)
+
+        started = time.perf_counter()
+        solution = await solve_with(solver, loaded, policy)
+        duration_ms = (time.perf_counter() - started) * 1000
+
+        await run_log.step("Сохраняю план", 80, 92)
+        plan = await save_solution(
+            session,
+            loaded,
+            solution,
+            run_type=RUN_TYPE_BY_SOLVER[solver],
+            solver=solver.value,
+            solve_duration_ms=duration_ms,
+            objective_order=policy if solver is SolverName.CUOPT else None,
+        )
+        await run_log.step("Считаю пробег маршрутов", 92, 99)
+        set_plan_distance(plan, await total_route_distance(loaded, solution))
+        await session.commit()
+        await run_log.attach_plan(plan.id)
+        return (await summarize_plans(session, [plan]))[0]
 
 
 async def solve_with(
@@ -155,6 +170,13 @@ async def solve_with(
     ranks — ярусы заявок для целевой функции; нужны второму расчёту при синхронизации
     (docs/algoV2.md). Базовый алгоритм ярусы не использует.
     """
+    await run_log.step(
+        "Базовый расчёт: первый подходящий исполнитель"
+        if solver is SolverName.BASELINE
+        else "Решаю задачу маршрутизации (cuOpt)",
+        45,
+        80,
+    )
     if solver is SolverName.BASELINE:
         return baseline_solver.solve_day(loaded.instance)
     return await transit_schedule.solve_day(loaded, objective_order, ranks)

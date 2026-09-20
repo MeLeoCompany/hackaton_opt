@@ -21,6 +21,7 @@ import PlanComparisonPage from './pages/PlanComparisonPage.vue'
 import PlansPage from './pages/PlansPage.vue'
 import PrioritiesPage from './pages/PrioritiesPage.vue'
 import SystemPage from './pages/SystemPage.vue'
+import SystemRunsPage from './pages/SystemRunsPage.vue'
 import RequestsPage from './pages/RequestsPage.vue'
 import RouteStandPage from './pages/RouteStandPage.vue'
 import UsersPage from './pages/UsersPage.vue'
@@ -51,14 +52,24 @@ const ALL_SECTIONS = [
       { key: 'users', label: 'Пользователи', adminOnly: true },
     ],
   },
-  { key: 'system', label: 'Система', icon: '⚙', adminOnly: true },
+  {
+    key: 'system',
+    label: 'Система',
+    icon: '⚙',
+    adminOnly: true,
+    items: [
+      { key: 'system', label: 'Состояние' },
+      // ход расчётов: на большом дне по нему видно, что именно считается и где расчёт стоял
+      { key: 'runs', label: 'Журнал расчётов' },
+    ],
+  },
   { key: 'import', label: 'Загрузка CSV (тестовая)', icon: '⇪' },
   { key: 'routes', label: 'Маршруты (тестовые)', icon: '➤' },
 ]
 
 const TAB_STORAGE_KEY = 'routing.activeTab'
 const TABS = [
-  'requests', 'engineers', 'plans', 'comparison', 'offices', 'brigades', 'norms', 'priorities', 'equipment', 'users', 'system', 'import',
+  'requests', 'engineers', 'plans', 'comparison', 'offices', 'brigades', 'norms', 'priorities', 'equipment', 'users', 'system', 'runs', 'import',
   'routes',
 ]
 // вкладка «Справочники» была одной страницей — теперь это «Офисы» внутри раздела
@@ -155,6 +166,7 @@ onMounted(async () => {
         <EquipmentPage v-else-if="activeTab === 'equipment'" />
         <UsersPage v-else-if="activeTab === 'users'" />
         <SystemPage v-else-if="activeTab === 'system'" />
+        <SystemRunsPage v-else-if="activeTab === 'runs'" />
         <ImportPage v-else-if="activeTab === 'import'" />
         <RouteStandPage v-else />
       </div>

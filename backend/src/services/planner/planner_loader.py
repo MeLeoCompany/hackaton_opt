@@ -24,6 +24,7 @@ from src.repositories.engineers import engineers_repository
 from src.repositories.references import references_repository
 from src.repositories.requests import requests_repository
 from src.schemas.travel import Point, TransportKind
+from src.services.planner import run_log
 from src.services.planner.planner_problem import (
     LOWEST_PRIORITY_LEVEL,
     EngineerSpec,
@@ -39,6 +40,14 @@ MINUTES_IN_DAY = 24 * 60
 # решатели не принимают бесконечность
 UNREACHABLE_MINUTES = 100_000
 UNREACHABLE_KM = 100_000.0
+
+# как транспорт называется в журнале расчёта
+TRANSPORT_NAMES = {
+    TransportKind.CAR.value: "автомобиль",
+    TransportKind.PEDESTRIAN.value: "пешком",
+    TransportKind.BICYCLE.value: "велосипед",
+    TransportKind.PUBLIC_TRANSPORT.value: "общественный транспорт",
+}
 
 
 @dataclass(frozen=True)
@@ -111,12 +120,14 @@ async def load_day(
     # офисы изолированы: бригады офиса берут только заявки своего офиса.
     # Заявки, закреплённые за утверждённым планом другого дня, в задачу не попадают:
     # окно через полночь иначе выполнялось бы дважды
+    await run_log.step("Читаю заявки и смены дня", 2, 10)
     requests = await requests_repository.list_active_requests_in_period(
         session, day.day_start, day.day_end, plan_date=day.plan_date, office_id=office_id
     )
     engineers = await engineers_repository.list_engineers_in_period(
         session, day.day_start, day.day_end, office_id=office_id
     )
+    await run_log.note(f"заявок к планированию {len(requests)}, смен бригад {len(engineers)}")
 
     def free_from(engineer: Engineer) -> datetime:
         start = starts.get(engineer.id)
@@ -225,7 +236,15 @@ async def build_day_matrices(
 
     distance_km: dict[int, np.ndarray] = {}
     travel_min: dict[int, np.ndarray] = {}
-    for transport_id in sorted({engineer.transport_id for engineer in engineers}):
+    # матрицы — самая долгая часть дня: на каждый транспорт свой шаг журнала
+    transport_ids = sorted({engineer.transport_id for engineer in engineers})
+    matrix_span = (45 - 10) / len(transport_ids)
+    for order, transport_id in enumerate(transport_ids):
+        await run_log.step(
+            f"Считаю матрицу расстояний: {TRANSPORT_NAMES[transport_id]} ({len(points)} точек)",
+            round(10 + matrix_span * order),
+            round(10 + matrix_span * (order + 1)),
+        )
         transport_engineers = [
             engineer for engineer in engineers if engineer.transport_id == transport_id
         ]

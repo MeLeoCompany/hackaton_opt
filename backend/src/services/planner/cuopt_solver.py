@@ -26,6 +26,7 @@ import numpy as np
 
 from src.core.config import settings
 from src.core.errors import ExternalServiceError
+from src.services.planner import run_log
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -132,8 +133,13 @@ async def solve_day(
             objective_order=objective_order,
             ranks=ranks,
         )
+        await run_log.note(
+            f"cuOpt: {len(task_request_indices)} заявок, {instance.n_engineers} бригад, "
+            f"лимит {inputs.time_limit_seconds:.0f} c"
+        )
         route_records = await asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
         solution = parse_route_records(route_records, task_request_indices)
+        await run_log.note(f"cuOpt вернул маршрутов: {len(solution.routes)}")
     except ExternalServiceError:
         raise
     except (RuntimeError, ValueError, KeyError, IndexError, OSError) as error:

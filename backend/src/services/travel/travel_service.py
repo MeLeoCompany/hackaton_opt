@@ -14,6 +14,7 @@ from src.schemas.travel import (
     TravelProvider,
     TravelRoute,
 )
+from src.services.planner import run_log
 from src.services.travel import (
     haversine_provider,
     r5_access,
@@ -54,6 +55,7 @@ async def build_matrix(
 async def _public_transport_matrix(
     points: list[Point], departure_time: datetime, *, allow_fallback: bool
 ) -> TravelMatrix:
+    await run_log.note("ОТ: расстояния по улицам (Valhalla)")
     try:
         surface = await valhalla_provider.build_matrix(points, TransportKind.PUBLIC_TRANSPORT)
     except (httpx.HTTPError, KeyError, ValueError):
@@ -65,6 +67,7 @@ async def _public_transport_matrix(
         )
         surface = haversine_provider.build_matrix(points, TransportKind.PUBLIC_TRANSPORT)
 
+    await run_log.note("ОТ: времена по расписанию (R5)")
     try:
         durations = await r5_provider.build_duration_matrix(points, departure_time)
         durations = await r5_access.repair_duration_matrix(points, departure_time, durations)
@@ -92,6 +95,7 @@ async def _public_transport_matrix(
                     ).distances_km
                 distances[row_index][column_index] = approximate_distances[row_index][column_index]
 
+    await run_log.note("ОТ: пешие подходы (Valhalla)")
     walking = await _walking_matrix(points)
     if walking is not None:
         for row_index, row in enumerate(durations):

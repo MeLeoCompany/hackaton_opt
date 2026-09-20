@@ -21,6 +21,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from uuid import UUID
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +44,7 @@ from src.schemas.plans import (
     SolverName,
 )
 from src.schemas.travel import Point, TransportKind, TravelProvider
-from src.services.planner import planner_loader, planning_service, window_suggestions
+from src.services.planner import planner_loader, planning_service, run_log, window_suggestions
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -77,6 +78,7 @@ async def replan(
     decisions: list[ReplanDecision] | None = None,
     free_at: list[BrigadeFreeAt] | None = None,
     user_id: int | None = None,
+    run_id: UUID | None = None,
 ) -> PlanSummary:
     """Пересчитывает утверждённый план с момента at (по умолчанию — сейчас).
 
@@ -85,14 +87,29 @@ async def replan(
     получился, не меняется ничего.
     """
     parent, at = await replannable(session, plan_id, at, office_id=office_id)
-    await apply_decisions(session, parent, decisions or [], office_id=office_id, user_id=user_id)
-    built = await build_replan(
-        session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
-    )
-    plan = built.plan
-    planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
-    await session.commit()
-    return (await planning_service.summarize_plans(session, [plan]))[0]
+    async with run_log.track(
+        "replan",
+        office_id=office_id,
+        plan_date=parent.plan_date,
+        solver=solver.value,
+        user_id=user_id,
+        run_id=run_id,
+    ):
+        if decisions:
+            await run_log.step("Применяю решения оператора по заявкам", 2, 6)
+            await run_log.note(f"решений по заявкам: {len(decisions)}")
+        await apply_decisions(
+            session, parent, decisions or [], office_id=office_id, user_id=user_id
+        )
+        built = await build_replan(
+            session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
+        )
+        plan = built.plan
+        await run_log.step("Считаю пробег маршрутов", 92, 99)
+        planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
+        await session.commit()
+        await run_log.attach_plan(plan.id)
+        return (await planning_service.summarize_plans(session, [plan]))[0]
 
 
 async def preview_replan(
@@ -105,6 +122,8 @@ async def preview_replan(
     *,
     office_id: int,
     free_at: list[BrigadeFreeAt] | None = None,
+    user_id: int | None = None,
+    run_id: UUID | None = None,
 ) -> ReplanPreview:
     """Пробный пересчёт: тот же расчёт, но ничего не сохраняется.
 
@@ -112,12 +131,38 @@ async def preview_replan(
     (docs/algoV2.md, шаги 2-3): он даёт конкретное время, которое оператор называет клиенту.
     """
     parent, at = await replannable(session, plan_id, at, office_id=office_id)
+    async with run_log.track(
+        "preview",
+        office_id=office_id,
+        plan_date=parent.plan_date,
+        solver=solver.value,
+        user_id=user_id,
+        run_id=run_id,
+    ):
+        return await preview_inside_run(
+            session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
+        )
+
+
+async def preview_inside_run(
+    session: AsyncSession,
+    parent: Plan,
+    solver: SolverName,
+    objective_order: list[ObjectiveCriterion] | tuple[ObjectiveCriterion, ...],
+    at: datetime,
+    *,
+    office_id: int,
+    free_at: list[BrigadeFreeAt] | None = None,
+) -> ReplanPreview:
+    """Сам пробный расчёт: считает, собирает предложения и откатывает транзакцию."""
     try:
         built = await build_replan(
             session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
         )
         assignments = await plans_repository.list_plan_assignments(session, built.plan.id)
         unassigned = [a for a in assignments if a.engineer_id is None]
+        await run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 80, 95)
+        await run_log.note(f"не успеваем по заявкам: {len(unassigned)}")
         suggestions = await window_suggestions.suggest_windows(
             built.loaded,
             solver,

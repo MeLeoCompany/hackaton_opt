@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -31,6 +32,8 @@ class PlanBuildRequest(BaseModel):
     objective_order: list[ObjectiveCriterion] = Field(
         default_factory=lambda: list(DEFAULT_OBJECTIVE_ORDER)
     )
+    # номер запуска: интерфейс придумывает его заранее и по нему показывает ход расчёта
+    run_id: UUID | None = None
 
     @field_validator("objective_order")
     @classmethod
@@ -127,6 +130,8 @@ class PlanReplanRequest(BaseModel):
     decisions: list[ReplanDecision] = []
     # когда бригады освободятся — со слов бригады, если она застряла
     free_at: list[BrigadeFreeAt] = []
+    # номер запуска: по нему интерфейс показывает ход пересчёта
+    run_id: UUID | None = None
 
     @field_validator("objective_order")
     @classmethod

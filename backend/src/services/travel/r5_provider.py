@@ -18,6 +18,7 @@ import httpx
 
 from src.core.config import settings
 from src.schemas.travel import Point, TravelLeg, TravelMode, TravelProvider
+from src.services.planner import run_log
 from src.services.travel.polyline import encode
 
 logger = logging.getLogger(__name__)
@@ -156,6 +157,7 @@ async def build_duration_matrix(
             len(points) <= settings.r5_matrix_single_max_points
             and len(points) ** 2 <= settings.r5_matrix_block_max_pairs
         ):
+            await run_log.note(f"R5 считает матрицу целиком: {len(points)} точек")
             response = await client.post(
                 "/matrix", json={"points": request_points, "departure_time": departure}
             )
@@ -165,6 +167,12 @@ async def build_duration_matrix(
         size = len(points)
         result: list[list[float | None]] = [[None] * size for _ in range(size)]
         origin_size = min(settings.r5_matrix_block_origins, settings.r5_matrix_block_max_pairs)
+        # блоков бывают сотни, и каждый идёт секунды: без отметок расчёт выглядит зависшим
+        blocks_total = math.ceil(size / origin_size) * math.ceil(
+            size / max(min(1000, settings.r5_matrix_block_max_pairs // origin_size), 1)
+        )
+        blocks_done = 0
+        await run_log.note(f"R5 считает матрицу блоками: всего {blocks_total}")
         for origin_start in range(0, size, origin_size):
             origins = request_points[origin_start : origin_start + origin_size]
             destination_size = min(1000, settings.r5_matrix_block_max_pairs // len(origins))
@@ -188,6 +196,11 @@ async def build_duration_matrix(
                 )
                 for row_index, row in enumerate(block, start=origin_start):
                     result[row_index][destination_start : destination_start + len(row)] = row
+                blocks_done += 1
+                await run_log.note(
+                    f"R5: блок {blocks_done} из {blocks_total}",
+                    fraction=blocks_done / max(blocks_total, 1),
+                )
         return result
 
 

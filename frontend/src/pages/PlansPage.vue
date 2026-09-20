@@ -10,7 +10,9 @@ import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
 import PlansList from '../components/PlansList.vue'
 import ReplanMark from '../components/ReplanMark.vue'
 import ReplanNotice from '../components/ReplanNotice.vue'
+import PlanRunProgress from '../components/PlanRunProgress.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
+import { usePlanRun } from '../composables/usePlanRun.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { planChain } from '../utils/planChain.js'
@@ -54,9 +56,22 @@ async function startReplan(params) {
   const summary = replanTarget.value
   replanTarget.value = null
   replanPlanId.value = null
-  await replan(summary, params)
+  await withRunLog(params, () => replan(summary, params))
   // открыт план — возвращаемся к списку: там рядом старый план и его пересчёт
   if (selectedPlanId.value !== null) backToPlans()
+}
+
+// ход расчёта: номер запуска придумываем здесь, по нему журнал показывает шаги и проценты
+const { run: planRun, newRunId, watch: watchRun, stop: stopRun } = usePlanRun()
+
+async function withRunLog(params, action) {
+  params.run_id = newRunId()
+  watchRun(params.run_id)
+  try {
+    await action()
+  } finally {
+    stopRun()
+  }
 }
 
 // пришли из сравнения планов: открываем нужный план; из заявки — ещё и её точку на карте
@@ -69,7 +84,7 @@ const buildDialogOpen = ref(false)
 
 async function startBuild(params) {
   buildDialogOpen.value = false
-  await buildDayPlan(params)
+  await withRunLog(params, () => buildDayPlan(params))
 }
 
 // «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
@@ -216,6 +231,9 @@ onMounted(async () => {
         </button>
       </section>
 
+      <!-- расчёт идёт: видно, что именно считается и сколько уже прошло -->
+      <PlanRunProgress v-if="building" :run="planRun" />
+
       <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
       <ReplanNotice
         v-if="replanSummary?.approved_at"
@@ -268,6 +286,8 @@ onMounted(async () => {
         @close="replanPlanId = null"
         @replan="replanTarget = replanSummary"
       />
+
+      <PlanRunProgress v-if="building" :run="planRun" />
 
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 

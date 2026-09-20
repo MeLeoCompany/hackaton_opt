@@ -8,6 +8,7 @@
 import platform
 import sys
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import httpx
 from sqlalchemy import text
@@ -15,10 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
 from src.core.config import settings
-from src.core.errors import DataError
+from src.core.errors import DataError, NotFoundError
 from src.models import AppUser, Brigade, Engineer, Office, Plan, Request
+from src.repositories.plan_runs import plan_runs_repository
 from src.repositories.system import system_repository
-from src.schemas.system import ServiceStatus, SystemInfo, SystemTimeRead, SystemTimeWrite
+from src.schemas.system import (
+    PlanRunEventRead,
+    PlanRunRead,
+    ServiceStatus,
+    SystemInfo,
+    SystemTimeRead,
+    SystemTimeWrite,
+)
 
 APP_VERSION = "0.1.0"
 # перемотка — инструмент демонстрации: часы ставят в день, на котором лежат данные, поэтому
@@ -158,4 +167,41 @@ async def read_info(session: AsyncSession) -> SystemInfo:
             "Скорость пешком, км/ч": str(settings.walking_speed_kmh),
         },
         data=data,
+    )
+
+
+async def list_runs(session: AsyncSession, *, office_id: int, limit: int = 50) -> list[PlanRunRead]:
+    """Журнал расчётов офиса: чем считали, сколько заняло и чем кончилось."""
+    rows = await plan_runs_repository.list_runs(session, office_id=office_id, limit=limit)
+    return [run_summary(run, user_name) for run, user_name in rows]
+
+
+async def get_run(session: AsyncSession, run_id: UUID, *, office_id: int) -> PlanRunRead:
+    """Один запуск со всеми его шагами: по нему рисуется прогресс и разбирается зависание."""
+    row = await plan_runs_repository.get_run(session, run_id, office_id=office_id)
+    if row is None:
+        raise NotFoundError(f"Расчёт {run_id} не найден")
+    run, user_name = row
+    summary = run_summary(run, user_name)
+    events = await plan_runs_repository.list_events(session, run_id)
+    summary.events = [PlanRunEventRead.model_validate(event) for event in events]
+    return summary
+
+
+def run_summary(run, user_name: str | None) -> PlanRunRead:
+    finished = run.finished_at or clock.now()
+    return PlanRunRead(
+        id=run.id,
+        plan_date=run.plan_date,
+        kind=run.kind,
+        solver=run.solver,
+        status=run.status,
+        step=run.step,
+        progress=run.progress,
+        plan_id=run.plan_id,
+        error=run.error,
+        user_name=user_name,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        duration_seconds=max((finished - run.started_at).total_seconds(), 0.0),
     )

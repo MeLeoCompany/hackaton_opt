@@ -14,3 +14,13 @@ export function setSystemTime(payload) {
 export function fetchSystemInfo() {
   return apiRequest('GET', '/system/info')
 }
+
+// журнал расчётов офиса: чем считали, сколько заняло и чем кончилось
+export function listPlanRuns(limit = 50) {
+  return apiRequest('GET', `/system/runs?limit=${limit}`)
+}
+
+// ход одного расчёта: текущий шаг, процент и события по порядку
+export function fetchPlanRun(runId) {
+  return apiRequest('GET', `/system/runs/${runId}`)
+}

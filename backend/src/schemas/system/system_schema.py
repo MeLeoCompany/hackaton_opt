@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -41,3 +42,37 @@ class SystemInfo(BaseModel):
     services: list[ServiceStatus]
     settings: dict[str, str]
     data: dict[str, int]
+
+
+class PlanRunEventRead(BaseModel):
+    """Одна строка хода расчёта: что считалось и когда (db/init/038)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    at: datetime
+    level: str
+    step: str
+    message: str
+    progress: int | None = None
+
+
+class PlanRunRead(BaseModel):
+    """Запуск расчёта: чем считали, на каком шаге и чем кончилось."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    plan_date: date | None
+    kind: str  # build / replan / preview
+    solver: str | None
+    status: str  # running / done / failed
+    step: str
+    progress: int
+    plan_id: int | None
+    error: str | None
+    user_name: str | None = None
+    started_at: datetime
+    finished_at: datetime | None
+    # сколько заняло, секунд: у незаконченного — сколько идёт прямо сейчас
+    duration_seconds: float
+    events: list[PlanRunEventRead] = []

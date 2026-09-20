@@ -10,7 +10,7 @@ import numpy as np
 from src.core.config import settings
 from src.core.errors import ExternalServiceError
 from src.schemas.travel import Point, TransportKind
-from src.services.planner import cuopt_solver
+from src.services.planner import cuopt_solver, run_log
 from src.services.planner.objective_policy import ObjectiveCriterion
 from src.services.planner.planner_loader import LoadedDay
 from src.services.planner.planner_problem import ProblemInstance
@@ -45,6 +45,14 @@ async def check_schedule(
     observations: dict[tuple[int, int], int] = {}
     valid = True
     skipped = 0
+    transit_routes = sum(
+        1
+        for index, visits in solution.routes.items()
+        if instance.engineers[index].transport_id == TRANSIT_ID and visits
+    )
+    checked_routes = 0
+    if transit_routes:
+        await run_log.note(f"R5: проверяю расписание по {transit_routes} маршрутам")
     for engineer_index, visits in solution.routes.items():
         engineer = instance.engineers[engineer_index]
         if engineer.transport_id != TRANSIT_ID or not visits:
@@ -88,8 +96,15 @@ async def check_schedule(
             available = start + request.duration_min
             previous = next_node
         routes[engineer_index] = actual_visits
+        checked_routes += 1
+        await run_log.note(
+            f"R5: маршрут {checked_routes} из {transit_routes} — бригада {engineer.name}"
+        )
     if skipped:
         logger.warning("R5: %s визитов снято из плана из-за невыполнимого расписания", skipped)
+        await run_log.note(
+            f"По фактическому расписанию не успеть: снято визитов — {skipped}", level="warning"
+        )
     return (cuopt_solver.DaySolution(routes) if valid else None), observations
 
 
@@ -108,6 +123,11 @@ async def solve_day(
     cache: dict[tuple[int, int, int], int] = {}
     instance: ProblemInstance = loaded.instance
     for attempt in range(settings.transit_plan_max_attempts):
+        await run_log.note(
+            f"Попытка {attempt + 1} из {settings.transit_plan_max_attempts}: "
+            "решаю и сверяю с расписанием",
+            fraction=attempt / settings.transit_plan_max_attempts,
+        )
         solution = await cuopt_solver.solve_day(
             instance, objective_order=objective_order, ranks=ranks
         )

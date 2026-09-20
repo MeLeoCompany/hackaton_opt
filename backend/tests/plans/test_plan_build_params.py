@@ -29,7 +29,7 @@ def patched_service(loaded, saved_plan):
 async def test_cuopt_is_used_by_default():
     instance = SimpleNamespace(travel_min={})
     loaded = SimpleNamespace(instance=instance)
-    plan = SimpleNamespace(total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)
 
@@ -55,7 +55,7 @@ async def test_cuopt_is_used_by_default():
 @pytest.mark.asyncio
 async def test_baseline_is_used_when_chosen():
     loaded = SimpleNamespace(instance="задача дня")
-    plan = SimpleNamespace(total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)
 
@@ -84,7 +84,7 @@ async def test_baseline_is_used_when_chosen():
 async def test_custom_objective_order_is_forwarded_and_saved():
     instance = SimpleNamespace(travel_min={})
     loaded = SimpleNamespace(instance=instance)
-    plan = SimpleNamespace(total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)
     order = [
@@ -118,7 +118,7 @@ async def test_custom_objective_order_is_forwarded_and_saved():
 async def test_single_plan_without_pair():
     """Пары планов расчёт больше не создаёт: сравнить можно любые два готовых плана."""
     loaded = SimpleNamespace(instance=SimpleNamespace(travel_min={}))
-    plan = SimpleNamespace(total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)
 
