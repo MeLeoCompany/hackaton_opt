@@ -150,8 +150,8 @@ function focusRequest(requestId) {
   selectRequest(requestId)
 }
 
-// сменили день — перечитываем и план дня: предупреждение относится к новому дню
-watch(selectedDay, loadDayPlan)
+// Смена дня или заявок меняет причины пересчёта; перечитываем сводку плана.
+watch([selectedDay, requests], loadDayPlan)
 
 onMounted(async () => {
   await Promise.all([load(), loadDayPlan()])

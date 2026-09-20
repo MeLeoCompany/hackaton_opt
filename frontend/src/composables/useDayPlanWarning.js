@@ -11,14 +11,20 @@ import { useSelectedDay } from './useSelectedDay.js'
 export function useDayPlanWarning() {
   const { selectedDay } = useSelectedDay()
   const summary = ref(null)
+  let loadRequest = 0
 
   // действующий утверждённый план дня: по нему сейчас ездят бригады
   async function load() {
-    if (!selectedDay.value) return
+    const request = ++loadRequest
+    const day = selectedDay.value
+    summary.value = null
+    if (!day) return
     try {
-      const plans = await listPlans(selectedDay.value)
+      const plans = await listPlans(day)
+      if (request !== loadRequest || day !== selectedDay.value) return
       summary.value = plans.find((plan) => plan.approved_at && !plan.superseded_at) ?? null
     } catch {
+      if (request !== loadRequest || day !== selectedDay.value) return
       // предупреждение — подсказка, а не работа: молча не показываем его
       summary.value = null
     }
