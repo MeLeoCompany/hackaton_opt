@@ -27,7 +27,8 @@ def patched_service(loaded, saved_plan):
 
 @pytest.mark.asyncio
 async def test_cuopt_is_used_by_default():
-    loaded = SimpleNamespace(instance="задача дня")
+    instance = SimpleNamespace(travel_min={})
+    loaded = SimpleNamespace(instance=instance)
     plan = SimpleNamespace(total_distance_km=None, distance_provider=None)
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)
@@ -44,7 +45,7 @@ async def test_cuopt_is_used_by_default():
     ):
         await planning_service.build_plan_for_day(session, "2026-08-17", office_id=1)
 
-    cuopt.assert_awaited_once_with("задача дня", objective_order=DEFAULT_OBJECTIVE_ORDER)
+    cuopt.assert_awaited_once_with(instance, objective_order=DEFAULT_OBJECTIVE_ORDER)
     baseline.assert_not_called()
     assert save_solution.await_args.kwargs["solver"] == "cuopt"
     assert save_solution.await_args.kwargs["solve_duration_ms"] >= 0
@@ -81,7 +82,8 @@ async def test_baseline_is_used_when_chosen():
 
 @pytest.mark.asyncio
 async def test_custom_objective_order_is_forwarded_and_saved():
-    loaded = SimpleNamespace(instance="задача дня")
+    instance = SimpleNamespace(travel_min={})
+    loaded = SimpleNamespace(instance=instance)
     plan = SimpleNamespace(total_distance_km=None, distance_provider=None)
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)
@@ -108,14 +110,14 @@ async def test_custom_objective_order_is_forwarded_and_saved():
         )
 
     expected = tuple(order)
-    cuopt.assert_awaited_once_with("задача дня", objective_order=expected)
+    cuopt.assert_awaited_once_with(instance, objective_order=expected)
     assert save_solution.await_args.kwargs["objective_order"] == expected
 
 
 @pytest.mark.asyncio
 async def test_single_plan_without_pair():
     """Пары планов расчёт больше не создаёт: сравнить можно любые два готовых плана."""
-    loaded = SimpleNamespace(instance="задача дня")
+    loaded = SimpleNamespace(instance=SimpleNamespace(travel_min={}))
     plan = SimpleNamespace(total_distance_km=None, distance_provider=None)
     session = SimpleNamespace(commit=AsyncMock())
     load, save, distance, summarize = patched_service(loaded, plan)

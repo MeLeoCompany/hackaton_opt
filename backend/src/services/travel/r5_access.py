@@ -109,6 +109,19 @@ async def _walk(
 
 async def route(origin: Point, destination: Point, departure: datetime) -> r5_provider.RouteResult:
     """Сравнить R5 с прямым пешим путём и восстановить привязку при 404."""
+    if origin == destination:
+        # Старт бригады может совпасть с адресом заявки. Это переезд нулевой длины,
+        # а /route R5 справедливо отвергает две одинаковые координаты с HTTP 422.
+        return r5_provider.RouteResult(
+            legs=[],
+            total_duration_min=0,
+            walking_duration_min=0,
+            waiting_duration_min=0,
+            transit_duration_min=0,
+            entry_exit_penalty_min=0,
+            reliability_buffer_min=0,
+            transfers=0,
+        )
     try:
         direct_result = await r5_provider.build_route(origin, destination, departure)
     except httpx.HTTPStatusError as error:

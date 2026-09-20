@@ -80,6 +80,7 @@ class LoadedDay:
     engineers: list[Engineer]  # в том же порядке, что instance.engineers, навыки загружены
     skill_names: dict[int, str]
     transport_names: dict[int, str]
+    start_points: list[Point] | None = None  # фактические старты при пересчёте
 
 
 def planning_day(plan_date: date) -> PlanningDay:
@@ -185,6 +186,7 @@ async def load_day(
         engineers=engineers,
         skill_names={skill.id: skill.name for skill in skills},
         transport_names={transport.id: transport.name for transport in transports},
+        start_points=start_points,
     )
 
 

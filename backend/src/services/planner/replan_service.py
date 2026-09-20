@@ -21,9 +21,11 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
+from src.core.errors import ExternalServiceError
 from src.core.local_day import local_timezone
 from src.models import Assignment, Plan, PlanRunType, RequestStatusId
 from src.repositories.brigade import brigade_repository
@@ -336,7 +338,22 @@ async def full_routes_distance(session: AsyncSession, plan: Plan) -> PlanDistanc
             Point(latitude=float(a.request.latitude), longitude=float(a.request.longitude))
             for a in route
         ]
-        travel = await build_route(points, TransportKind(engineer.transport_id))
+        transport = TransportKind(engineer.transport_id)
+        if transport is TransportKind.PUBLIC_TRANSPORT:
+            departures = [engineer.shift_start]
+            departures += [
+                assignment.planned_arrival_time
+                + timedelta(minutes=assignment.request.duration_minutes)
+                for assignment in route[:-1]
+            ]
+            try:
+                travel = await build_route(
+                    points, transport, leg_departure_times=departures, allow_fallback=False
+                )
+            except (httpx.HTTPError, KeyError, ValueError) as error:
+                raise ExternalServiceError(f"R5 не смог измерить пробег плана: {error}") from error
+        else:
+            travel = await build_route(points, transport)
         provider = (
             travel.provider.value
             if isinstance(travel.provider, TravelProvider)

@@ -20,7 +20,7 @@ def loaded_day():
         SimpleNamespace(latitude=55.71, longitude=37.61),
         SimpleNamespace(latitude=55.81, longitude=37.71),
     ]
-    return SimpleNamespace(engineers=engineers, requests=requests)
+    return SimpleNamespace(engineers=engineers, requests=requests, start_points=None)
 
 
 @pytest.mark.asyncio
@@ -84,6 +84,8 @@ async def test_public_transport_route_uses_service_completion_as_next_departure(
             SimpleNamespace(latitude=55.72, longitude=37.62, duration_minutes=30),
         ],
         day=SimpleNamespace(from_minutes=lambda minutes: day_start + timedelta(minutes=minutes)),
+        instance=SimpleNamespace(engineers=[SimpleNamespace(shift_start_min=540)]),
+        start_points=None,
     )
     solution = DaySolution(routes={0: [PlannedVisit(0, 600), PlannedVisit(1, 720)]})
     travel = SimpleNamespace(distance_km=3, provider=TravelProvider.R5)

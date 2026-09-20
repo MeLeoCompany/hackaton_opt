@@ -192,6 +192,22 @@ async def test_public_transport_route_uses_each_planned_departure():
 
 
 @pytest.mark.asyncio
+async def test_public_transport_zero_length_leg_has_no_wait_or_route_request():
+    with patch.object(travel_service.r5_provider, "build_route", AsyncMock()) as r5_route:
+        route = await travel_service.build_route(
+            [POINTS[0], POINTS[0]],
+            TransportKind.PUBLIC_TRANSPORT,
+            departure_time=DEPARTURE,
+            allow_fallback=False,
+        )
+
+    assert route.duration_min == 0
+    assert route.distance_km == 0
+    assert route.legs == []
+    r5_route.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_public_transport_route_fallback_is_marked_explicitly():
     estimated_leg = TravelLeg(distance_km=1, duration_min=10, geometry="shape")
     with (

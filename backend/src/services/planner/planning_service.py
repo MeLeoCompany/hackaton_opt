@@ -8,11 +8,12 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
+import httpx
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
-from src.core.errors import DataError, InUseError, NotFoundError
+from src.core.errors import DataError, ExternalServiceError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates
 from src.models import Assignment, Engineer, Plan, PlanRunType, Request, RequestStatusId
 from src.repositories.brigade import brigade_repository
@@ -33,7 +34,7 @@ from src.schemas.plans import (
     WithdrawnRequest,
 )
 from src.schemas.travel import Point, TransportKind, TravelProvider
-from src.services.planner import baseline_solver, cuopt_solver, planner_loader
+from src.services.planner import baseline_solver, cuopt_solver, planner_loader, transit_schedule
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -143,7 +144,7 @@ async def solve_with(
     """cuOpt считает на видеокарте в отдельном потоке, базовый алгоритм — прямо здесь."""
     if solver is SolverName.BASELINE:
         return baseline_solver.solve_day(loaded.instance)
-    return await cuopt_solver.solve_day(loaded.instance, objective_order=objective_order)
+    return await transit_schedule.solve_day(loaded, objective_order)
 
 
 @dataclass(frozen=True)
@@ -169,7 +170,9 @@ async def total_route_distance(
     ) -> tuple[float, str]:
         engineer = loaded.engineers[engineer_index]
         points = [
-            Point(
+            loaded.start_points[engineer_index]
+            if loaded.start_points is not None
+            else Point(
                 latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude)
             )
         ]
@@ -184,13 +187,20 @@ async def total_route_distance(
         # TODO: сделать fallback управляемым: retry/cached route и сохранять источник
         # отдельно для каждого маршрута. Пока хотя бы честно помечаем весь пробег плана.
         if transport is TransportKind.PUBLIC_TRANSPORT:
-            departures = [engineer.shift_start]
+            departures = [
+                loaded.day.from_minutes(loaded.instance.engineers[engineer_index].shift_start_min)
+            ]
             departures += [
                 loaded.day.from_minutes(visit.work_start_minute)
                 + timedelta(minutes=loaded.requests[visit.request_index].duration_minutes)
                 for visit in visits[:-1]
             ]
-            travel = await build_route(points, transport, leg_departure_times=departures)
+            try:
+                travel = await build_route(
+                    points, transport, leg_departure_times=departures, allow_fallback=False
+                )
+            except (httpx.HTTPError, KeyError, ValueError) as error:
+                raise ExternalServiceError(f"R5 не смог измерить пробег плана: {error}") from error
         else:
             travel = await build_route(points, transport)
         provider = (

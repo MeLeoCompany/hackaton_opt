@@ -34,6 +34,16 @@ def result() -> r5_provider.RouteResult:
     )
 
 
+@pytest.mark.asyncio
+async def test_identical_points_need_no_r5_request():
+    with patch.object(r5_provider, "build_route", AsyncMock()) as build:
+        route = await r5_access.route(ORIGIN, ORIGIN, DEPARTURE)
+
+    assert route.total_duration_min == 0
+    assert route.legs == []
+    build.assert_not_awaited()
+
+
 def access_walk(walk):
     def pick(origin, destination, **kwargs):
         return None if origin == ORIGIN and destination == DESTINATION else walk

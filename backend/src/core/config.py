@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     # последний уровень целевой функции: насколько различия пробега влияют на выбор
     # между планами с одинаковыми срочными/обычными заявками и числом исполнителей
     cuopt_distance_weight: float = Field(default=1.0, gt=0.0, allow_inf_nan=False)
+    # число попыток уточнить расписание ОТ после решения статической задачи
+    transit_plan_max_attempts: int = Field(default=4, ge=1, le=10)
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     # диспетчер вводит время по Москве; перехода на летнее время там нет, поэтому хватает сдвига
     local_utc_offset_hours: int = 3
