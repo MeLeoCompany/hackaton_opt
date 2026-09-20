@@ -1,6 +1,7 @@
 """Проверка маршрутов ОТ по времени фактического выезда между заявками."""
 
 import copy
+import logging
 import math
 
 import httpx
@@ -16,6 +17,7 @@ from src.services.planner.planner_problem import ProblemInstance
 from src.services.travel import build_route
 
 TRANSIT_ID = TransportKind.PUBLIC_TRANSPORT.value
+logger = logging.getLogger(__name__)
 
 
 def node_points(loaded: LoadedDay) -> list[Point]:
@@ -34,12 +36,15 @@ async def check_schedule(
     solution: cuopt_solver.DaySolution,
     points: list[Point],
     cache: dict[tuple[int, int, int], int],
+    *,
+    skip_infeasible: bool = False,
 ) -> tuple[cuopt_solver.DaySolution | None, dict[tuple[int, int], int]]:
     """Пересчитать начала работ; при нарушении вернуть замеры для следующей попытки."""
     instance = loaded.instance
     routes = dict(solution.routes)
     observations: dict[tuple[int, int], int] = {}
     valid = True
+    skipped = 0
     for engineer_index, visits in solution.routes.items():
         engineer = instance.engineers[engineer_index]
         if engineer.transport_id != TRANSIT_ID or not visits:
@@ -73,11 +78,18 @@ async def check_schedule(
                 start > request.window_end_min
                 or start + request.duration_min > engineer.shift_end_min
             ):
+                if skip_infeasible:
+                    skipped += 1
+                    # Следующее плечо строится от последней выполненной заявки,
+                    # а не от пропущенного адреса.
+                    continue
                 valid = False
             actual_visits.append(cuopt_solver.PlannedVisit(visit.request_index, start))
             available = start + request.duration_min
             previous = next_node
         routes[engineer_index] = actual_visits
+    if skipped:
+        logger.warning("R5: %s визитов снято из плана из-за невыполнимого расписания", skipped)
     return (cuopt_solver.DaySolution(routes) if valid else None), observations
 
 
@@ -93,20 +105,22 @@ async def solve_day(
     instance: ProblemInstance = loaded.instance
     for attempt in range(settings.transit_plan_max_attempts):
         solution = await cuopt_solver.solve_day(instance, objective_order=objective_order)
-        checked, observations = await check_schedule(loaded, solution, points, cache)
+        last_attempt = attempt + 1 == settings.transit_plan_max_attempts
+        checked, observations = await check_schedule(
+            loaded, solution, points, cache, skip_infeasible=last_attempt
+        )
         if checked is not None:
             return checked
-        if attempt + 1 == settings.transit_plan_max_attempts:
-            break
         # Матрицу исходной задачи не меняем: её снимок и другие решатели используют сами.
         updated = instance.travel_min[TRANSIT_ID].copy()
         for (origin, destination), duration in observations.items():
             updated[origin, destination] = max(updated[origin, destination], duration)
         if np.array_equal(updated, instance.travel_min[TRANSIT_ID]):
-            break
+            repaired, _ = await check_schedule(
+                loaded, solution, points, cache, skip_infeasible=True
+            )
+            assert repaired is not None
+            return repaired
         instance = copy.copy(instance)
         instance.travel_min = {**instance.travel_min, TRANSIT_ID: updated}
-    raise ExternalServiceError(
-        "Не удалось построить план ОТ, который укладывается в окна заявок "
-        "по фактическому расписанию R5"
-    )
+    raise AssertionError("цикл проверки расписания завершился без результата")

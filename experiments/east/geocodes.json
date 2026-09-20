@@ -1,0 +1,357 @@
+{
+  "Город Москва, пр-кт.Волгоградский, д. 128 к 5": {
+    "status": "exact_house",
+    "latitude": 55.700846,
+    "longitude": 37.782219,
+    "matched_house": "128 к5",
+    "osm_type": "apartments"
+  },
+  "Город Москва, пер.Маяковского, д. 2": {
+    "status": "exact_house",
+    "latitude": 55.739774,
+    "longitude": 37.659908,
+    "matched_house": "2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Грайвороновская, д. 10 к 2": {
+    "status": "exact_house",
+    "latitude": 55.718355,
+    "longitude": 37.731926,
+    "matched_house": "10 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Михайлова, д. 14": {
+    "status": "exact_house",
+    "latitude": 55.72703,
+    "longitude": 37.76596,
+    "matched_house": "14",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.3-я Институтская, д. 5 к 2": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.1-я Новокузьминская, д. 16 к 1": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.Окская, д. 32": {
+    "status": "exact_house",
+    "latitude": 55.714471,
+    "longitude": 37.769522,
+    "matched_house": "32",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Юных Ленинцев, д. 84": {
+    "status": "exact_house",
+    "latitude": 55.698118,
+    "longitude": 37.778604,
+    "matched_house": "84",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Международная, д. 28 стр. 1": {
+    "status": "review_required"
+  },
+  "Город Москва, ул.Новорогожская, д. 8": {
+    "status": "exact_house",
+    "latitude": 55.740895,
+    "longitude": 37.68458,
+    "matched_house": "8",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Чистова, д. 12": {
+    "status": "exact_house",
+    "latitude": 55.696506,
+    "longitude": 37.741942,
+    "matched_house": "12",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Паперника, д. 19": {
+    "status": "exact_house",
+    "latitude": 55.721757,
+    "longitude": 37.79072,
+    "matched_house": "19",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Окская, д. 48/2": {
+    "status": "review_required"
+  },
+  "Город Москва, ул.Трофимова, д. 24 к 2": {
+    "status": "exact_house",
+    "latitude": 55.702005,
+    "longitude": 37.676849,
+    "matched_house": "24 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.1-я Дубровская, д. 6": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.Рогожский Вал, д. 2/50": {
+    "status": "review_required"
+  },
+  "Город Москва, ул.Талалихина, д. 2/1 к 4": {
+    "status": "review_required"
+  },
+  "Город Москва, ул.Артюхиной, д. 20А": {
+    "status": "exact_house",
+    "latitude": 55.697285,
+    "longitude": 37.736577,
+    "matched_house": "20А",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Малышева, д. 13": {
+    "status": "exact_house",
+    "latitude": 55.698038,
+    "longitude": 37.743838,
+    "matched_house": "13",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Бронницкая, д. 12": {
+    "status": "exact_house",
+    "latitude": 55.731415,
+    "longitude": 37.759554,
+    "matched_house": "12",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Авиамоторная, д. 14": {
+    "status": "exact_house",
+    "latitude": 55.75232,
+    "longitude": 37.715398,
+    "matched_house": "14",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Фёдора Полетаева, д. 2 к 6": {
+    "status": "exact_house",
+    "latitude": 55.713656,
+    "longitude": 37.771948,
+    "matched_house": "2 к6",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Зарайская, д. 51 к 2": {
+    "status": "exact_house",
+    "latitude": 55.727968,
+    "longitude": 37.777224,
+    "matched_house": "51 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Саратовская, д. 14/1": {
+    "status": "review_required"
+  },
+  "Город Москва, ул.Нижегородская, д. 63": {
+    "status": "exact_house",
+    "latitude": 55.732455,
+    "longitude": 37.718699,
+    "matched_house": "63",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Смирновская, д. 6": {
+    "status": "exact_house",
+    "latitude": 55.736741,
+    "longitude": 37.708563,
+    "matched_house": "6",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Нижегородская, д. 61": {
+    "status": "exact_house",
+    "latitude": 55.732503,
+    "longitude": 37.717802,
+    "matched_house": "61",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Зеленодольская, д. 28Б": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.Артюхиной, д. 16": {
+    "status": "exact_house",
+    "latitude": 55.698497,
+    "longitude": 37.7378,
+    "matched_house": "16",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.3-я Карачаровская, д. 4 к 1": {
+    "status": "not_found"
+  },
+  "Город Москва, пр-кт.Рязанский, д. 73": {
+    "status": "exact_house",
+    "latitude": 55.718455,
+    "longitude": 37.790255,
+    "matched_house": "73",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Ферганская, д. 28/7": {
+    "status": "review_required"
+  },
+  "Город Москва, б-р.Самаркандский Квартал 137а, д. к5": {
+    "status": "review_required"
+  },
+  "Город Москва, ул.Боровая, д. 14": {
+    "status": "exact_house",
+    "latitude": 55.769391,
+    "longitude": 37.7157,
+    "matched_house": "14",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Стройковская, д. 8": {
+    "status": "exact_house",
+    "latitude": 55.734757,
+    "longitude": 37.67378,
+    "matched_house": "8",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.2-я Синичкина, д. 9 к 1": {
+    "status": "not_found"
+  },
+  "Москва, проезд Орехово-Зуевский, д. 18/8": {
+    "status": "review_required"
+  },
+  "Город Москва, пер.Большой Рогожский, д. 10 к 2": {
+    "status": "exact_house",
+    "latitude": 55.742,
+    "longitude": 37.667645,
+    "matched_house": "10 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Машкова, д. 13 стр. 1": {
+    "status": "review_required"
+  },
+  "Город Москва, ул.11-я Текстильщиков, д. 10": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.Паперника, д. 18": {
+    "status": "exact_house",
+    "latitude": 55.721323,
+    "longitude": 37.793512,
+    "matched_house": "18",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Большая Калитниковская, д. 38": {
+    "status": "exact_house",
+    "latitude": 55.736168,
+    "longitude": 37.686206,
+    "matched_house": "38",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Маршала Чуйкова, д. 9 к 2": {
+    "status": "exact_house",
+    "latitude": 55.697144,
+    "longitude": 37.762011,
+    "matched_house": "9 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Талалихина, д. 16": {
+    "status": "exact_house",
+    "latitude": 55.7355,
+    "longitude": 37.676817,
+    "matched_house": "16",
+    "osm_type": "apartments"
+  },
+  "Город Москва, б-р.Волжский, д. 50 к 2": {
+    "status": "exact_house",
+    "latitude": 55.696537,
+    "longitude": 37.75223,
+    "matched_house": "50 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Артюхиной, д. 3": {
+    "status": "exact_house",
+    "latitude": 55.702929,
+    "longitude": 37.737815,
+    "matched_house": "3",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Ферганский, д. 7 к 5": {
+    "status": "exact_house",
+    "latitude": 55.694063,
+    "longitude": 37.824857,
+    "matched_house": "7 к5",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Земляной Вал, д. 24/30 стр. 1": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.3-я Карачаровская, д. 8 к 2": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.Чистопольская, д. 2 к 2": {
+    "status": "exact_house",
+    "latitude": 55.730609,
+    "longitude": 37.758355,
+    "matched_house": "2 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Боровая, д. 12": {
+    "status": "exact_house",
+    "latitude": 55.770292,
+    "longitude": 37.714765,
+    "matched_house": "12",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Красноказарменная, д. 9Б стр. 1": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.Сторожевая, д. 31": {
+    "status": "exact_house",
+    "latitude": 55.764799,
+    "longitude": 37.716831,
+    "matched_house": "31",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Новорогожская, д. 10": {
+    "status": "exact_house",
+    "latitude": 55.740048,
+    "longitude": 37.683249,
+    "matched_house": "10",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Нижегородская, д. 25": {
+    "status": "exact_house",
+    "latitude": 55.737478,
+    "longitude": 37.694462,
+    "matched_house": "25",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Окская, д. 6 к 1": {
+    "status": "exact_house",
+    "latitude": 55.710308,
+    "longitude": 37.751411,
+    "matched_house": "6 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, пр-кт.Волгоградский, д. 97 к 1": {
+    "status": "exact_house",
+    "latitude": 55.707821,
+    "longitude": 37.751863,
+    "matched_house": "97 к1",
+    "osm_type": "apartments"
+  },
+  "г.Город Москва, б-р.Самаркандский, д. 32к1": {
+    "status": "not_found"
+  },
+  "г.Город Москва, б-р.Самаркандский, д. 10к2": {
+    "status": "review_required"
+  },
+  "г.Город Москва, ул.Новорогожская, д. 20": {
+    "status": "exact_house",
+    "latitude": 55.73903,
+    "longitude": 37.688038,
+    "matched_house": "20",
+    "osm_type": "kindergarten"
+  },
+  "г.Город Москва, ул.Ташкентская, д. 16к2": {
+    "status": "review_required"
+  },
+  "г.Город Москва, ул.Саратовская, д. 16": {
+    "status": "exact_house",
+    "latitude": 55.715001,
+    "longitude": 37.740197,
+    "matched_house": "16",
+    "osm_type": "apartments"
+  },
+  "г.Город Москва, наб.Семеновская, д. 3/1к2": {
+    "status": "review_required"
+  },
+  "г.Город Москва, наб.Семеновская, д. 2/1": {
+    "status": "review_required"
+  },
+  "г.Город Москва, пр-кт.Волгоградский, д. 128к1": {
+    "status": "review_required"
+  }
+}

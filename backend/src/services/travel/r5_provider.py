@@ -150,7 +150,12 @@ async def build_duration_matrix(
     async with httpx.AsyncClient(
         base_url=settings.r5_url, timeout=settings.r5_timeout_seconds
     ) as client:
-        if len(points) <= settings.r5_matrix_single_max_points:
+        # Число точек само по себе плохо оценивает нагрузку: полная матрица
+        # растёт квадратично. Для большого дня всегда используем блоки.
+        if (
+            len(points) <= settings.r5_matrix_single_max_points
+            and len(points) ** 2 <= settings.r5_matrix_block_max_pairs
+        ):
             response = await client.post(
                 "/matrix", json={"points": request_points, "departure_time": departure}
             )

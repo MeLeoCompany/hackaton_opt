@@ -1,5 +1,6 @@
 """План ОТ проверяется по реальному времени выезда, а не по утренней матрице."""
 
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -7,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 
-from src.core.errors import ExternalServiceError
 from src.services.planner import cuopt_solver, planner_loader, transit_schedule
 from src.services.planner.planner_problem import EngineerSpec, ProblemInstance, RequestSpec
 
@@ -66,7 +66,7 @@ async def test_retries_with_measured_travel_and_saves_actual_work_times():
 
 
 @pytest.mark.asyncio
-async def test_rejects_unfixable_schedule():
+async def test_unfixable_visit_is_left_unassigned():
     loaded = loaded_day()
     solution = cuopt_solver.DaySolution(
         {0: [cuopt_solver.PlannedVisit(0, 550), cuopt_solver.PlannedVisit(1, 580)]}
@@ -78,6 +78,32 @@ async def test_rejects_unfixable_schedule():
             AsyncMock(return_value=SimpleNamespace(duration_min=100)),
         ),
         patch.object(transit_schedule.cuopt_solver, "solve_day", AsyncMock(return_value=solution)),
-        pytest.raises(ExternalServiceError, match="фактическому расписанию"),
     ):
-        await transit_schedule.solve_day(loaded, ())
+        result = await transit_schedule.solve_day(loaded, ())
+
+    assert [visit.request_index for visit in result.routes[0]] == [0]
+    assert result.routes[0][0].work_start_minute == 640
+
+
+@pytest.mark.asyncio
+async def test_rechecks_next_leg_after_skipping_late_visit():
+    loaded = loaded_day()
+    loaded.instance.requests[0] = replace(loaded.instance.requests[0], window_end_min=560)
+    loaded.instance.requests[1] = replace(loaded.instance.requests[1], window_end_min=690)
+    solution = cuopt_solver.DaySolution(
+        {0: [cuopt_solver.PlannedVisit(0, 550), cuopt_solver.PlannedVisit(1, 580)]}
+    )
+
+    async def route(points, transport, *, departure_time, allow_fallback):
+        return SimpleNamespace(duration_min=30 if points[1].latitude == 55.71 else 10)
+
+    with (
+        patch.object(transit_schedule, "build_route", side_effect=route) as build,
+        patch.object(transit_schedule.cuopt_solver, "solve_day", AsyncMock(return_value=solution)),
+        patch.object(transit_schedule.settings, "transit_plan_max_attempts", 1),
+    ):
+        result = await transit_schedule.solve_day(loaded, ())
+
+    assert [visit.request_index for visit in result.routes[0]] == [1]
+    assert result.routes[0][0].work_start_minute == 570
+    assert build.await_count == 2
