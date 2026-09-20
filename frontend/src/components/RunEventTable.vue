@@ -101,10 +101,11 @@ const rows = computed(() => {
   background: #eff6ff;
 }
 
+/* плашки уровня одного размера: колонка читается ровным столбиком */
 .level {
   display: inline-block;
-  min-width: 52px;
-  padding: 0 6px;
+  width: 62px;
+  padding: 0 4px;
   border-radius: 4px;
   background: #e2e8f0;
   color: #475569;

@@ -107,3 +107,33 @@ async def test_rechecks_next_leg_after_skipping_late_visit():
     assert [visit.request_index for visit in result.routes[0]] == [1]
     assert result.routes[0][0].work_start_minute == 570
     assert build.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_journal_explains_why_the_plan_goes_back_to_the_solver():
+    """«Решили 66 из 66» ещё не значит «готово»: по журналу видно, что не сошлось и почему."""
+    loaded = loaded_day()
+    first = cuopt_solver.DaySolution(
+        {0: [cuopt_solver.PlannedVisit(0, 550), cuopt_solver.PlannedVisit(1, 580)]}
+    )
+    second = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+
+    async def route(points, transport, *, departure_time, allow_fallback):
+        return SimpleNamespace(duration_min=30 if points[0].latitude == 55.71 else 10)
+
+    with (
+        patch.object(transit_schedule, "build_route", side_effect=route),
+        patch.object(
+            transit_schedule.cuopt_solver, "solve_day", AsyncMock(side_effect=[first, second])
+        ),
+        patch.object(transit_schedule.run_log, "note", AsyncMock()) as note,
+    ):
+        await transit_schedule.solve_day(loaded, ())
+
+    written = [call.args[0] for call in note.await_args_list]
+    # какой визит не сошёлся по фактическому расписанию
+    assert any("№11" in line and "окно до" in line for line in written)
+    # что изменилось в матрице и почему идём на новый круг
+    assert any("Уточняю матрицу" in line for line in written)
+    assert any("Решаю заново с уточнёнными временами" == line for line in written)
+    assert any("Расписание сходится" in line for line in written)

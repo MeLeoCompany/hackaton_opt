@@ -51,6 +51,7 @@ async def check_schedule(
         if instance.engineers[index].transport_id == TRANSIT_ID and visits
     )
     checked_routes = 0
+    broken: list[str] = []
     if transit_routes:
         await run_log.note(f"R5: проверяю расписание по {transit_routes} маршрутам")
     for engineer_index, visits in solution.routes.items():
@@ -82,10 +83,18 @@ async def check_schedule(
             )
             request = instance.requests[visit.request_index]
             start = max(available + duration, request.window_start_min)
-            if (
-                start > request.window_end_min
-                or start + request.duration_min > engineer.shift_end_min
-            ):
+            late_for_window = start > request.window_end_min
+            out_of_shift = start + request.duration_min > engineer.shift_end_min
+            if late_for_window or out_of_shift:
+                broken.append(
+                    f"№{request.request_id} у бригады {engineer.name}: "
+                    + (
+                        f"приедет в {hhmm(start)}, окно до {hhmm(request.window_end_min)}"
+                        if late_for_window
+                        else f"работа до {hhmm(start + request.duration_min)}, "
+                        f"смена до {hhmm(engineer.shift_end_min)}"
+                    )
+                )
                 if skip_infeasible:
                     skipped += 1
                     # Следующее плечо строится от последней выполненной заявки,
@@ -101,12 +110,57 @@ async def check_schedule(
         await run_log.note(
             f"R5: маршрут {checked_routes} из {transit_routes} — бригада {engineer.name}"
         )
+    if broken:
+        # видно, из-за чего план отвергнут: время из матрицы было оптимистичнее расписания
+        await run_log.note(
+            f"По фактическому расписанию не сходится {run_log.plural(len(broken), 'визит', 'визита', 'визитов')}",
+            level="warning",
+            details={"broken": broken[:20]},
+        )
+        for reason in broken[:5]:
+            await run_log.note(reason, level="warning")
     if skipped:
         logger.warning("R5: %s визитов снято из плана из-за невыполнимого расписания", skipped)
         await run_log.note(
-            f"По фактическому расписанию не успеть: снято визитов — {skipped}", level="warning"
+            f"Последняя попытка: снимаем из плана визиты, к которым не успеть — {skipped}",
+            level="warning",
         )
     return (cuopt_solver.DaySolution(routes) if valid else None), observations
+
+
+def hhmm(minutes: float) -> str:
+    """Минуты от начала дня — в часы и минуты: журнал читают люди."""
+    total = int(minutes)
+    return f"{total // 60 % 24:02d}:{total % 60:02d}"
+
+
+async def explain_retry(
+    current: np.ndarray, updated: np.ndarray, attempt: int, last_attempt: bool
+) -> None:
+    """Почему решаем заново: матрица была оптимистичнее расписания, уточняем её и повторяем.
+
+    Плечи между точками R5 оценивает по средней частоте транспорта, а фактический рейс может
+    уйти позже. Поэтому замеренные времена возвращаем в матрицу и просим решатель разложить
+    заново уже с ними.
+    """
+    grown = int((updated > current).sum())
+    if not grown:
+        await run_log.note(
+            "Уточнять нечего: замеры совпали с матрицей — снимаем невыполнимые визиты",
+            level="warning",
+        )
+        return
+    increase = (updated - current)[updated > current]
+    await run_log.note(
+        f"Уточняю матрицу: {run_log.plural(grown, 'плечо', 'плеча', 'плеч')} стало дольше, "
+        f"больше всего на {int(increase.max())} мин",
+        details={"legs": grown, "max_increase_minutes": int(increase.max())},
+    )
+    await run_log.note(
+        "Решаю заново с уточнёнными временами"
+        if not last_attempt
+        else f"Попытки кончились ({attempt + 1}): последний расчёт идёт без снятых визитов",
+    )
 
 
 async def solve_day(
@@ -138,11 +192,13 @@ async def solve_day(
             loaded, solution, points, cache, skip_infeasible=last_attempt
         )
         if checked is not None:
+            await run_log.note("Расписание сходится: план принят")
             return checked
         # Матрицу исходной задачи не меняем: её снимок и другие решатели используют сами.
         updated = instance.travel_min[TRANSIT_ID].copy()
         for (origin, destination), duration in observations.items():
             updated[origin, destination] = max(updated[origin, destination], duration)
+        await explain_retry(instance.travel_min[TRANSIT_ID], updated, attempt, last_attempt)
         if np.array_equal(updated, instance.travel_min[TRANSIT_ID]):
             repaired, _ = await check_schedule(
                 loaded, solution, points, cache, skip_infeasible=True

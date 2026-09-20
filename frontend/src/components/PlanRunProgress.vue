@@ -122,7 +122,9 @@ function seconds(value) {
 /* чья это строка: cuopt, r5, valhalla */
 .source {
   flex: none;
+  width: 54px;
   padding: 0 5px;
+  text-align: center;
   border-radius: 4px;
   background: #e2e8f0;
   color: #475569;

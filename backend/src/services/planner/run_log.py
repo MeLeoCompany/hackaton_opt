@@ -45,6 +45,7 @@ LOG_SOURCES = {
     "src.services.planner.cuopt_solver": "cuopt",
     "cuopt": "cuopt",
     "src.services.travel.r5_provider": "r5",
+    "src.services.planner.transit_schedule": "r5",
     "src.services.travel.r5_access": "r5",
     "src.services.travel.valhalla_provider": "valhalla",
     "src.services.travel.travel_service": "travel",
