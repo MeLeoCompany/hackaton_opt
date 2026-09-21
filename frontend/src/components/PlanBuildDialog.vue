@@ -3,7 +3,7 @@
 // значениями по умолчанию — можно сразу нажать «Рассчитать».
 // С replanOf — пересчёт утверждённого плана с текущего момента: выполненные и начатые заявки
 // остаются за бригадами, бригады стартуют оттуда, где они сейчас, остальное раскладывается заново.
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import { previewReplan } from '../api/plansApi.js'
 import { fetchSolverParams } from '../api/systemApi.js'
@@ -11,9 +11,11 @@ import { limitHint, numericParams } from '../utils/solverParams.js'
 import { formatDay, fromMoscowInputValue, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
 import InfoHint from './InfoHint.vue'
+import PlanRunProgress from './PlanRunProgress.vue'
 import SolverParamRows from './SolverParamRows.vue'
 import TimeInput from './TimeInput.vue'
 import UnassignedDecisions from './UnassignedDecisions.vue'
+import { usePlanRun } from '../composables/usePlanRun.js'
 import { useUnassignedDecisions } from '../composables/useUnassignedDecisions.js'
 
 const props = defineProps({
@@ -99,6 +101,18 @@ function basePayload() {
 
 const previewing = ref(false)
 const previewError = ref('')
+// пробный пересчёт на большом дне идёт минутами — показываем его ход и даём прервать
+const { run: previewRun, newRunId, watch: watchRun, cancel: cancelRun, stop: stopRun } = usePlanRun()
+
+// закрыли окно посреди пробного пересчёта — расчёт на сервере больше не нужен
+async function close() {
+  if (previewing.value) await cancelRun()
+  emit('close')
+}
+
+onBeforeUnmount(() => {
+  if (previewing.value) cancelRun()
+})
 // решения по невлезшим заявкам — общие с утверждением черновика
 const { preview, decisions, problems, tolerance, setPreview, decisionsReady, payload: decisionsPayload } =
   useUnassignedDecisions(() => props.planDate)
@@ -131,14 +145,17 @@ function stuckText(route) {
 async function checkReplan() {
   previewing.value = true
   previewError.value = ''
+  const runId = newRunId()
+  watchRun(runId)
   try {
-    const result = await previewReplan(props.replanOf.id, basePayload())
+    const result = await previewReplan(props.replanOf.id, { ...basePayload(), run_id: runId })
     setPreview(result)
     return result
   } catch (error) {
     previewError.value = [error.message, ...(error.details ?? [])].join(': ')
     return null
   } finally {
+    stopRun()
     previewing.value = false
   }
 }
@@ -169,12 +186,12 @@ async function submit() {
 </script>
 
 <template>
-  <div class="dialog-backdrop" @click.self="emit('close')">
+  <div class="dialog-backdrop" @click.self="close">
     <div class="dialog" :class="{ wide: problems.length }" role="dialog" aria-label="Параметры расчёта плана">
       <header>
         <strong v-if="replanOf">Пересчёт плана №{{ replanOf.id }} · {{ formatDay(planDate) }}</strong>
         <strong v-else>Параметры расчёта · {{ formatDay(planDate) }}</strong>
-        <button class="close" title="Закрыть" @click="emit('close')">×</button>
+        <button class="close" title="Закрыть" @click="close">×</button>
       </header>
 
       <p v-if="replanOf" class="hint">
@@ -273,6 +290,7 @@ async function submit() {
         </span>
       </p>
 
+      <PlanRunProgress v-if="previewing" :run="previewRun" @cancel="cancelRun" />
       <p v-if="previewError" class="problem-error">{{ previewError }}</p>
 
       <!-- пересчёт: бригады, выбившиеся из плана, — оператор уточняет по телефону время -->
@@ -328,7 +346,7 @@ async function submit() {
                     : 'Пересчитать'
             }}
           </button>
-          <button :disabled="building" @click="emit('close')">Отмена</button>
+          <button :disabled="building" @click="close">Отмена</button>
         </div>
       </footer>
     </div>
