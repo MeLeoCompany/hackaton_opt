@@ -8,6 +8,7 @@ import {
   approvePlan,
   buildPlan,
   cancelPlanApproval,
+  decideApproval as decideApprovalRequest,
   replanPlan,
   checkPlanningDay,
   deletePlan,
@@ -167,6 +168,29 @@ export function usePlans() {
         `Пересчёт №${result.id} плана №${summary.id} готов: назначено ${result.assigned_count}, ` +
           `не назначено ${result.unassigned_count}. ${decisionsText(params.decisions ?? [])}` +
           `Утвердите его, чтобы заменить план №${summary.id}`,
+      )
+    } catch (error) {
+      showError(error)
+    } finally {
+      building.value = false
+    }
+  }
+
+  // перед утверждением оператор обзвонил клиентов невлезших заявок: решения применяются,
+  // день считается заново — новый черновик смотрят и утверждают отдельно
+  async function decideApproval(summary, params) {
+    if (building.value) return
+    const day = selectedDay.value
+    building.value = true
+    clearMessages()
+    try {
+      const result = await decideApprovalRequest(summary.id, params)
+      if (day !== selectedDay.value) return
+      await refreshDay()
+      showNotice(
+        `Черновик №${result.id} посчитан с решениями из №${summary.id}: назначено ` +
+          `${result.assigned_count}, не назначено ${result.unassigned_count}. ` +
+          `${decisionsText(params.decisions)}Посмотрите его и утвердите`,
       )
     } catch (error) {
       showError(error)
@@ -341,6 +365,7 @@ export function usePlans() {
     dayCheck,
     replan,
     approve,
+    decideApproval,
     cancelApproval,
     selectEngineer,
     markVisitStatus,

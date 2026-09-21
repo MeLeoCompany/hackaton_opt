@@ -120,6 +120,18 @@ class BrigadeFreeAt(BaseModel):
         return value
 
 
+class PlanApprovalReviewRequest(BaseModel):
+    """Перед утверждением черновика: подобрать окна невлезшим заявкам или учесть решения.
+
+    decisions пусто — пробный второй расчёт (что предложить клиентам); иначе решения
+    применяются и день считается заново тем же решателем и с той же целью.
+    """
+
+    decisions: list[ReplanDecision] = []
+    run_id: UUID | None = None
+    solver_params: SolverParams | None = None
+
+
 class PlanReplanRequest(BaseModel):
     """Пересчёт утверждённого плана: чем считать и на какой момент (пусто — сейчас)."""
 
@@ -200,6 +212,9 @@ class PlanSummary(BaseModel):
     superseded_at: datetime | None = None
     # какой пересчёт его заменил: по цепочке планов видно, что происходило за день
     replaced_by_plan_id: int | None = None
+    # черновик посчитан после решений оператора по невлезшим заявкам другого черновика
+    decisions_from_plan_id: int | None = None
+    decisions_count: int | None = None
     # можно ли снять утверждение: у плана, по которому уже работают, — нельзя, только пересчёт
     can_cancel_approval: bool = False
     # только у утверждённого плана: что изменилось с утверждения — повод его пересчитать.

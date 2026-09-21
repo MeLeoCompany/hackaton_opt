@@ -305,6 +305,7 @@ async def apply_decisions(
     *,
     office_id: int,
     user_id: int | None,
+    occasion: str = "при пересчёте",
 ) -> None:
     """Решения оператора по заявкам, на которые не успеваем (docs/algoV2.md, шаг 4).
 
@@ -313,6 +314,7 @@ async def apply_decisions(
     «перенесена»; cancel и no_answer — отмена с причиной, у no_answer ещё «требует уточнения».
     Решать можно только о заявках, которые пересчёт раскладывает: «Новых» без плана и не
     начатых «В плане» этого плана. Новое окно снимает заявку с плана.
+    occasion — когда приняты решения, для истории заявки: при пересчёте или при утверждении.
     """
     if not decisions:
         return
@@ -357,7 +359,7 @@ async def apply_decisions(
                 RequestStatusId.CANCELLED,
                 manual=True,
                 user_id=user_id,
-                comment=f"Отменена при пересчёте плана №{parent.id}: {reason}",
+                comment=f"Отменена {occasion} плана №{parent.id}: {reason}",
             )
             continue
 

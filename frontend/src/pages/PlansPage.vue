@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import IconButton from '../components/IconButton.vue'
+import PlanApprovalDialog from '../components/PlanApprovalDialog.vue'
 import PlanBuildDialog from '../components/PlanBuildDialog.vue'
 import PlanMap from '../components/PlanMap.vue'
 import PlanRoutesPanel from '../components/PlanRoutesPanel.vue'
@@ -39,6 +40,7 @@ const {
   removePlan,
   dayCheck,
   approve,
+  decideApproval,
   cancelApproval,
   replan,
   selectEngineer,
@@ -76,6 +78,26 @@ async function withRunLog(params, action) {
   } finally {
     stopRun()
   }
+}
+
+// утверждение черновика, в который вошли не все заявки: сначала предлагаем подобрать окна
+const approvalTarget = ref(null)
+
+function requestApproval(summary) {
+  if (!summary.parent_plan_id && summary.unassigned_count > 0) approvalTarget.value = summary
+  else approve(summary)
+}
+
+function approveAsIs() {
+  const summary = approvalTarget.value
+  approvalTarget.value = null
+  approve(summary)
+}
+
+async function startDecisions(params) {
+  const summary = approvalTarget.value
+  approvalTarget.value = null
+  await withRunLog(params, () => decideApproval(summary, params))
 }
 
 // пришли из сравнения планов: открываем нужный план; из заявки — ещё и её точку на карте
@@ -273,7 +295,7 @@ onMounted(async () => {
           :held-requests="dayCheck?.held_requests ?? []"
           @select="openPlan"
           @remove="removePlan"
-          @approve="approve"
+          @approve="requestApproval"
           @cancel-approval="cancelApproval"
           @replan-info="replanPlanId = $event"
           @replan="replanTarget = $event"
@@ -396,6 +418,14 @@ onMounted(async () => {
       :building="building"
       @build="startReplan"
       @close="replanTarget = null"
+    />
+    <PlanApprovalDialog
+      v-if="approvalTarget"
+      :summary="approvalTarget"
+      :building="building"
+      @approve="approveAsIs"
+      @decide="startDecisions"
+      @close="approvalTarget = null"
     />
     <PlanBuildDialog
       v-if="buildDialogOpen"

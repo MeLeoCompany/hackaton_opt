@@ -57,3 +57,14 @@ export function checkPlanningDay(planDate) {
 export function syncPlan(planId, engineerIds) {
   return apiRequest('POST', `/plans/${planId}/sync`, { json: { engineer_ids: engineerIds } })
 }
+
+// перед утверждением черновика: что предложить клиентам заявок, которые в него не влезли.
+// Ответ как у пробного пересчёта; ничего не сохраняется
+export function previewApproval(planId, params = {}) {
+  return apiRequest('POST', `/plans/${planId}/approval/preview`, { json: params })
+}
+
+// решения по невлезшим заявкам применяются, день считается заново — новым черновиком
+export function decideApproval(planId, params = {}) {
+  return apiRequest('POST', `/plans/${planId}/approval/decisions`, { json: params })
+}

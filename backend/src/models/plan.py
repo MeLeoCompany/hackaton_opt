@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Enum, ForeignKey, Numeric, Text, func
+from sqlalchemy import BigInteger, Date, DateTime, Enum, ForeignKey, Integer, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -53,3 +53,9 @@ class Plan(Base):
     parent_plan_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("plan.id"))
     replanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # черновик, пересчитанный после решений оператора при утверждении (043): из какого черновика
+    # пришли решения по невлезшим заявкам и сколько их
+    decisions_from_plan_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("plan.id", ondelete="SET NULL")
+    )
+    decisions_count: Mapped[int | None] = mapped_column(Integer)

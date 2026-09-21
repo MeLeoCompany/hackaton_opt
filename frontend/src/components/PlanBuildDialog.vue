@@ -8,11 +8,13 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { previewReplan } from '../api/plansApi.js'
 import { fetchSolverParams } from '../api/systemApi.js'
 import { limitHint, numericParams } from '../utils/solverParams.js'
-import { formatDay, fromMoscowInputValue, moscowTimeOf, nextDay } from '../utils/moscowTime.js'
+import { formatDay, fromMoscowInputValue } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
 import InfoHint from './InfoHint.vue'
 import SolverParamRows from './SolverParamRows.vue'
 import TimeInput from './TimeInput.vue'
+import UnassignedDecisions from './UnassignedDecisions.vue'
+import { useUnassignedDecisions } from '../composables/useUnassignedDecisions.js'
 
 const props = defineProps({
   planDate: { type: String, required: true },
@@ -95,11 +97,11 @@ function basePayload() {
 // на которые не успеваем: второй расчёт подбирает время, оператор решает по каждой
 // (docs/algoV2.md, шаги 3-4) ----
 
-const preview = ref(null) // ответ пробного пересчёта; null — ещё не проверяли
 const previewing = ref(false)
 const previewError = ref('')
-// решение по каждой невлезшей заявке: { action: 'agree' | 'move' | 'cancel' | 'no_answer', date, from, to, reason }
-const decisions = reactive({})
+// решения по невлезшим заявкам — общие с утверждением черновика
+const { preview, decisions, problems, tolerance, setPreview, decisionsReady, payload: decisionsPayload } =
+  useUnassignedDecisions(() => props.planDate)
 // со слов бригады: когда она освободится, если застряла на заявке (шаг 10)
 const freeAt = reactive({})
 
@@ -108,9 +110,6 @@ watch([params, freeAt], () => {
   preview.value = null
   previewError.value = ''
 })
-
-const problems = computed(() => preview.value?.unassigned ?? [])
-const tolerance = computed(() => preview.value?.promise_tolerance_minutes ?? 30)
 
 // бригады, которые выбились из плана: им звонят и уточняют, когда освободятся
 const waitingRoutes = computed(() =>
@@ -122,17 +121,7 @@ async function checkReplan() {
   previewError.value = ''
   try {
     const result = await previewReplan(props.replanOf.id, basePayload())
-    for (const problem of result.unassigned) {
-      // есть предложение из второго расчёта — начинаем разговор с него, иначе остаётся завтра
-      decisions[problem.request_id] = {
-        action: problem.suggested_start ? 'agree' : 'move',
-        date: nextDay(props.planDate),
-        from: moscowTimeOf(problem.window_start),
-        to: moscowTimeOf(problem.window_end),
-        reason: '',
-      }
-    }
-    preview.value = result
+    setPreview(result)
     return result
   } catch (error) {
     previewError.value = [error.message, ...(error.details ?? [])].join(': ')
@@ -140,43 +129,6 @@ async function checkReplan() {
   } finally {
     previewing.value = false
   }
-}
-
-// окно на другой день из полей: конец не позже начала — окно через полночь, конец на следующие сутки
-function windowOf(decision) {
-  const start = `${decision.date}T${decision.from}`
-  const endDate = decision.to <= decision.from ? nextDay(decision.date) : decision.date
-  return { window_start: fromMoscowInputValue(start), window_end: fromMoscowInputValue(`${endDate}T${decision.to}`) }
-}
-
-function decisionReady(problem) {
-  const decision = decisions[problem.request_id]
-  if (!decision) return false
-  if (decision.action === 'agree') return Boolean(problem.suggested_start)
-  if (decision.action === 'move') {
-    return decision.date && /^\d\d:\d\d$/.test(decision.from) && /^\d\d:\d\d$/.test(decision.to)
-  }
-  if (decision.action === 'cancel') return decision.reason.trim().length > 0
-  return true
-}
-
-const decisionsReady = computed(() => problems.value.every(decisionReady))
-
-function decisionPayload(problem) {
-  const decision = decisions[problem.request_id]
-  if (decision.action === 'agree') {
-    // утверждаем ровно то окно, которое оператор назвал клиенту
-    return {
-      request_id: problem.request_id,
-      action: 'agree',
-      window_start: problem.suggested_start,
-      window_end: problem.suggested_end,
-    }
-  }
-  if (decision.action === 'move') {
-    return { request_id: problem.request_id, action: 'move', ...windowOf(decision) }
-  }
-  return { request_id: problem.request_id, action: decision.action, reason: decision.reason.trim() }
 }
 
 function freeAtPayload() {
@@ -199,14 +151,14 @@ async function submit() {
     if (!result || result.unassigned.length) return
   }
   const payload = basePayload()
-  payload.decisions = problems.value.map(decisionPayload)
+  payload.decisions = decisionsPayload()
   emit('build', payload)
 }
 </script>
 
 <template>
   <div class="dialog-backdrop" @click.self="emit('close')">
-    <div class="dialog" role="dialog" aria-label="Параметры расчёта плана">
+    <div class="dialog" :class="{ wide: problems.length }" role="dialog" aria-label="Параметры расчёта плана">
       <header>
         <strong v-if="replanOf">Пересчёт плана №{{ replanOf.id }} · {{ formatDay(planDate) }}</strong>
         <strong v-else>Параметры расчёта · {{ formatDay(planDate) }}</strong>
@@ -333,56 +285,18 @@ async function submit() {
       </section>
 
       <!-- пересчёт: заявки, на которые не успеваем, — решение по каждой до пересчёта -->
-      <section v-if="problems.length" class="problems">
-        <h4>Не успеваем: {{ problems.length }} — обзвоните клиентов</h4>
-        <p class="hint">
-          Пробный расчёт разложил {{ preview.assigned_count }} заявок. По остальным второй расчёт
-          с раскрытыми окнами подобрал время, которое можно предложить клиенту. Решение нужно по
-          каждой: либо согласованное окно, либо завтра, либо отмена. Применятся вместе с пересчётом.
-        </p>
-        <article v-for="problem in problems" :key="problem.request_id" class="problem">
-          <div class="problem-head">
-            <strong>№{{ problem.request_id }}</strong>
-            <span>{{ problem.address }}</span>
-            <span class="muted">окно {{ moscowTimeOf(problem.window_start) }}–{{ moscowTimeOf(problem.window_end) }}</span>
-            <span v-if="problem.expired" class="chip">окно закрылось</span>
-          </div>
-          <p class="problem-reason">{{ problem.reason }}</p>
-          <p v-if="problem.suggested_start" class="problem-offer">
-            {{ problem.suggested_engineer }} приедет в {{ moscowTimeOf(problem.suggested_start) }} —
-            предложите клиенту {{ moscowTimeOf(problem.suggested_start) }}–{{ moscowTimeOf(problem.suggested_end) }}
-            (допуск {{ tolerance }} мин)
-          </p>
-          <p v-else class="problem-offer muted">Сегодня не успеть ни при каком окне</p>
-          <div class="problem-actions">
-            <select
-              v-model="decisions[problem.request_id].action"
-              :aria-label="`что ответил клиент по заявке №${problem.request_id}`"
-            >
-              <option value="agree" :disabled="!problem.suggested_start">Согласен на предложенное окно</option>
-              <option value="move">Сегодня не может — перенести</option>
-              <option value="cancel">Работа не нужна</option>
-              <option value="no_answer">Не дозвонились</option>
-            </select>
-            <template v-if="decisions[problem.request_id].action === 'move'">
-              <input v-model="decisions[problem.request_id].date" type="date" aria-label="день нового окна" />
-              <TimeInput v-model="decisions[problem.request_id].from" aria-label="начало нового окна" />
-              <span>–</span>
-              <TimeInput v-model="decisions[problem.request_id].to" aria-label="конец нового окна" />
-            </template>
-            <input
-              v-if="decisions[problem.request_id].action === 'cancel'"
-              v-model="decisions[problem.request_id].reason"
-              class="reason"
-              placeholder="причина отмены"
-              :aria-label="`причина отмены заявки №${problem.request_id}`"
-            />
-            <span v-if="decisions[problem.request_id].action === 'no_answer'" class="muted">
-              отменим с отметкой «требует уточнения»
-            </span>
-          </div>
-        </article>
-      </section>
+      <UnassignedDecisions
+        v-if="problems.length"
+        :title="`Не успеваем: ${problems.length} — обзвоните клиентов`"
+        :problems="problems"
+        :decisions="decisions"
+        :tolerance="tolerance"
+        :disabled="building"
+      >
+        Пробный расчёт разложил {{ preview.assigned_count }} заявок. По остальным второй расчёт
+        с раскрытыми окнами подобрал время, которое можно предложить клиенту. Решение нужно по
+        каждой: либо согласованное окно, либо завтра, либо отмена. Применятся вместе с пересчётом.
+      </UnassignedDecisions>
 
       <footer>
         <span class="hint">Заявки и смены берутся на {{ formatDay(planDate) }}</span>
@@ -482,89 +396,15 @@ async function submit() {
 }
 
 /* пересчёт с заявками, на которые не успеваем: окно шире, список решений */
-.dialog:has(.problems),
+.dialog.wide,
 .dialog:has(.waiting) {
   width: min(760px, 94vw);
   max-height: 90vh;
   overflow: auto;
 }
 
-.problems {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  background: #fef2f2;
-}
-
-.problems h4 {
-  margin: 0;
-  color: #991b1b;
-  font-size: 14px;
-}
-
-.problem {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 13px;
-}
-
-.problem-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.problem-reason {
-  margin: 0;
-  color: #b91c1c;
-  font-size: 12px;
-}
-
-.problem-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.problem-actions select {
-  width: auto;
-}
-
-.problem-actions input[type='date'] {
-  width: 150px;
-}
-
-.problem-offer {
-  margin: 0;
-  color: #166534;
-  font-size: 12px;
-}
-
-.problem-offer.muted,
-.problem-actions .muted,
 .waiting-row .muted {
   color: #64748b;
-}
-
-.chip {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #fee2e2;
-  color: #991b1b;
-  font-size: 11px;
-}
-
-.problem-actions .reason {
-  width: 220px;
 }
 
 .waiting {

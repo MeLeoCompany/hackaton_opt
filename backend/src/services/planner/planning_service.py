@@ -139,32 +139,52 @@ async def build_plan_for_day(
         user_id=user_id,
         run_id=run_id,
     ):
-        # параметры расчёта приходят из запроса; системные подставляет слой API
-        params = params or SolverParams()
-        loaded = await load_planning_day(session, plan_date, office_id)
-        policy = validate_objective_order(objective_order)
-
-        started = time.perf_counter()
-        solution = await solve_with(solver, loaded, policy, params=params)
-        duration_ms = (time.perf_counter() - started) * 1000
-
-        async with run_log.step("Сохраняю план", 80, 92):
-            plan = await save_solution(
-                session,
-                loaded,
-                solution,
-                run_type=RUN_TYPE_BY_SOLVER[solver],
-                solver=solver.value,
-                solve_duration_ms=duration_ms,
-                objective_order=policy if solver is SolverName.CUOPT else None,
-            )
-        # маршруты строятся один раз здесь и ложатся в кеш: открытие плана возьмёт готовые
-        async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
-            routes, _ = await plan_routes(session, plan, strict=True)
-            set_plan_distance(plan, routes_distance(routes))
+        plan = await build_inside_run(
+            session, plan_date, solver, objective_order, office_id=office_id, params=params
+        )
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await summarize_plans(session, [plan]))[0]
+
+
+async def build_inside_run(
+    session: AsyncSession,
+    plan_date: date,
+    solver: SolverName,
+    objective_order: list[ObjectiveCriterion] | tuple[ObjectiveCriterion, ...],
+    *,
+    office_id: int,
+    params: SolverParams | None = None,
+) -> Plan:
+    """Сам расчёт дня внутри запуска журнала: план записан в сессию, коммит — за вызывающим.
+
+    Так перед расчётом в той же транзакции можно применить решения оператора по заявкам:
+    не получился расчёт — не меняется ничего.
+    """
+    # параметры расчёта приходят из запроса; системные подставляет слой API
+    params = params or SolverParams()
+    loaded = await load_planning_day(session, plan_date, office_id)
+    policy = validate_objective_order(objective_order)
+
+    started = time.perf_counter()
+    solution = await solve_with(solver, loaded, policy, params=params)
+    duration_ms = (time.perf_counter() - started) * 1000
+
+    async with run_log.step("Сохраняю план", 80, 92):
+        plan = await save_solution(
+            session,
+            loaded,
+            solution,
+            run_type=RUN_TYPE_BY_SOLVER[solver],
+            solver=solver.value,
+            solve_duration_ms=duration_ms,
+            objective_order=policy if solver is SolverName.CUOPT else None,
+        )
+    # маршруты строятся один раз здесь и ложатся в кеш: открытие плана возьмёт готовые
+    async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
+        routes, _ = await plan_routes(session, plan, strict=True)
+        set_plan_distance(plan, routes_distance(routes))
+    return plan
 
 
 async def solve_with(
@@ -671,6 +691,8 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 replanned_at=getattr(plan, "replanned_at", None),
                 superseded_at=getattr(plan, "superseded_at", None),
                 replaced_by_plan_id=replaced_by.get(plan.id),
+                decisions_from_plan_id=getattr(plan, "decisions_from_plan_id", None),
+                decisions_count=getattr(plan, "decisions_count", None),
                 can_cancel_approval=(
                     plan.approved_at is not None
                     and getattr(plan, "superseded_at", None) is None
@@ -1052,7 +1074,9 @@ async def plan_routes(
             raise ValueError("назначенный маршрут содержит неполные данные")
 
     cached = await plans_repository.list_cached_routes(session, plan.id)
-    travels = await asyncio.gather(*(route_travel(group, cached, strict=strict) for group in groups))
+    travels = await asyncio.gather(
+        *(route_travel(group, cached, strict=strict) for group in groups)
+    )
     built = False
     for group, (travel, fingerprint, fresh) in zip(groups, travels, strict=True):
         if fresh:

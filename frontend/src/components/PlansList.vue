@@ -112,6 +112,17 @@ function solveDuration(summary) {
               </button>
               на {{ moscowTimeOf(summary.replanned_at) }}
             </span>
+            <!-- черновик пересчитан после обзвона клиентов невлезших заявок другого черновика -->
+            <span
+              v-if="summary.decisions_from_plan_id"
+              class="replan-of"
+              :title="`Учтены решения по заявкам, не вошедшим в черновик №${summary.decisions_from_plan_id}: ${summary.decisions_count}`"
+            >
+              с решениями из
+              <button class="link plan-link" @click.stop="$emit('select', summary.decisions_from_plan_id)">
+                №{{ summary.decisions_from_plan_id }}
+              </button>
+            </span>
             <span
               v-if="summary.superseded_at"
               class="badge superseded"

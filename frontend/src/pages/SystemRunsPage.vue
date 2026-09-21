@@ -10,7 +10,12 @@ import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { eventTree } from '../utils/runEvents.js'
 
-const KIND_NAMES = { build: 'расчёт дня', replan: 'пересчёт', preview: 'пробный пересчёт' }
+const KIND_NAMES = {
+  build: 'расчёт дня',
+  replan: 'пересчёт',
+  preview: 'пробный пересчёт',
+  approval_preview: 'подбор окон перед утверждением',
+}
 const STATUS_NAMES = { running: 'идёт', done: 'готов', failed: 'ошибка', cancelled: 'прерван' }
 
 const runs = ref([])

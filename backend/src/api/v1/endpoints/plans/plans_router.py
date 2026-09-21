@@ -13,6 +13,7 @@ from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
 from src.models import AppUser
 from src.schemas.plans import (
+    PlanApprovalReviewRequest,
     PlanBuildRequest,
     PlanDayCheck,
     PlanDetail,
@@ -23,7 +24,7 @@ from src.schemas.plans import (
     PlanSyncRequest,
     ReplanPreview,
 )
-from src.services.planner import plan_sync, planning_service, replan_service
+from src.services.planner import approval_review, plan_sync, planning_service, replan_service
 from src.services.system import system_service
 
 router = APIRouter()
@@ -171,6 +172,54 @@ async def approve_plan(
     """Заявки утверждённого плана закрепляются за ним: другие дни их не берут."""
     return await planning_service.approve_plan(
         session, plan_id, office_id=office_id, user_id=user.id
+    )
+
+
+@router.post(
+    "/{plan_id}/approval/preview",
+    response_model=ReplanPreview,
+    summary="Перед утверждением: что предложить клиентам заявок, не влезших в черновик",
+)
+async def preview_approval(
+    plan_id: int,
+    payload: PlanApprovalReviewRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    """Второй расчёт с раскрытыми окнами, ничего не сохраняется (docs/algoV2.md, шаги 2-3)."""
+    return await approval_review.preview_approval(
+        session,
+        plan_id,
+        office_id=office_id,
+        user_id=user.id,
+        run_id=payload.run_id,
+        params=payload.solver_params or await system_service.read_solver_params(session),
+    )
+
+
+@router.post(
+    "/{plan_id}/approval/decisions",
+    response_model=PlanSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Учесть решения по невлезшим заявкам и посчитать день заново",
+)
+async def decide_approval(
+    plan_id: int,
+    payload: PlanApprovalReviewRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    """Получается новый черновик: его смотрят и утверждают отдельно."""
+    return await approval_review.decide_approval(
+        session,
+        plan_id,
+        payload.decisions,
+        office_id=office_id,
+        user_id=user.id,
+        run_id=payload.run_id,
+        params=payload.solver_params or await system_service.read_solver_params(session),
     )
 
 
