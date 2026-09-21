@@ -52,3 +52,8 @@ export function cancelPlanApproval(planId) {
 export function checkPlanningDay(planDate) {
   return apiRequest('GET', `/plans/day-check?plan_date=${encodeURIComponent(planDate)}`)
 }
+
+// режим демонстрации: выбранные маршруты приводятся к плану на текущее системное время
+export function syncPlan(planId, engineerIds) {
+  return apiRequest('POST', `/plans/${planId}/sync`, { json: { engineer_ids: engineerIds } })
+}

@@ -306,3 +306,20 @@ class PlanDetail(PlanSummary):
     total_distance_km: float
     routes: list[EngineerRoute]
     unassigned: list[UnassignedRequest]
+
+
+class PlanSyncRequest(BaseModel):
+    """Какие маршруты привести к плану — по бригадам (режим демонстрации)."""
+
+    engineer_ids: list[int] = Field(min_length=1)
+
+
+class PlanSyncReport(BaseModel):
+    """Что получилось после синхронизации: сколько заявок в каком статусе и сам план."""
+
+    routes: int
+    done: int
+    in_progress: int
+    en_route: int
+    planned: int
+    plan: PlanDetail

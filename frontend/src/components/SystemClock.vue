@@ -9,10 +9,13 @@ import { useSystemTime } from '../composables/useSystemTime.js'
 import { formatDay, fromMoscowInputValue, moscowDateOf, moscowTimeOf } from '../utils/moscowTime.js'
 import TimeInput from './TimeInput.vue'
 
-const { now, offsetSeconds, updatedBy, loaded, shifted, errorMessage, setMoment, shiftBy, reset } = useSystemTime()
+const { now, offsetSeconds, updatedBy, loaded, shifted, demoMode, errorMessage, setMoment, shiftBy, reset } =
+  useSystemTime()
 const { isAdmin } = useAuth()
 
 const open = ref(false)
+// переводить часы можно только администратору и только в режиме демонстрации
+const canShift = computed(() => isAdmin.value && demoMode.value)
 // день и время в панели: пока панель закрыта, идут за часами
 const day = ref('')
 const time = ref('')
@@ -62,10 +65,20 @@ async function back() {
 
 <template>
   <div v-if="loaded" class="clock-box">
+    <!-- режим демонстрации виден на всех вкладках: время и отметки бригад можно двигать -->
+    <span v-if="demoMode" class="demo-badge" title="Можно переводить время и синхронизировать маршруты с планом">
+      Режим демонстрации
+    </span>
     <button
-      :class="['clock', { shifted, plain: !isAdmin }]"
-      :disabled="!isAdmin"
-      :title="isAdmin ? 'Системное время — нажмите, чтобы перемотать' : 'Системное время сервера'"
+      :class="['clock', { shifted, plain: !canShift }]"
+      :disabled="!canShift"
+      :title="
+        canShift
+          ? 'Системное время — нажмите, чтобы перемотать'
+          : isAdmin
+            ? 'Системное время сервера. Переводить его можно в режиме демонстрации («Система»)'
+            : 'Системное время сервера'
+      "
       @click="openPanel"
     >
       <span class="time">{{ clockTime }}</span>
@@ -109,6 +122,19 @@ async function back() {
 <style scoped>
 .clock-box {
   position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.demo-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .clock {

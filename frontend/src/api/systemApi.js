@@ -38,3 +38,8 @@ export function fetchSolverParams() {
 export function saveSolverParams(payload) {
   return apiRequest('PUT', '/system/solver', { json: payload })
 }
+
+// режим демонстрации: разрешает переводить время и синхронизировать маршруты с планом
+export function setDemoMode(enabled) {
+  return apiRequest('PUT', '/system/demo', { json: { enabled } })
+}

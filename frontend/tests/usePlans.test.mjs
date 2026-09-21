@@ -16,7 +16,7 @@ function harness() {
   const make = new Function(
     'ref', 'watch', 'approvePlan', 'buildPlan', 'cancelPlanApproval', 'checkPlanningDay',
     'deletePlan', 'getPlan', 'listPlans', 'fetchReferences', 'useMessages', 'useSelectedDay', 'replanPlan',
-    'allowDepartureRequest', 'moscowTimeOf', 'window',
+    'allowDepartureRequest', 'moscowTimeOf', 'window', 'syncPlan', 'formatDay', 'moscowDateOf',
     source + '; return usePlans()')
   const plans = make(
     value => ({ value }), () => {},
@@ -43,7 +43,13 @@ function harness() {
       return { id: planId, routes: [] }
     },
     (iso) => iso.slice(11, 16),
-    { confirm: (question) => (asked.push(question), confirm.answer) })
+    { confirm: (question) => (asked.push(question), confirm.answer) },
+    async (planId, engineerIds) => {
+      approvals.push(['sync', planId, engineerIds])
+      return { routes: engineerIds.length, done: 1, in_progress: 1, en_route: 0, planned: 1, plan: { id: planId, synced: true } }
+    },
+    (day) => day,
+    (iso) => iso.slice(0, 10))
   return { plans, details, lists, builds, notices, errors, approvals, dayCheck, asked, confirm }
 }
 
@@ -220,4 +226,19 @@ test('обещание клиенту сорвано — утверждаем т
   lists['2026-08-17']([{ id: 9 }])
   await approving
   assert.deepEqual(approvals, [['approve', 9]])
+})
+
+test('синхронизация с планом обновляет план и говорит, что куда встало', async () => {
+  const { plans, lists, approvals, notices } = harness()
+  plans.plan.value = { id: 22, routes: [] }
+  const syncing = plans.syncRoutes([2])
+  await Promise.resolve()
+  await Promise.resolve()
+  lists['2026-08-17']([{ id: 22 }])
+  await syncing
+
+  assert.deepEqual(approvals, [['sync', 22, [2]]])
+  assert.deepEqual(plans.plan.value, { id: 22, synced: true })
+  assert.match(notices.at(-1), /приведено к плану: 1\. Выполнено 1, в работе 1, в пути 0, в плане 1/)
+  assert.equal(plans.syncing.value, false)
 })

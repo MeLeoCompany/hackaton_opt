@@ -420,7 +420,9 @@ button.link:disabled {
   vertical-align: middle;
 }
 
-.data-table td input,
+/* поля ввода тянутся по ячейке; галочки и переключатели — нет: иначе чекбокс шириной 90
+   пикселей налезает на соседнее содержимое */
+.data-table td input:not([type='checkbox'], [type='radio']),
 .data-table td select {
   width: 100%;
   min-width: 90px;

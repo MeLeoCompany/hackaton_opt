@@ -4,12 +4,14 @@
 
 import { computed, ref } from 'vue'
 
-import { fetchSystemTime, setSystemTime } from '../api/systemApi.js'
+import { fetchSystemTime, setDemoMode as saveDemoMode, setSystemTime } from '../api/systemApi.js'
 
 const now = ref(new Date())
 const offsetSeconds = ref(0)
 const updatedBy = ref(null)
 const loaded = ref(false)
+// режим демонстрации: только в нём часы переводятся и маршруты синхронизируются с планом
+const demoMode = ref(false)
 const errorMessage = ref('')
 let ticker = null
 let sync = null
@@ -21,6 +23,7 @@ function applyServerTime(time) {
   serverShiftMs = new Date(time.now).getTime() - Date.now()
   offsetSeconds.value = time.offset_seconds
   updatedBy.value = time.updated_by
+  demoMode.value = Boolean(time.demo_mode)
   loaded.value = true
   tick()
 }
@@ -65,12 +68,26 @@ async function changeTime(payload) {
   }
 }
 
+// выключили режим — сервер сам возвращает часы к настоящему времени
+async function setDemoMode(enabled) {
+  errorMessage.value = ''
+  try {
+    applyServerTime(await saveDemoMode(enabled))
+    return true
+  } catch (error) {
+    errorMessage.value = error.message
+    return false
+  }
+}
+
 export function useSystemTime() {
   return {
     now,
     offsetSeconds,
     updatedBy,
     loaded,
+    demoMode,
+    setDemoMode,
     errorMessage,
     // перемотано ли время: по нему интерфейс показывает предупреждение
     shifted: computed(() => offsetSeconds.value !== 0),

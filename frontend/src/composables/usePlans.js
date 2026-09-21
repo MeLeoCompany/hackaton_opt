@@ -4,6 +4,7 @@ import { ref, watch } from 'vue'
 
 import {
   allowDeparture as allowDepartureRequest,
+  syncPlan,
   approvePlan,
   buildPlan,
   cancelPlanApproval,
@@ -174,6 +175,28 @@ export function usePlans() {
     }
   }
 
+  // режим демонстрации: выбранные бригады «идут строго по плану» до текущего времени
+  const syncing = ref(false)
+
+  async function syncRoutes(engineerIds) {
+    if (syncing.value || !plan.value || !engineerIds.length) return
+    syncing.value = true
+    clearMessages()
+    try {
+      const report = await syncPlan(plan.value.id, engineerIds)
+      plan.value = report.plan
+      await refreshDay()
+      showNotice(
+        `Маршрутов приведено к плану: ${report.routes}. Выполнено ${report.done}, в работе ` +
+          `${report.in_progress}, в пути ${report.en_route}, в плане ${report.planned}`,
+      )
+    } catch (error) {
+      showError(error)
+    } finally {
+      syncing.value = false
+    }
+  }
+
   // бригада выбилась из плана, но клиент согласен подождать — выезд открывается вручную
   async function allowDeparture(requestId) {
     if (building.value || !plan.value) return
@@ -322,5 +345,7 @@ export function usePlans() {
     selectEngineer,
     markVisitStatus,
     allowDeparture,
+    syncing,
+    syncRoutes,
   }
 }

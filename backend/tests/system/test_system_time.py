@@ -18,12 +18,15 @@ def reset_clock():
     clock.set_offset(timedelta(0))
 
 
-def stored(offset_seconds=0):
+def stored(offset_seconds=0, demo_mode=True):
     return SimpleNamespace(
         id=1,
         offset_seconds=offset_seconds,
         updated_at=datetime(2026, 9, 20, tzinfo=UTC),
         updated_by=None,
+        demo_mode=demo_mode,
+        demo_mode_changed_at=None,
+        demo_mode_changed_by=None,
     )
 
 
@@ -99,3 +102,39 @@ def test_password_is_hidden_in_connection_string():
 
     assert hidden == "postgresql+asyncpg://routing:***@postgres:5432/routing"
     assert "secret" not in hidden
+
+
+@pytest.mark.asyncio
+async def test_time_moves_only_in_demo_mode():
+    """В обычной работе часы не переводятся: так нельзя случайно сдвинуть «сейчас»."""
+    session = SimpleNamespace(commit=AsyncMock(), get=AsyncMock(return_value=None))
+    with (
+        with_row(stored(demo_mode=False)),
+        pytest.raises(system_service.SystemTimeError, match="режиме демонстрации"),
+    ):
+        await system_service.set_time(session, SystemTimeWrite(offset_seconds=3600))
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_real_time_can_be_returned_without_demo_mode():
+    row = stored(offset_seconds=3600, demo_mode=False)
+    session = SimpleNamespace(commit=AsyncMock(), get=AsyncMock(return_value=None))
+    with with_row(row):
+        await system_service.set_time(session, SystemTimeWrite(offset_seconds=0))
+    assert row.offset_seconds == 0
+
+
+@pytest.mark.asyncio
+async def test_turning_demo_mode_off_returns_real_time():
+    """Выключили режим — часы идут по-настоящему: переводить их обратно уже нельзя."""
+    row = stored(offset_seconds=-86400)
+    clock.set_offset(timedelta(seconds=-86400))
+    session = SimpleNamespace(commit=AsyncMock(), get=AsyncMock(return_value=None))
+
+    with with_row(row):
+        result = await system_service.set_demo_mode(session, False, user_id=7)
+
+    assert (row.demo_mode, row.offset_seconds, row.demo_mode_changed_by) == (False, 0, 7)
+    assert clock.offset() == timedelta(0)
+    assert result.demo_mode is False

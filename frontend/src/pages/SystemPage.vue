@@ -90,7 +90,18 @@ async function saveOne(key, value) {
   }
 }
 
-const { now, shifted } = useSystemTime()
+const { now, shifted, demoMode, setDemoMode } = useSystemTime()
+const switchingDemo = ref(false)
+
+// выключение возвращает часы к настоящему времени — предупреждаем, если они перемотаны
+async function toggleDemo(enabled) {
+  if (!enabled && shifted.value && !window.confirm('Выключить режим демонстрации? Часы вернутся к настоящему времени.')) {
+    return
+  }
+  switchingDemo.value = true
+  if (await setDemoMode(enabled)) await load()
+  switchingDemo.value = false
+}
 
 function moment(isoString) {
   return isoString ? `${formatDay(moscowDateOf(isoString))} ${moscowTimeOf(isoString)}` : '—'
@@ -128,7 +139,23 @@ onMounted(() => {
         </article>
 
         <article :class="['card', { warn: shifted }]">
-          <h2>Системное время</h2>
+          <div class="card-head">
+            <h2>Системное время</h2>
+            <!-- режим демонстрации: разрешает переводить часы и синхронизировать маршруты с планом -->
+            <label class="demo-switch" title="Разрешает переводить время и синхронизировать маршруты с планом">
+              <span>Режим демонстрации</span>
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  :checked="demoMode"
+                  :disabled="switchingDemo"
+                  aria-label="режим демонстрации"
+                  @change="toggleDemo($event.target.checked)"
+                />
+                <span class="slider"></span>
+              </span>
+            </label>
+          </div>
           <dl>
             <div><dt>Сейчас в системе</dt><dd>{{ clock }}</dd></div>
             <div><dt>Настоящее время</dt><dd>{{ realClock }}</dd></div>
@@ -136,7 +163,11 @@ onMounted(() => {
           </dl>
           <p class="note">
             <template v-if="shifted">Время перемотано для демонстрации — часы вверху жёлтые.</template>
-            <template v-else>Время настоящее. Перемотать можно кликом по часам в правом верхнем углу.</template>
+            <template v-else-if="demoMode">Время настоящее. Перемотать можно кликом по часам в правом верхнем углу.</template>
+            <template v-else>
+              Время настоящее. Переводить его и синхронизировать маршруты с планом можно в режиме
+              демонстрации.
+            </template>
           </p>
         </article>
       </section>
@@ -243,6 +274,25 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.card-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-head h2 {
+  margin: 0;
+}
+
+.demo-switch {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #334155;
+  font-size: 13px;
+}
+
 /* группа cuOpt раскрывается, как шаг в журнале расчёта */
 .group-row {
   cursor: pointer;

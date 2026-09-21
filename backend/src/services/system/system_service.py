@@ -40,7 +40,11 @@ MAX_OFFSET_SECONDS = 366 * 24 * 3600
 
 
 class SystemTimeError(DataError):
-    """Сдвиг времени вне разумных границ."""
+    """Сдвиг времени вне разумных границ или режим демонстрации выключен."""
+
+
+class DemoModeRequired(DataError):
+    """Отладочное действие без режима демонстрации."""
 
 
 async def load_offset(session: AsyncSession) -> None:
@@ -59,6 +63,7 @@ async def read_time(session: AsyncSession) -> SystemTimeRead:
         offset_seconds=row.offset_seconds,
         updated_at=row.updated_at if row.offset_seconds else None,
         updated_by=user.name if user else None,
+        demo_mode=row.demo_mode,
     )
 
 
@@ -77,12 +82,47 @@ async def set_time(
         raise SystemTimeError(["перематывать можно не больше чем на год назад или вперёд"])
 
     row = await system_repository.get_system_time(session)
+    # вернуть настоящее время можно всегда, а переводить — только в режиме демонстрации
+    if seconds and not row.demo_mode:
+        raise SystemTimeError(
+            ["переводить время можно только в режиме демонстрации — включите его в «Системе»"]
+        )
     row.offset_seconds = seconds
     row.updated_at = datetime.now(UTC)
     row.updated_by = user_id
     await session.commit()
     clock.set_offset(timedelta(seconds=seconds))
     return await read_time(session)
+
+
+async def set_demo_mode(
+    session: AsyncSession, enabled: bool, user_id: int | None = None
+) -> SystemTimeRead:
+    """Включает или выключает режим демонстрации.
+
+    Выключили — часы возвращаются к настоящему времени: переводить их без режима уже нельзя,
+    и система застряла бы в перемотанном дне.
+    """
+    row = await system_repository.get_system_time(session)
+    row.demo_mode = enabled
+    row.demo_mode_changed_at = datetime.now(UTC)
+    row.demo_mode_changed_by = user_id
+    if not enabled and row.offset_seconds:
+        row.offset_seconds = 0
+        row.updated_at = datetime.now(UTC)
+        row.updated_by = user_id
+    await session.commit()
+    clock.set_offset(timedelta(seconds=row.offset_seconds))
+    return await read_time(session)
+
+
+async def require_demo_mode(session: AsyncSession) -> None:
+    """Отладочные действия — только в режиме демонстрации, иначе ими можно испортить данные."""
+    row = await system_repository.get_system_time(session)
+    if not row.demo_mode:
+        raise DemoModeRequired(
+            ["синхронизировать маршруты с планом можно только в режиме демонстрации"]
+        )
 
 
 def hidden_password(url: str) -> str:

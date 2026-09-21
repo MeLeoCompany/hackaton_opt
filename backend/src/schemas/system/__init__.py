@@ -1,4 +1,5 @@
 from src.schemas.system.system_schema import (
+    DemoModeWrite,
     PlanRunEventRead,
     PlanRunRead,
     ServiceStatus,
@@ -10,6 +11,7 @@ from src.schemas.system.system_schema import (
 )
 
 __all__ = [
+    "DemoModeWrite",
     "PlanRunEventRead",
     "PlanRunRead",
     "ServiceStatus",

@@ -12,6 +12,8 @@ class SystemTimeRead(BaseModel):
     offset_seconds: int
     updated_at: datetime | None = None
     updated_by: str | None = None  # кто перематывал
+    # режим демонстрации: только в нём можно переводить время и синхронизировать маршруты
+    demo_mode: bool = False
 
 
 class SystemTimeWrite(BaseModel):
@@ -21,6 +23,14 @@ class SystemTimeWrite(BaseModel):
 
     now: datetime | None = None
     offset_seconds: int | None = None
+
+
+class DemoModeWrite(BaseModel):
+    """Включить или выключить режим демонстрации."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
 
 
 class ServiceStatus(BaseModel):

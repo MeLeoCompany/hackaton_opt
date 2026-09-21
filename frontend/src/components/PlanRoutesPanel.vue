@@ -22,8 +22,50 @@ const props = defineProps({
   besideMap: { type: Boolean, default: false }, // рядом с картой: карточки вместо таблицы
   approved: { type: Boolean, default: false }, // план утверждён — статусы визитов можно менять
   focusedRequestId: { type: Number, default: null }, // заявка, к которой перешли из «Заявок»
+  // режим демонстрации у действующего плана: маршруты можно отметить и привести к плану
+  syncable: { type: Boolean, default: false },
+  // отмеченные маршруты — по бригадам; кнопка синхронизации у страницы, рядом с «Пересчитать»
+  syncSelected: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['select-engineer', 'visit-status-changed', 'focus-request', 'allow-departure'])
+const emit = defineEmits([
+  'select-engineer',
+  'visit-status-changed',
+  'focus-request',
+  'allow-departure',
+  'update:syncSelected',
+])
+
+// своя копия выбора: несколько щелчков подряд успевают раньше, чем страница вернёт новый список
+const chosen = ref([...props.syncSelected])
+watch(
+  () => props.syncSelected,
+  (value) => {
+    chosen.value = [...value]
+  },
+)
+
+function isSyncSelected(engineerId) {
+  return chosen.value.includes(engineerId)
+}
+
+function setChosen(value) {
+  chosen.value = value
+  emit('update:syncSelected', value)
+}
+
+function toggleSync(engineerId) {
+  setChosen(
+    isSyncSelected(engineerId) ? chosen.value.filter((id) => id !== engineerId) : [...chosen.value, engineerId],
+  )
+}
+
+const allSelected = computed(
+  () => props.plan.routes.length > 0 && props.plan.routes.every((route) => isSyncSelected(route.engineer_id)),
+)
+
+function toggleAll() {
+  setChosen(allSelected.value ? [] : props.plan.routes.map((route) => route.engineer_id))
+}
 
 // из подсвеченного визита — обратно к заявке на вкладке «Заявки»
 const { openRequest } = usePlanFocus()
@@ -179,6 +221,15 @@ watch(() => props.plan.id, () => {
             @click="emit('select-engineer', route.engineer_id)"
           >
             <header>
+              <input
+                v-if="syncable"
+                type="checkbox"
+                class="sync-check"
+                :checked="isSyncSelected(route.engineer_id)"
+                :aria-label="`синхронизировать маршрут ${route.engineer_name}`"
+                @click.stop
+                @change="toggleSync(route.engineer_id)"
+              />
               <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
               <strong>{{ route.engineer_name }}</strong>
               <a v-if="route.phone" class="phone" :href="`tel:${route.phone}`" @click.stop>{{ route.phone }}</a>
@@ -238,8 +289,10 @@ watch(() => props.plan.id, () => {
              узкие колонки с числами, всё остальное место — маршруту с адресами -->
         <table class="data-table fixed-columns routes-table">
           <colgroup>
+            <col v-if="syncable" style="width: 36px" />
             <col style="width: 220px" />
-            <col style="width: 170px" />
+            <!-- «Общественный транспорт» — самое длинное название, помещается в одну строку -->
+            <col style="width: 190px" />
             <col style="width: 110px" />
             <col style="width: 110px" />
             <col style="width: 180px" />
@@ -247,6 +300,16 @@ watch(() => props.plan.id, () => {
           </colgroup>
           <thead>
             <tr>
+              <!-- галочки синхронизации с планом (режим демонстрации): «все» — здесь -->
+              <th v-if="syncable" class="sync-cell">
+                <input
+                  type="checkbox"
+                  :checked="allSelected"
+                  title="Выбрать все маршруты"
+                  aria-label="выбрать все маршруты"
+                  @change="toggleAll"
+                />
+              </th>
               <th>Бригада</th>
               <th>Транспорт</th>
               <th>Заявок</th>
@@ -255,6 +318,7 @@ watch(() => props.plan.id, () => {
               <th>Маршрут</th>
             </tr>
             <tr class="filter-row filter-controls">
+              <th v-if="syncable"></th>
               <th><input v-model="routeFilters.name" placeholder="бригада" aria-label="поиск по бригаде" /></th>
               <th>
                 <select v-model="routeFilters.transportId" aria-label="фильтр по транспорту">
@@ -296,7 +360,7 @@ watch(() => props.plan.id, () => {
           </thead>
           <tbody>
             <tr v-if="!visibleRoutes.length">
-              <td colspan="6" class="muted">Ни один маршрут не подходит под фильтры</td>
+              <td :colspan="syncable ? 7 : 6" class="muted">Ни один маршрут не подходит под фильтры</td>
             </tr>
             <tr
               v-for="{ route, routeIndex } in visibleRoutes"
@@ -304,6 +368,14 @@ watch(() => props.plan.id, () => {
               :class="{ selected: route.engineer_id === selectedEngineerId }"
               @click="emit('select-engineer', route.engineer_id)"
             >
+              <td v-if="syncable" class="sync-cell" @click.stop>
+                <input
+                  type="checkbox"
+                  :checked="isSyncSelected(route.engineer_id)"
+                  :aria-label="`синхронизировать маршрут ${route.engineer_name}`"
+                  @change="toggleSync(route.engineer_id)"
+                />
+              </td>
               <td>
                 <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
                 <strong>{{ route.engineer_name }}</strong>
@@ -411,6 +483,28 @@ watch(() => props.plan.id, () => {
 </template>
 
 <style scoped>
+/* галочки синхронизации с планом — своя колонка, по центру. Отступы у заголовка и строк
+   разные (10 и 13 пикселей), а колонка узкая — без них галочки встают строго друг под другом */
+.data-table.routes-table th.sync-cell,
+.data-table.routes-table td.sync-cell {
+  padding-right: 0;
+  padding-left: 0;
+  text-align: center;
+}
+
+.sync-cell input,
+.sync-check {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.sync-check {
+  margin-right: 6px;
+}
+
 .routes-panel {
   display: flex;
   flex-direction: column;

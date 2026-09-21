@@ -61,7 +61,7 @@ function howWithdrawn(item) {
     <p class="replan-how">
       Пересчёт с текущего момента оставит выполненное и начатое за бригадами и разложит остальное
       заново — получится новый план, его утверждение заменит этот.
-      <button type="button" class="primary" @click="$emit('replan')">Пересчитать с текущего момента</button>
+      <button type="button" class="primary" @click="$emit('replan')">Пересчитать</button>
     </p>
   </ErrorMessage>
 </template>

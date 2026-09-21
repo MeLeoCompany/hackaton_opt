@@ -19,9 +19,11 @@ from src.schemas.plans import (
     PlanningDayOption,
     PlanReplanRequest,
     PlanSummary,
+    PlanSyncReport,
+    PlanSyncRequest,
     ReplanPreview,
 )
-from src.services.planner import planning_service, replan_service
+from src.services.planner import plan_sync, planning_service, replan_service
 from src.services.system import system_service
 
 router = APIRouter()
@@ -200,3 +202,22 @@ async def delete_plan(
     office_id: int = Depends(current_office_id),
 ):
     await planning_service.delete_plan(session, plan_id, office_id=office_id)
+
+
+@router.post(
+    "/{plan_id}/sync",
+    response_model=PlanSyncReport,
+    summary="Привести выбранные маршруты к плану на текущее время (режим демонстрации)",
+)
+async def sync_plan(
+    plan_id: int,
+    payload: PlanSyncRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+) -> PlanSyncReport:
+    """Отладка: выбранные бригады «идут строго по плану» до текущего системного времени,
+    остальные остаются как есть. Работает только в режиме демонстрации."""
+    return await plan_sync.sync_plan(
+        session, plan_id, payload.engineer_ids, office_id=office_id, user_id=user.id
+    )

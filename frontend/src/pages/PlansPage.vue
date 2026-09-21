@@ -13,6 +13,7 @@ import ReplanNotice from '../components/ReplanNotice.vue'
 import PlanRunProgress from '../components/PlanRunProgress.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { usePlanRun } from '../composables/usePlanRun.js'
+import { useSystemTime } from '../composables/useSystemTime.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { planChain } from '../utils/planChain.js'
@@ -43,7 +44,10 @@ const {
   selectEngineer,
   markVisitStatus,
   allowDeparture,
+  syncing,
+  syncRoutes,
 } = usePlans()
+
 
 // пересчёт утверждённого плана с момента: окно параметров с временем пересчёта
 const replanTarget = ref(null)
@@ -96,6 +100,20 @@ const planOpened = computed(() => selectedPlanId.value !== null)
 
 // сводка открытого плана — та же строка, что в списке: чтобы было видно, что за план
 const openedSummary = computed(() => plans.value.find((summary) => summary.id === selectedPlanId.value) ?? null)
+// режим демонстрации: у действующего утверждённого плана маршруты можно привести к плану
+const { demoMode } = useSystemTime()
+const syncable = computed(
+  () => demoMode.value && Boolean(openedSummary.value?.approved_at) && !openedSummary.value?.superseded_at,
+)
+// отмеченные маршруты — по бригадам; сменили план — отметки не переносятся
+const syncSelected = ref([])
+watch(selectedPlanId, () => {
+  syncSelected.value = []
+})
+
+async function syncChosen() {
+  await syncRoutes(syncSelected.value)
+}
 // исходный план дня и его пересчёты по порядку: видно, что происходило за день
 const openedChain = computed(() => planChain(plans.value, selectedPlanId.value))
 
@@ -312,6 +330,21 @@ onMounted(async () => {
             </button>
           </div>
 
+          <!-- режим демонстрации: отмеченные в таблице маршруты приводятся к плану на текущее время -->
+          <button
+            v-if="syncable"
+            class="sync-button"
+            :disabled="!syncSelected.length || syncing || building"
+            :title="
+              syncSelected.length
+                ? 'Синхронизировать с планом: отмеченные бригады встанут туда, где они должны быть по плану на текущее системное время; остальные — как есть'
+                : 'Синхронизировать с планом: отметьте маршруты галочками в таблице'
+            "
+            @click="syncChosen"
+          >
+            <!-- коротко: что именно делает кнопка — в подсказке -->
+            {{ syncing ? 'Синхронизирую…' : `По плану${syncSelected.length ? ` (${syncSelected.length})` : ''}` }}
+          </button>
           <button
             v-if="openedSummary?.approved_at && !openedSummary?.superseded_at"
             class="primary replan-button"
@@ -319,7 +352,7 @@ onMounted(async () => {
             title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
             @click="replanTarget = openedSummary"
           >
-            Пересчитать с текущего момента
+            Пересчитать
           </button>
         </div>
 
@@ -345,6 +378,8 @@ onMounted(async () => {
               :focused-request-id="focusedRequestId"
               @visit-status-changed="markVisitStatus"
               @allow-departure="allowDeparture"
+              v-model:sync-selected="syncSelected"
+              :syncable="syncable"
               @focus-request="focusVisit"
               @select-engineer="viewMode === 'details' ? showRouteOnMap($event) : selectEngineer($event)"
             />
@@ -413,6 +448,16 @@ onMounted(async () => {
 
 .plan-link {
   font-size: inherit;
+}
+
+/* обе кнопки действий с планом — у правого края, синхронизация перед пересчётом */
+.sync-button {
+  margin-left: auto;
+  order: 1;
+}
+
+.sync-button + .replan-button {
+  margin-left: 0;
 }
 
 .replan-button {

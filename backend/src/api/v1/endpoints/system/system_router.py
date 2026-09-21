@@ -13,6 +13,7 @@ from src.api.deps import current_office_id, current_user, require_admin
 from src.db.session import get_db
 from src.models import AppUser
 from src.schemas.system import (
+    DemoModeWrite,
     PlanRunRead,
     SolverParams,
     SolverParamsRead,
@@ -128,3 +129,19 @@ async def save_solver_params(
     user: AppUser = Depends(current_user),
 ) -> SolverParamsRead:
     return await system_service.save_solver_params(session, payload, user_id=user.id)
+
+
+@router.put(
+    "/demo",
+    response_model=SystemTimeRead,
+    summary="Включить или выключить режим демонстрации (только администратор)",
+    dependencies=[Depends(require_admin)],
+)
+async def set_demo_mode(
+    payload: DemoModeWrite,
+    session: AsyncSession = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> SystemTimeRead:
+    """В режиме можно переводить время и синхронизировать маршруты с планом; выключили —
+    часы возвращаются к настоящему времени."""
+    return await system_service.set_demo_mode(session, payload.enabled, user_id=user.id)
