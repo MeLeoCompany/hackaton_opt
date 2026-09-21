@@ -99,6 +99,9 @@ const LATE_MINUTES = 5
 
 function lateText(route) {
   if (!props.approved || (route.delay_minutes ?? 0) < LATE_MINUTES) return ''
+  // маршрут закрыт — опаздывать уже некуда; иначе после перемотки времени висят «803 ч»
+  const { done, total } = routeProgress(route, props.references, props.plan.id)
+  if (total && done >= total) return ''
   const atRisk = route.at_risk_request_ids ?? []
   const risk = atRisk.length ? ` · не успевает к окну: ${atRisk.map((id) => `№${id}`).join(', ')}` : ''
   return `опаздывает на ${formatDuration(route.delay_minutes)}${risk}`
@@ -217,19 +220,20 @@ watch(() => props.plan.id, () => {
           <article
             v-for="{ route, routeIndex } in visibleRoutes"
             :key="route.engineer_id"
-            :class="['route-card', { selected: route.engineer_id === selectedEngineerId }]"
+            :class="['route-card', { selected: route.engineer_id === selectedEngineerId, 'with-sync': syncable }]"
             @click="emit('select-engineer', route.engineer_id)"
           >
+            <!-- галочка — на своём поле слева: заголовок и строки под ним начинаются от одной линии -->
+            <input
+              v-if="syncable"
+              type="checkbox"
+              class="card-sync-check"
+              :checked="isSyncSelected(route.engineer_id)"
+              :aria-label="`синхронизировать маршрут ${route.engineer_name}`"
+              @click.stop
+              @change="toggleSync(route.engineer_id)"
+            />
             <header>
-              <input
-                v-if="syncable"
-                type="checkbox"
-                class="sync-check"
-                :checked="isSyncSelected(route.engineer_id)"
-                :aria-label="`синхронизировать маршрут ${route.engineer_name}`"
-                @click.stop
-                @change="toggleSync(route.engineer_id)"
-              />
               <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
               <strong>{{ route.engineer_name }}</strong>
               <a v-if="route.phone" class="phone" :href="`tel:${route.phone}`" @click.stop>{{ route.phone }}</a>
@@ -492,17 +496,12 @@ watch(() => props.plan.id, () => {
   text-align: center;
 }
 
-.sync-cell input,
-.sync-check {
+.sync-cell input {
   width: 15px;
   height: 15px;
   margin: 0;
   padding: 0;
   vertical-align: middle;
-}
-
-.sync-check {
-  margin-right: 6px;
 }
 
 .routes-panel {
@@ -547,10 +546,28 @@ watch(() => props.plan.id, () => {
 }
 
 .route-card {
+  position: relative;
   padding: 10px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* режим демонстрации: слева поле под галочку, всё содержимое карточки — правее него */
+.route-card.with-sync {
+  padding-left: 36px;
+}
+
+/* по высоте — напротив первой строки названия: у заголовка строка 20 пикселей, сверху отступ
+   карточки 10 — центр строки на 20, галочка 15 — её верх на 12.5 */
+.card-sync-check {
+  position: absolute;
+  top: 12.5px;
+  left: 12px;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
 }
 
 .route-card:hover {
@@ -562,10 +579,17 @@ watch(() => props.plan.id, () => {
   background: #eff6ff;
 }
 
+/* название бригады бывает в две строки — всё в шапке держится первой строки, как и галочка */
 .route-card header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
+  line-height: 20px;
+}
+
+.route-card header .legend-dot {
+  flex: none;
+  margin-top: 5px;
 }
 
 .route-card p {
