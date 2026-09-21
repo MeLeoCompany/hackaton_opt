@@ -474,7 +474,12 @@ async def brigade_positions(
             # ещё не выезжала — с утреннего старта
             free_at = engineer.shift_start
             point = (float(engineer.start_latitude), float(engineer.start_longitude))
-        told = (free_at_by_engineer or {}).get(engineer_id)
+        # «освободится в» — только для бригады, которая сейчас работает на заявке: закончившая
+        # свободна с отметки «Выполнено», выехавшая — с конца работы по нормативу
+        on_site = (
+            in_progress is not None and in_progress.request.status_id == RequestStatusId.IN_PROGRESS
+        )
+        told = (free_at_by_engineer or {}).get(engineer_id) if on_site else None
         starts[engineer_id] = EngineerStart(
             latitude=point[0],
             longitude=point[1],

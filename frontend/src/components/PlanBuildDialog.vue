@@ -8,7 +8,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { previewReplan } from '../api/plansApi.js'
 import { fetchSolverParams } from '../api/systemApi.js'
 import { limitHint, numericParams } from '../utils/solverParams.js'
-import { formatDay, fromMoscowInputValue } from '../utils/moscowTime.js'
+import { formatDay, fromMoscowInputValue, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
 import InfoHint from './InfoHint.vue'
 import SolverParamRows from './SolverParamRows.vue'
@@ -111,10 +111,22 @@ watch([params, freeAt], () => {
   previewError.value = ''
 })
 
-// бригады, которые выбились из плана: им звонят и уточняют, когда освободятся
+// где бригада сейчас на месте: отметила «На месте», но ещё не «Выполнено»
+function onSiteVisit(route) {
+  return route.visits.find((visit) => visit.arrived_at && !visit.finished_at) ?? null
+}
+
+// застряли на заявке: бригада на месте и отстаёт — ей звонят и уточняют, когда освободится.
+// Закончившая или уже выехавшая свободна по своим отметкам — спрашивать нечего
 const waitingRoutes = computed(() =>
-  props.routes.filter((route) => route.waiting_reason || route.delay_minutes > 0),
+  props.routes.filter((route) => onSiteVisit(route) && (route.waiting_reason || route.delay_minutes > 0)),
 )
+
+function stuckText(route) {
+  const visit = onSiteVisit(route)
+  const late = route.delay_minutes > 0 ? ` · отстаёт на ${route.delay_minutes} мин` : ''
+  return `на месте №${visit.request_id} с ${moscowTimeOf(visit.arrived_at)}${late}`
+}
 
 async function checkReplan() {
   previewing.value = true
@@ -265,7 +277,7 @@ async function submit() {
 
       <!-- пересчёт: бригады, выбившиеся из плана, — оператор уточняет по телефону время -->
       <section v-if="replanOf && waitingRoutes.length" class="waiting">
-        <h4>Выбились из плана: {{ waitingRoutes.length }}</h4>
+        <h4>Застряли на заявке: {{ waitingRoutes.length }}</h4>
         <p class="hint">
           Застрявшая бригада не уложится в норматив: укажите время со слов бригады, и пересчёт
           посчитает её свободной с него, а не с планового конца работы.
@@ -273,7 +285,7 @@ async function submit() {
         <article v-for="route in waitingRoutes" :key="route.engineer_id" class="waiting-row">
           <strong>{{ route.engineer_name }}</strong>
           <a v-if="route.phone" class="phone" :href="`tel:${route.phone}`">{{ route.phone }}</a>
-          <span class="muted">{{ route.waiting_reason || `отстаёт на ${route.delay_minutes} мин` }}</span>
+          <span class="muted">{{ stuckText(route) }}</span>
           <label class="free-at">
             освободится в
             <TimeInput

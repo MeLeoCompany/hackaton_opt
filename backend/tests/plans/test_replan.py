@@ -111,6 +111,17 @@ async def test_brigade_stuck_on_a_request_is_free_when_the_operator_was_told():
 
 
 @pytest.mark.asyncio
+async def test_free_at_is_ignored_for_brigade_that_is_not_on_site():
+    # закончила заявку или уже выехала — свободна по своим отметкам, «освободится в» не про неё
+    done_route = [assignment(1, 10, DONE, at(12)), assignment(2, 11, PLANNED, at(14))]
+    facts = {10: fact(arrived=at(12), finished=at(12, 40))}
+
+    _, told = await positions(done_route, facts, at(13), {1: at(15, 30)})
+
+    assert told[1].available_from == at(13)
+
+
+@pytest.mark.asyncio
 async def test_replan_is_outdated_if_brigades_marked_something_after_it():
     parent = SimpleNamespace(id=22)
     plan = SimpleNamespace(
