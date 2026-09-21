@@ -25,14 +25,7 @@ from planner_test_helpers import (
     solve,
 )
 
-from src.core.config import settings
 from src.services.planner.objective_policy import ObjectiveCriterion
-
-
-@pytest.fixture(autouse=True)
-def short_time_limit(monkeypatch):
-    # задачи крошечные — решателю хватает пары секунд, так тесты идут быстрее
-    monkeypatch.setattr(settings, "cuopt_time_limit_seconds", 2.0)
 
 
 def test_mixed_day_respects_all_constraints():

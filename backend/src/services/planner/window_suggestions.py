@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 
 from src.schemas.plans import SolverName
+from src.schemas.system import SolverParams
 from src.services.planner import planning_service
 from src.services.planner.objective_policy import ObjectiveCriterion
 from src.services.planner.planner_loader import LoadedDay
@@ -69,6 +70,7 @@ async def suggest_windows(
     solver: SolverName,
     objective_order: tuple[ObjectiveCriterion, ...],
     unassigned_request_ids: set[int],
+    params: SolverParams | None = None,
 ) -> dict[int, WindowSuggestion]:
     """Предложения по номеру заявки; кого не взяли и здесь — «сегодня никак»."""
     widened_indices = {
@@ -83,7 +85,7 @@ async def suggest_windows(
     probe = copy.copy(loaded)
     probe.instance = instance
     solution = await planning_service.solve_with(
-        solver, probe, objective_order, widened_ranks(loaded, widened_indices)
+        solver, probe, objective_order, widened_ranks(loaded, widened_indices), params=params
     )
     return {
         request.request_id: WindowSuggestion(

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.schemas.plans import SolverName
+from src.schemas.system import SolverParams
 from src.services.planner import planning_service
 from src.services.planner.cuopt_solver import DaySolution
 from src.services.planner.objective_policy import DEFAULT_OBJECTIVE_ORDER, ObjectiveCriterion
@@ -45,7 +46,9 @@ async def test_cuopt_is_used_by_default():
     ):
         await planning_service.build_plan_for_day(session, "2026-08-17", office_id=1)
 
-    cuopt.assert_awaited_once_with(instance, objective_order=DEFAULT_OBJECTIVE_ORDER, ranks=None)
+    cuopt.assert_awaited_once_with(
+        instance, objective_order=DEFAULT_OBJECTIVE_ORDER, ranks=None, params=SolverParams()
+    )
     baseline.assert_not_called()
     assert save_solution.await_args.kwargs["solver"] == "cuopt"
     assert save_solution.await_args.kwargs["solve_duration_ms"] >= 0
@@ -110,7 +113,9 @@ async def test_custom_objective_order_is_forwarded_and_saved():
         )
 
     expected = tuple(order)
-    cuopt.assert_awaited_once_with(instance, objective_order=expected, ranks=None)
+    cuopt.assert_awaited_once_with(
+        instance, objective_order=expected, ranks=None, params=SolverParams()
+    )
     assert save_solution.await_args.kwargs["objective_order"] == expected
 
 

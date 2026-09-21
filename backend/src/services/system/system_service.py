@@ -8,6 +8,7 @@
 import platform
 import sys
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from uuid import UUID
 
 import httpx
@@ -24,6 +25,8 @@ from src.schemas.system import (
     PlanRunEventRead,
     PlanRunRead,
     ServiceStatus,
+    SolverParams,
+    SolverParamsRead,
     SystemInfo,
     SystemTimeRead,
     SystemTimeWrite,
@@ -159,9 +162,6 @@ async def read_info(session: AsyncSession) -> SystemInfo:
         settings={
             "Часовой пояс ввода": f"UTC+{settings.local_utc_offset_hours} (Москва)",
             "Вход действует, часов": str(settings.auth_token_hours),
-            "cuOpt: базовый лимит поиска, с": str(settings.cuopt_time_limit_seconds),
-            "cuOpt: максимальный лимит, с": str(settings.cuopt_max_time_limit_seconds),
-            "cuOpt: вес пробега в цели": str(settings.cuopt_distance_weight),
             "R5: таймаут запроса, с": str(settings.r5_timeout_seconds),
             "R5: расписания (GTFS)": str(settings.r5_gtfs_path),
             "Скорость пешком, км/ч": str(settings.walking_speed_kmh),
@@ -223,3 +223,38 @@ async def cancel_run(session: AsyncSession, run_id: UUID, *, office_id: int, use
         await session.commit()
         await session.refresh(run)
     return run_summary(run, user_name)
+
+
+async def read_solver_params(session: AsyncSession) -> SolverParamsRead:
+    """Системные параметры расчёта: они подставляются в диалог расчёта по умолчанию."""
+    row = await system_repository.get_solver_settings(session)
+    author = await session.get(AppUser, row.updated_by) if row.updated_by else None
+    return SolverParamsRead(
+        time_limit_seconds=float(row.time_limit_seconds),
+        seconds_per_location=float(row.seconds_per_location),
+        max_time_limit_seconds=float(row.max_time_limit_seconds),
+        free_locations=row.free_locations,
+        distance_weight=float(row.distance_weight),
+        transit_attempts=row.transit_attempts,
+        verbose_log=row.verbose_log,
+        updated_at=row.updated_at,
+        updated_by=author.name if author else None,
+    )
+
+
+async def save_solver_params(
+    session: AsyncSession, payload: SolverParams, *, user_id: int | None
+) -> SolverParamsRead:
+    """Новые параметры по умолчанию: следующие расчёты пойдут с ними."""
+    row = await system_repository.get_solver_settings(session)
+    row.time_limit_seconds = Decimal(str(payload.time_limit_seconds))
+    row.seconds_per_location = Decimal(str(payload.seconds_per_location))
+    row.max_time_limit_seconds = Decimal(str(payload.max_time_limit_seconds))
+    row.free_locations = payload.free_locations
+    row.distance_weight = Decimal(str(payload.distance_weight))
+    row.transit_attempts = payload.transit_attempts
+    row.verbose_log = payload.verbose_log
+    row.updated_at = clock.now()
+    row.updated_by = user_id
+    await session.commit()
+    return await read_solver_params(session)

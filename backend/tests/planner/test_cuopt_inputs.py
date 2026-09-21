@@ -19,6 +19,7 @@ from planner_test_helpers import (
     solve,
 )
 
+from src.schemas.system import SolverParams
 from src.services.planner.cuopt_solver import (
     build_objective_policy,
     build_solver_inputs,
@@ -157,18 +158,16 @@ def test_compact_order_locations_keep_original_request_mapping():
     assert solution.routes[0][0].request_index == 2
 
 
-def test_time_limit_grows_with_problem_size_and_is_capped(monkeypatch):
-    monkeypatch.setattr("src.services.planner.cuopt_solver.settings.cuopt_time_limit_seconds", 2.0)
-    monkeypatch.setattr(
-        "src.services.planner.cuopt_solver.settings.cuopt_max_time_limit_seconds", 20.0
-    )
-    inputs = build_solver_inputs(sample_instance(), [0, 1])
+def test_time_limit_grows_with_problem_size_and_is_capped():
+    """Время поиска задаёт оператор в параметрах расчёта: это и есть «точность»."""
+    params = SolverParams(time_limit_seconds=2.0, max_time_limit_seconds=20.0)
+    inputs = build_solver_inputs(sample_instance(), [0, 1], params=params)
 
-    assert inputs.time_limit_seconds == 2.0
+    assert inputs.time_limit_seconds == 2.0  # маленькой задаче хватает базового времени
     inputs.location_count = 50
-    assert inputs.time_limit_seconds == 6.0
+    assert inputs.time_limit_seconds == 6.0  # 30 точек сверх бесплатных по 0.2 с
     inputs.location_count = 1_000
-    assert inputs.time_limit_seconds == 20.0
+    assert inputs.time_limit_seconds == 20.0  # выше максимума не поднимаемся
 
 
 def test_dynamic_objective_has_strict_priority_levels():

@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from src.core.config import settings
 from src.core.errors import ExternalServiceError
+from src.schemas.system import SolverParams
 from src.services.planner import run_log
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
@@ -113,18 +113,13 @@ class SolverInputs:
     order_prizes: np.ndarray  # float32
     order_allowed_vehicles: list[np.ndarray]  # int32: кому из исполнителей можно отдать заявку
     objective: ObjectivePolicy
+    # параметры расчёта: сколько искать решение и подробно ли писать лог решателя
+    params: SolverParams = field(default_factory=SolverParams)
 
     @property
     def time_limit_seconds(self) -> float:
-        """До 20 точек хватает базового лимита; дальше добавляется время на поиск."""
-        adaptive = (
-            max(self.location_count - ADAPTIVE_TIME_FREE_LOCATIONS, 0)
-            * TIME_LIMIT_PER_LOCATION_SECONDS
-        )
-        return min(
-            max(settings.cuopt_time_limit_seconds, adaptive),
-            settings.cuopt_max_time_limit_seconds,
-        )
+        """Маленькой задаче хватает базового лимита; дальше добавляется время на поиск."""
+        return self.params.limit_for(self.location_count)
 
 
 async def solve_day(
@@ -132,6 +127,7 @@ async def solve_day(
     *,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
     ranks: dict[int, int] | None = None,
+    params: SolverParams | None = None,
 ) -> DaySolution:
     """ranks — ярус каждой заявки по номеру в instance.requests; нет — берётся из самой заявки
     (objective_rank). Второй расчёт при синхронизации передаёт свои ярусы (docs/algoV2.md)."""
@@ -141,12 +137,14 @@ async def solve_day(
 
     # решение занимает секунды — считаем в отдельном потоке, чтобы не блокировать остальные запросы
     try:
+        params = params or SolverParams()
         inputs = build_solver_inputs(
             instance,
             task_request_indices,
-            distance_weight=settings.cuopt_distance_weight,
+            distance_weight=params.distance_weight,
             objective_order=objective_order,
             ranks=ranks,
+            params=params,
         )
         await describe_model(instance, inputs, task_request_indices, objective_order, ranks)
         solving = asyncio.create_task(
@@ -189,6 +187,7 @@ def build_solver_inputs(
     distance_weight: float | None = None,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
     ranks: dict[int, int] | None = None,
+    params: SolverParams | None = None,
 ) -> SolverInputs:
     """ProblemInstance -> массивы для DataModel. task_request_indices — какие заявки отправляем."""
     transport_ids = sorted({engineer.transport_id for engineer in instance.engineers})
@@ -204,7 +203,7 @@ def build_solver_inputs(
     objective = build_objective_policy(
         instance,
         task_request_indices,
-        settings.cuopt_distance_weight if distance_weight is None else distance_weight,
+        (params or SolverParams()).distance_weight if distance_weight is None else distance_weight,
         objective_order,
         request_ranks,
     )
@@ -256,6 +255,7 @@ def build_solver_inputs(
             for request_index in task_request_indices
         ],
         objective=objective,
+        params=params or SolverParams(),
     )
 
 
@@ -454,6 +454,9 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
 
     solver_settings = routing.SolverSettings()
     solver_settings.set_time_limit(time_limit_seconds)
+    if inputs.params.verbose_log:
+        # подробный вывод решателя: нужен, когда разбираются, почему план именно такой
+        solver_settings.set_verbose_mode(True)
     started_at = time.perf_counter()
     assignment = routing.Solve(data_model, solver_settings)
     elapsed_seconds = time.perf_counter() - started_at
@@ -463,18 +466,26 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
         raise ExternalServiceError(
             f"cuOpt не нашёл решение: статус {assignment.get_status()}, {message}"
         )
+    # строка уходит в журнал расчёта, поэтому пишем её по-человечески, без служебных enum
     logging.getLogger(__name__).info(
-        "cuOpt solved locations=%d orders=%d vehicles=%d objective=%s components=%s "
-        "elapsed=%.3fs limit=%.3fs",
-        inputs.location_count,
-        order_count,
-        assignment.get_vehicle_count(),
-        assignment.get_total_objective(),
-        assignment.get_objective_values(),
+        "решение за %.1f с (лимит %.0f с), бригад %d, цель %.6g; %s",
         elapsed_seconds,
         time_limit_seconds,
+        assignment.get_vehicle_count(),
+        assignment.get_total_objective(),
+        objective_parts(assignment.get_objective_values()),
     )
     return assignment.get_route().to_pandas().to_dict("records")
+
+
+def objective_parts(values: dict) -> str:
+    """Составляющие цели cuOpt словами: из чего сложилась итоговая оценка решения."""
+    names = {"PRIZE": "за заявки", "VEHICLE_FIXED_COST": "за бригады", "COST": "за пробег"}
+    parts = [
+        f"{names.get(getattr(key, 'name', str(key)), getattr(key, 'name', key))} {value:.4g}"
+        for key, value in values.items()
+    ]
+    return ", ".join(parts)
 
 
 async def describe_model(
@@ -519,6 +530,14 @@ async def describe_model(
         f"Работы на {work // 60} ч {work % 60} мин при сменах на {shifts // 60} ч, "
         f"окно заявки в среднем {round(sum(windows) / max(len(windows), 1))} мин",
         details={"work_minutes": work, "shift_minutes": shifts},
+    )
+    params = inputs.params
+    await run_log.note(
+        f"Параметры расчёта: время поиска {params.time_limit_seconds:g}–"
+        f"{params.max_time_limit_seconds:g} c (+{params.seconds_per_location:g} c на точку "
+        f"сверх {params.free_locations}), вес пробега {params.distance_weight:g}, "
+        f"попыток по расписанию {params.transit_attempts}",
+        details=params.model_dump(),
     )
     await run_log.note(
         "Порядок целей: " + " → ".join(criterion.value for criterion in objective_order),

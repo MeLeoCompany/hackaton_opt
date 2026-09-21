@@ -1,14 +1,95 @@
 <script setup>
 // Параметры системы: к чему подключён бэкенд, что сейчас настроено и сколько чего заведено.
 // Только для администратора; данные приходят одним запросом и обновляются по кнопке.
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
+import { fetchSolverParams, saveSolverParams } from '../api/systemApi.js'
+import InfoHint from '../components/InfoHint.vue'
+import SolverParamRows from '../components/SolverParamRows.vue'
+import { limitFor, numericParams } from '../utils/solverParams.js'
 import { useSystemInfo } from '../composables/useSystemInfo.js'
 import { useSystemTime } from '../composables/useSystemTime.js'
 import { formatDay, moscowDateOf, moscowTimeOf } from '../utils/moscowTime.js'
 
 const { info, loading, errorMessage, errorDetails, load } = useSystemInfo()
+
+// параметры расчёта по умолчанию: их подставляет диалог расчёта, менять может администратор
+const savedSolver = ref(null)
+const savingSolver = ref(false)
+const solverNotice = ref('')
+// раскрытые группы настроек: cuOpt и службы вроде R5
+const openGroups = ref(new Set())
+
+function toggleGroup(key) {
+  const next = new Set(openGroups.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  openGroups.value = next
+}
+
+// как группа называется в таблице: префикс в названии настройки — это служба
+const GROUP_TITLES = { R5: 'Общественный транспорт R5' }
+
+// настройки окружения: «R5: таймаут запроса, с» уходит в группу R5, остальное — отдельными строками
+const settingGroups = computed(() => {
+  const groups = new Map()
+  const plain = []
+  for (const [name, value] of Object.entries(info.value?.settings ?? {})) {
+    const match = name.match(/^([^:]+):\s*(.+)$/)
+    if (!match) {
+      plain.push({ name, value })
+      continue
+    }
+    if (!groups.has(match[1])) groups.set(match[1], [])
+    // «таймаут запроса, с» -> «Таймаут запроса, с»: внутри группы префикса службы уже нет
+    groups.get(match[1]).push({ name: match[2][0].toUpperCase() + match[2].slice(1), value })
+  }
+  return {
+    groups: [...groups].map(([key, rows]) => ({
+      key,
+      title: GROUP_TITLES[key] ?? key,
+      rows,
+      // значения служб длинные (пути, адреса) — в свёрнутой группе хватит их числа
+      summary: rows.length === 1 ? '1 параметр' : `${rows.length} ${rows.length < 5 ? 'параметра' : 'параметров'}`,
+    })),
+    plain,
+  }
+})
+
+async function loadSolver() {
+  try {
+    savedSolver.value = await fetchSolverParams()
+  } catch (error) {
+    errorMessage.value = error.message
+  }
+}
+
+// свёрнутая группа говорит главное: сколько ищем и с чем
+const solverSummary = computed(() => {
+  const params = savedSolver.value
+  return (
+    `поиск ${params.time_limit_seconds}–${params.max_time_limit_seconds} с ` +
+    `(день из 200 точек — ${limitFor(params, 200)} с), вес пробега ${params.distance_weight}, ` +
+    `попыток по расписанию ${params.transit_attempts}, лог ${params.verbose_log ? 'подробный' : 'обычный'}`
+  )
+})
+
+// правка одной строки: сохраняем весь набор с новым значением — сервер проверит сочетание
+async function saveOne(key, value) {
+  savingSolver.value = true
+  solverNotice.value = ''
+  try {
+    const next = numericParams({ ...savedSolver.value, [key]: value })
+    savedSolver.value = await saveSolverParams(next)
+    solverNotice.value = 'Сохранено: следующие расчёты пойдут с новыми параметрами'
+  } catch (error) {
+    errorMessage.value = [error.message, ...(error.details ?? [])].join(': ')
+  } finally {
+    savingSolver.value = false
+  }
+}
+
 const { now, shifted } = useSystemTime()
 
 function moment(isoString) {
@@ -18,7 +99,10 @@ function moment(isoString) {
 const clock = computed(() => moment(now.value.toISOString()))
 const realClock = computed(() => moment(info.value?.time.real_now))
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadSolver()
+})
 </script>
 
 <template>
@@ -60,8 +144,9 @@ onMounted(load)
       <h2 class="section-title">Подключения</h2>
       <div class="table-scroll">
         <table class="data-table fixed-columns">
+          <!-- первая колонка той же ширины, что у «Настроек расчёта»: колонки значений на одной вертикали -->
           <colgroup>
-            <col style="width: 260px" />
+            <col style="width: 280px" />
             <col />
             <col style="width: 320px" />
           </colgroup>
@@ -83,22 +168,63 @@ onMounted(load)
 
       <h2 class="section-title">Настройки расчёта</h2>
       <div class="table-scroll">
-        <table class="data-table fixed-columns">
+        <!-- параметры решателя — группой, как шаг в журнале: раскрывается в свои строки,
+             у каждой справа карандаш; остальные настройки задаются окружением и только видны -->
+        <table class="data-table fixed-columns settings-table">
           <colgroup>
-            <col style="width: 320px" />
+            <col style="width: 280px" />
             <col />
+            <col style="width: 92px" />
           </colgroup>
           <thead>
-            <tr><th>Параметр</th><th>Значение</th></tr>
+            <tr><th>Параметр</th><th>Значение</th><th></th></tr>
           </thead>
           <tbody>
-            <tr v-for="(value, name) in info.settings" :key="name">
-              <td>{{ name }}</td>
-              <td class="target">{{ value }}</td>
+            <template v-if="savedSolver">
+              <tr class="group-row" @click="toggleGroup('cuopt')">
+                <td>
+                  <span class="twist">{{ openGroups.has('cuopt') ? '▾' : '▸' }}</span>
+                  <strong>Решатель cuOpt</strong>
+                  <InfoHint text="Эти значения подставляет диалог расчёта; поменять их на один расчёт можно прямо в нём" />
+                </td>
+                <td class="summary">{{ solverSummary }}</td>
+                <td></td>
+              </tr>
+              <SolverParamRows
+                v-if="openGroups.has('cuopt')"
+                :values="savedSolver"
+                :disabled="savingSolver"
+                indent
+                @update="saveOne"
+              />
+            </template>
+            <!-- настройки окружения группами по службе («R5: …»): видны, но не правятся -->
+            <template v-for="group in settingGroups.groups" :key="group.key">
+              <tr class="group-row" @click="toggleGroup(group.key)">
+                <td>
+                  <span class="twist">{{ openGroups.has(group.key) ? '▾' : '▸' }}</span>
+                  <strong>{{ group.title }}</strong>
+                </td>
+                <td class="summary">{{ group.summary }}</td>
+                <td></td>
+              </tr>
+              <template v-if="openGroups.has(group.key)">
+                <tr v-for="row in group.rows" :key="row.name" class="child-row">
+                  <td class="child-name">{{ row.name }}</td>
+                  <td class="target">{{ row.value }}</td>
+                  <td></td>
+                </tr>
+              </template>
+            </template>
+            <tr v-for="row in settingGroups.plain" :key="row.name">
+              <td>{{ row.name }}</td>
+              <td class="target">{{ row.value }}</td>
+              <td></td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p v-if="solverNotice" class="saved">{{ solverNotice }}</p>
 
       <h2 class="section-title">Данные</h2>
       <div class="counts">
@@ -112,10 +238,42 @@ onMounted(load)
         <button class="link" :disabled="loading" @click="load">{{ loading ? 'Обновляю…' : 'Обновить' }}</button>
       </p>
     </template>
+
   </div>
 </template>
 
 <style scoped>
+/* группа cuOpt раскрывается, как шаг в журнале расчёта */
+.group-row {
+  cursor: pointer;
+}
+
+.group-row:hover td {
+  background: #eff6ff;
+}
+
+.twist {
+  display: inline-block;
+  width: 14px;
+  color: #94a3b8;
+}
+
+/* текст параметров группы начинается ровно под её названием; селектор длиннее,
+   потому что общий стиль ячеек таблицы сильнее */
+.data-table.settings-table tbody td.child-name {
+  padding-left: 27px;
+}
+
+.summary {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.saved {
+  color: #166534;
+  font-size: 12px;
+}
+
 /* рабочая область — колонка flex: таблицы иначе сжимаются и обрезают строки */
 .table-scroll {
   flex: none;

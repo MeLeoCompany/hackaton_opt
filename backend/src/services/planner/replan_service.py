@@ -43,6 +43,7 @@ from src.schemas.plans import (
     ReplanProblem,
     SolverName,
 )
+from src.schemas.system import SolverParams
 from src.schemas.travel import Point, TransportKind, TravelProvider
 from src.services.planner import planner_loader, planning_service, run_log, window_suggestions
 from src.services.planner.objective_policy import (
@@ -79,6 +80,7 @@ async def replan(
     free_at: list[BrigadeFreeAt] | None = None,
     user_id: int | None = None,
     run_id: UUID | None = None,
+    params: SolverParams | None = None,
 ) -> PlanSummary:
     """Пересчитывает утверждённый план с момента at (по умолчанию — сейчас).
 
@@ -104,7 +106,14 @@ async def replan(
         else:
             await apply_decisions(session, parent, [], office_id=office_id, user_id=user_id)
         built = await build_replan(
-            session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
+            session,
+            parent,
+            solver,
+            objective_order,
+            at,
+            office_id=office_id,
+            free_at=free_at,
+            params=params,
         )
         plan = built.plan
         async with run_log.step("Считаю пробег маршрутов", 92, 99):
@@ -126,6 +135,7 @@ async def preview_replan(
     free_at: list[BrigadeFreeAt] | None = None,
     user_id: int | None = None,
     run_id: UUID | None = None,
+    params: SolverParams | None = None,
 ) -> ReplanPreview:
     """Пробный пересчёт: тот же расчёт, но ничего не сохраняется.
 
@@ -142,7 +152,14 @@ async def preview_replan(
         run_id=run_id,
     ):
         return await preview_inside_run(
-            session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
+            session,
+            parent,
+            solver,
+            objective_order,
+            at,
+            office_id=office_id,
+            free_at=free_at,
+            params=params,
         )
 
 
@@ -155,11 +172,19 @@ async def preview_inside_run(
     *,
     office_id: int,
     free_at: list[BrigadeFreeAt] | None = None,
+    params: SolverParams | None = None,
 ) -> ReplanPreview:
     """Сам пробный расчёт: считает, собирает предложения и откатывает транзакцию."""
     try:
         built = await build_replan(
-            session, parent, solver, objective_order, at, office_id=office_id, free_at=free_at
+            session,
+            parent,
+            solver,
+            objective_order,
+            at,
+            office_id=office_id,
+            free_at=free_at,
+            params=params,
         )
         assignments = await plans_repository.list_plan_assignments(session, built.plan.id)
         unassigned = [a for a in assignments if a.engineer_id is None]
@@ -170,6 +195,7 @@ async def preview_inside_run(
                 solver,
                 validate_objective_order(objective_order),
                 {a.request_id for a in unassigned},
+                params=params,
             )
         tolerance = timedelta(minutes=settings.promise_tolerance_minutes)
         preview = ReplanPreview(
@@ -236,6 +262,7 @@ async def build_replan(
     *,
     office_id: int,
     free_at: list[BrigadeFreeAt] | None = None,
+    params: SolverParams | None = None,
 ) -> ReplanResult:
     """Считает пересчёт и записывает его в сессию (без коммита).
 
@@ -254,7 +281,7 @@ async def build_replan(
 
     policy = validate_objective_order(objective_order)
     started = time.perf_counter()
-    solution = await planning_service.solve_with(solver, loaded, policy)
+    solution = await planning_service.solve_with(solver, loaded, policy, params=params)
     duration_ms = (time.perf_counter() - started) * 1000
 
     plan = await planning_service.save_solution(

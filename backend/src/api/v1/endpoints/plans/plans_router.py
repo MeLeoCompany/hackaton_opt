@@ -22,6 +22,7 @@ from src.schemas.plans import (
     ReplanPreview,
 )
 from src.services.planner import planning_service, replan_service
+from src.services.system import system_service
 
 router = APIRouter()
 
@@ -64,6 +65,7 @@ async def build_plan(
         office_id=office_id,
         run_id=payload.run_id,
         user_id=user.id,
+        params=payload.solver_params or await system_service.read_solver_params(session),
     )
 
 
@@ -107,6 +109,7 @@ async def replan(
         free_at=payload.free_at,
         user_id=user.id,
         run_id=payload.run_id,
+        params=payload.solver_params or await system_service.read_solver_params(session),
     )
 
 
@@ -134,6 +137,7 @@ async def preview_replan(
         free_at=payload.free_at,
         user_id=user.id,
         run_id=payload.run_id,
+        params=payload.solver_params or await system_service.read_solver_params(session),
     )
 
 

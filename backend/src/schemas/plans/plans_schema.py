@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.schemas.system import SolverParams
 from src.schemas.travel import TravelLeg
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
@@ -34,6 +35,8 @@ class PlanBuildRequest(BaseModel):
     )
     # номер запуска: интерфейс придумывает его заранее и по нему показывает ход расчёта
     run_id: UUID | None = None
+    # параметры решателя на этот расчёт; пусто — берём системные («Система» → параметры расчёта)
+    solver_params: SolverParams | None = None
 
     @field_validator("objective_order")
     @classmethod
@@ -132,6 +135,8 @@ class PlanReplanRequest(BaseModel):
     free_at: list[BrigadeFreeAt] = []
     # номер запуска: по нему интерфейс показывает ход пересчёта
     run_id: UUID | None = None
+    # параметры решателя на этот пересчёт; пусто — системные
+    solver_params: SolverParams | None = None
 
     @field_validator("objective_order")
     @classmethod

@@ -46,8 +46,9 @@ function seconds(value) {
     <ol v-if="lastEvents.length" class="events">
       <li v-for="(event, index) in lastEvents" :key="index" :class="event.level">
         <span class="at">{{ moscowLogTimeOf(event.at) }}</span>
-        <!-- почти всё пишет сам планировщик: называем источник, только когда он другой -->
-        <span v-if="event.source !== 'planner'" class="source">{{ event.source }}</span>
+        <!-- почти всё пишет сам планировщик: его не называем, но место под плашку держим,
+             иначе строки съезжают влево-вправо -->
+        <span class="source">{{ event.source === 'planner' ? '' : event.source }}</span>
         <span>{{ event.message }}</span>
       </li>
     </ol>
@@ -124,11 +125,15 @@ function seconds(value) {
   flex: none;
   width: 54px;
   padding: 0 5px;
-  text-align: center;
   border-radius: 4px;
-  background: #e2e8f0;
   color: #475569;
   font-size: 11px;
+  text-align: center;
+}
+
+/* плашкой отмечаем только чужие строки: cuopt, r5, valhalla */
+.source:not(:empty) {
+  background: #e2e8f0;
 }
 
 .cancel {

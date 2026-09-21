@@ -11,6 +11,7 @@ import asyncio
 
 import numpy as np
 
+from src.schemas.system import SolverParams
 from src.services.planner import EngineerSpec, ProblemInstance, RequestSpec, build_compatibility
 from src.services.planner.cuopt_solver import DaySolution, solve_day
 from src.services.planner.objective_policy import DEFAULT_OBJECTIVE_ORDER, ObjectiveCriterion
@@ -86,11 +87,17 @@ def make_instance(
     return instance
 
 
+# задачи в тестах крошечные: двух секунд поиска решателю хватает с запасом
+TEST_SOLVER_PARAMS = SolverParams(time_limit_seconds=2.0)
+
+
 def solve(
     instance: ProblemInstance,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
 ) -> DaySolution:
-    return asyncio.run(solve_day(instance, objective_order=objective_order))
+    return asyncio.run(
+        solve_day(instance, objective_order=objective_order, params=TEST_SOLVER_PARAMS)
+    )
 
 
 def assigned_request_ids(instance: ProblemInstance, solution: DaySolution) -> list[int]:

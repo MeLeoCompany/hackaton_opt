@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import SystemTime
+from src.models import SolverSettings, SystemTime
 
 
 async def get_system_time(session: AsyncSession) -> SystemTime:
@@ -11,6 +11,16 @@ async def get_system_time(session: AsyncSession) -> SystemTime:
     row = await session.get(SystemTime, 1)
     if row is None:
         row = SystemTime(id=1, offset_seconds=0)
+        session.add(row)
+        await session.flush()
+    return row
+
+
+async def get_solver_settings(session: AsyncSession) -> SolverSettings:
+    """Строка параметров расчёта; её заводит миграция 040, но подстрахуемся."""
+    row = await session.get(SolverSettings, 1)
+    if row is None:
+        row = SolverSettings(id=1)
         session.add(row)
         await session.flush()
     return row

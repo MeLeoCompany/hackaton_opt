@@ -36,6 +36,7 @@ from src.schemas.plans import (
     UnassignedRequest,
     WithdrawnRequest,
 )
+from src.schemas.system import SolverParams
 from src.schemas.travel import Point, TransportKind, TravelProvider
 from src.services.planner import (
     baseline_solver,
@@ -120,6 +121,7 @@ async def build_plan_for_day(
     office_id: int,
     run_id: UUID | None = None,
     user_id: int | None = None,
+    params: SolverParams | None = None,
 ) -> PlanSummary:
     """Считает план дня выбранным решателем и сохраняет его отдельной записью.
 
@@ -135,11 +137,13 @@ async def build_plan_for_day(
         user_id=user_id,
         run_id=run_id,
     ):
+        # параметры расчёта приходят из запроса; системные подставляет слой API
+        params = params or SolverParams()
         loaded = await load_planning_day(session, plan_date, office_id)
         policy = validate_objective_order(objective_order)
 
         started = time.perf_counter()
-        solution = await solve_with(solver, loaded, policy)
+        solution = await solve_with(solver, loaded, policy, params=params)
         duration_ms = (time.perf_counter() - started) * 1000
 
         async with run_log.step("Сохраняю план", 80, 92):
@@ -164,6 +168,7 @@ async def solve_with(
     loaded: LoadedDay,
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
     ranks: dict[int, int] | None = None,
+    params: SolverParams | None = None,
 ) -> cuopt_solver.DaySolution:
     """cuOpt считает на видеокарте в отдельном потоке, базовый алгоритм — прямо здесь.
 
@@ -179,7 +184,7 @@ async def solve_with(
     ):
         if solver is SolverName.BASELINE:
             return baseline_solver.solve_day(loaded.instance)
-        return await transit_schedule.solve_day(loaded, objective_order, ranks)
+        return await transit_schedule.solve_day(loaded, objective_order, ranks, params)
 
 
 @dataclass(frozen=True)

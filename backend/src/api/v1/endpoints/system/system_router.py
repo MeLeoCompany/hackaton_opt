@@ -12,7 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import current_office_id, current_user, require_admin
 from src.db.session import get_db
 from src.models import AppUser
-from src.schemas.system import PlanRunRead, SystemInfo, SystemTimeRead, SystemTimeWrite
+from src.schemas.system import (
+    PlanRunRead,
+    SolverParams,
+    SolverParamsRead,
+    SystemInfo,
+    SystemTimeRead,
+    SystemTimeWrite,
+)
 from src.services.system import system_service
 
 router = APIRouter()
@@ -94,3 +101,30 @@ async def cancel_run(
     return await system_service.cancel_run(
         session, run_id, office_id=office_id, user_id=user.id
     )
+
+
+@router.get(
+    "/solver",
+    response_model=SolverParamsRead,
+    summary="Параметры расчёта по умолчанию",
+)
+async def read_solver_params(
+    session: AsyncSession = Depends(get_db),
+    _: AppUser = Depends(current_user),
+) -> SolverParamsRead:
+    """Их подставляет диалог расчёта; поменять на один расчёт можно прямо в нём."""
+    return await system_service.read_solver_params(session)
+
+
+@router.put(
+    "/solver",
+    response_model=SolverParamsRead,
+    summary="Изменить параметры расчёта по умолчанию (только администратор)",
+    dependencies=[Depends(require_admin)],
+)
+async def save_solver_params(
+    payload: SolverParams,
+    session: AsyncSession = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> SolverParamsRead:
+    return await system_service.save_solver_params(session, payload, user_id=user.id)

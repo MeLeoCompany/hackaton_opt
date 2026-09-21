@@ -3,12 +3,15 @@
 // значениями по умолчанию — можно сразу нажать «Рассчитать».
 // С replanOf — пересчёт утверждённого плана с текущего момента: выполненные и начатые заявки
 // остаются за бригадами, бригады стартуют оттуда, где они сейчас, остальное раскладывается заново.
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { previewReplan } from '../api/plansApi.js'
+import { fetchSolverParams } from '../api/systemApi.js'
+import { limitHint, numericParams } from '../utils/solverParams.js'
 import { formatDay, fromMoscowInputValue, moscowTimeOf, nextDay } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
 import InfoHint from './InfoHint.vue'
+import SolverParamRows from './SolverParamRows.vue'
 import TimeInput from './TimeInput.vue'
 
 const props = defineProps({
@@ -43,6 +46,28 @@ const params = reactive({
   nextGoal: 'assigned_requests',
 })
 
+// параметры решателя: по умолчанию системные («Система» → «Параметры расчёта»),
+// но на один расчёт их можно поменять прямо здесь
+const solverParams = ref(null)
+const systemParams = ref(null)
+const paramsOpen = ref(false)
+
+onMounted(async () => {
+  try {
+    const params = await fetchSolverParams()
+    solverParams.value = { ...params }
+    systemParams.value = { ...params }
+  } catch {
+    // не ответили — считаем с системными по умолчанию, диалог работает как раньше
+  }
+})
+
+const paramsChanged = computed(
+  () =>
+    solverParams.value &&
+    JSON.stringify(numericParams(solverParams.value)) !== JSON.stringify(numericParams(systemParams.value)),
+)
+
 // заявки с окном через полночь мог забрать утверждённый план соседнего дня — предупреждаем до расчёта
 const heldRequests = computed(() => props.dayCheck?.held_requests ?? [])
 const heldHolders = computed(() =>
@@ -58,7 +83,11 @@ function basePayload() {
   const payload = { solver: params.solver }
   // момент пересчёта бэкенд берёт сам — текущее системное время
   if (props.replanOf) payload.free_at = freeAtPayload()
-  if (params.solver === 'cuopt') payload.objective_order = objectiveOrder(params.nextGoal)
+  if (params.solver === 'cuopt') {
+    payload.objective_order = objectiveOrder(params.nextGoal)
+    // системные параметры шлём только когда их поменяли: иначе сервер возьмёт свои
+    if (paramsChanged.value) payload.solver_params = numericParams(solverParams.value)
+  }
   return payload
 }
 
@@ -222,6 +251,53 @@ async function submit() {
         </p>
       </fieldset>
 
+      <!-- параметры cuOpt: только при выбранном cuOpt — базовому алгоритму их не передать;
+           подставлены системные, можно поменять на этот расчёт -->
+      <section v-if="params.solver === 'cuopt' && solverParams" class="solver-block">
+        <button type="button" class="link solver-toggle" @click="paramsOpen = !paramsOpen">
+          {{ paramsOpen ? '▾' : '▸' }} Параметры cuOpt
+          <span class="muted">
+            · время поиска {{ solverParams.time_limit_seconds }}–{{ solverParams.max_time_limit_seconds }} c<template
+              v-if="paramsChanged"
+            >
+              · изменены для этого расчёта</template
+            >
+          </span>
+        </button>
+        <!-- та же таблица, что в «Системе»: правка здесь действует только на этот расчёт -->
+        <template v-if="paramsOpen">
+          <table class="data-table params-table">
+            <colgroup>
+              <col />
+              <col style="width: 30%" />
+              <col style="width: 84px" />
+            </colgroup>
+            <thead>
+              <tr><th>Параметр</th><th>Значение</th><th></th></tr>
+            </thead>
+            <tbody>
+              <SolverParamRows
+                :values="solverParams"
+                :baseline="systemParams"
+                :disabled="building || previewing"
+                @update="(key, value) => (solverParams = { ...solverParams, [key]: value })"
+              />
+            </tbody>
+          </table>
+          <div class="params-foot">
+            <span class="hint">{{ limitHint(solverParams) }}</span>
+            <button
+              type="button"
+              class="link"
+              :disabled="!paramsChanged"
+              @click="solverParams = { ...systemParams }"
+            >
+              Сбросить
+            </button>
+          </div>
+        </template>
+      </section>
+
       <p v-if="heldRequests.length && !replanOf" class="warning">
         <span class="mark">!</span>
         <span>
@@ -334,6 +410,36 @@ async function submit() {
 </template>
 
 <style scoped>
+/* параметры решателя в диалоге: свёрнуты, пока не понадобятся */
+.solver-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.solver-toggle {
+  text-align: left;
+  font-size: 13px;
+}
+
+.params-table {
+  width: 100%;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+/* «Сбросить» — вровень с правым краем карандашей: отступ как у ячейки таблицы */
+.params-foot {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-right: 10px;
+}
+
 .dialog-backdrop {
   position: fixed;
   inset: 0;

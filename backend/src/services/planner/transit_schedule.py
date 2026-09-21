@@ -7,8 +7,8 @@ import math
 import httpx
 import numpy as np
 
-from src.core.config import settings
 from src.core.errors import ExternalServiceError
+from src.schemas.system import SolverParams
 from src.schemas.travel import Point, TransportKind
 from src.services.planner import cuopt_solver, run_log
 from src.services.planner.objective_policy import ObjectiveCriterion
@@ -167,27 +167,28 @@ async def solve_day(
     loaded: LoadedDay,
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None = None,
+    params: SolverParams | None = None,
 ) -> cuopt_solver.DaySolution:
     """Уточнять только использованные плечи, не пересчитывая полную матрицу R5."""
+    params = params or SolverParams()
     if TRANSIT_ID not in loaded.instance.travel_min:
         return await cuopt_solver.solve_day(
-            loaded.instance, objective_order=objective_order, ranks=ranks
+            loaded.instance, objective_order=objective_order, ranks=ranks, params=params
         )
 
     points = node_points(loaded)
     cache: dict[tuple[int, int, int], int] = {}
     instance: ProblemInstance = loaded.instance
-    for attempt in range(settings.transit_plan_max_attempts):
+    for attempt in range(params.transit_attempts):
         await run_log.check_cancelled()
         await run_log.note(
-            f"Попытка {attempt + 1} из {settings.transit_plan_max_attempts}: "
-            "решаю и сверяю с расписанием",
-            fraction=attempt / settings.transit_plan_max_attempts,
+            f"Попытка {attempt + 1} из {params.transit_attempts}: решаю и сверяю с расписанием",
+            fraction=attempt / params.transit_attempts,
         )
         solution = await cuopt_solver.solve_day(
-            instance, objective_order=objective_order, ranks=ranks
+            instance, objective_order=objective_order, ranks=ranks, params=params
         )
-        last_attempt = attempt + 1 == settings.transit_plan_max_attempts
+        last_attempt = attempt + 1 == params.transit_attempts
         checked, observations = await check_schedule(
             loaded, solution, points, cache, skip_infeasible=last_attempt
         )

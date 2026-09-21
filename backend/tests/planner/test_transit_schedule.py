@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 
+from src.schemas.system import SolverParams
 from src.services.planner import cuopt_solver, planner_loader, transit_schedule
 from src.services.planner.planner_problem import EngineerSpec, ProblemInstance, RequestSpec
 
@@ -100,9 +101,11 @@ async def test_rechecks_next_leg_after_skipping_late_visit():
     with (
         patch.object(transit_schedule, "build_route", side_effect=route) as build,
         patch.object(transit_schedule.cuopt_solver, "solve_day", AsyncMock(return_value=solution)),
-        patch.object(transit_schedule.settings, "transit_plan_max_attempts", 1),
     ):
-        result = await transit_schedule.solve_day(loaded, ())
+        # одна попытка: сразу снимаем визиты, к которым по расписанию не успеть
+        result = await transit_schedule.solve_day(
+            loaded, (), params=SolverParams(transit_attempts=1)
+        )
 
     assert [visit.request_index for visit in result.routes[0]] == [1]
     assert result.routes[0][0].work_start_minute == 570

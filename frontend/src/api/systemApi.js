@@ -29,3 +29,12 @@ export function fetchPlanRun(runId) {
 export function cancelPlanRun(runId) {
   return apiRequest('POST', `/system/runs/${runId}/cancel`)
 }
+
+// параметры расчёта по умолчанию: их подставляет диалог расчёта
+export function fetchSolverParams() {
+  return apiRequest('GET', '/system/solver')
+}
+
+export function saveSolverParams(payload) {
+  return apiRequest('PUT', '/system/solver', { json: payload })
+}

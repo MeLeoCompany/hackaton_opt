@@ -15,6 +15,7 @@ from src.models.request_status import (
     RequestStatusId,
     RequestStatusTransition,
 )
+from src.models.solver_settings import SolverSettings
 from src.models.system_time import SystemTime
 from src.models.user import AppUser, UserRole
 
@@ -41,6 +42,7 @@ __all__ = [
     "RequestStatusId",
     "RequestStatusTransition",
     "Skill",
+    "SolverSettings",
     "SystemTime",
     "Transport",
     "UserRole",
