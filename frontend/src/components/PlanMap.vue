@@ -38,6 +38,9 @@ const props = defineProps({
   references: { type: Object, default: () => ({}) },
   // утверждённый план: по нему ездят бригады — видно, где они и как идёт маршрут
   approved: { type: Boolean, default: false },
+  // участки выбранного маршрута, которые показать: { engineerId, indexes } — индекс визита,
+  // к которому ведёт участок; null — маршрут целиком
+  chosenLegs: { type: Object, default: null },
 })
 const emit = defineEmits(['select-engineer', 'focus-request'])
 
@@ -519,9 +522,25 @@ function drawRouteOverview(route, color, select) {
   return props.approved ? brigadeMark(route, color, legs, select) : null
 }
 
-// выбранный маршрут: ход работы по отметкам бригады и способ передвижения на участках
+// выбранные участки этого маршрута; null — показываем весь
+function chosenLegsOf(route) {
+  return props.chosenLegs?.engineerId === route.engineer_id ? new Set(props.chosenLegs.indexes) : null
+}
+
+// точки выбранных участков: по ним подгоняется масштаб
+function chosenPoints(route) {
+  const chosen = chosenLegsOf(route)
+  if (!chosen) return routePoints(route)
+  const legs = routeLegs(route)
+  const points = routePoints(route)
+  return [...chosen].flatMap((index) => [points[index], points[index + 1], ...(legs[index] ?? []).flatMap((piece) => piece.latlngs)])
+}
+
+// выбранный маршрут: ход работы по отметкам бригады и способ передвижения на участках.
+// Выбраны участки — рисуем только их и их концы: огромный маршрут целиком не разглядеть
 function drawRouteProgress(route, select) {
   const legs = routeLegs(route)
+  const chosen = chosenLegsOf(route)
   const states = route.visits.map((visit) =>
     props.approved ? visitFactState(visit, props.references, props.plan.id) : 'planned',
   )
@@ -529,6 +548,7 @@ function drawRouteProgress(route, select) {
 
   const lines = []
   legs.forEach((pieces, index) => {
+    if (chosen && !chosen.has(index)) return
     for (const { latlngs, details, straight } of pieces) {
       const walk = details?.mode === 'walk'
       const look = props.approved
@@ -573,8 +593,10 @@ function drawRouteProgress(route, select) {
     if (line.moving) stopArrows.push(runArrows(map, planLayer, line.latlngs))
   }
 
-  drawStart(route, '#334155', select)
+  if (!chosen || chosen.has(0)) drawStart(route, '#334155', select)
   route.visits.forEach((visit, index) => {
+    // визит — конец выбранного участка или начало следующего выбранного
+    if (chosen && !chosen.has(index) && !chosen.has(index + 1)) return
     const focused = visit.request_id === props.focusedRequestId
     const icon = props.approved
       ? progressVisitIcon(visit, states[index], focused, index === activeIndex)
@@ -658,7 +680,7 @@ function showSelectedRoute() {
   const selectedRoute = props.plan.routes.find((route) => route.engineer_id === props.selectedEngineerId)
   fitTo(
     selectedRoute
-      ? routePoints(selectedRoute)
+      ? chosenPoints(selectedRoute)
       : [
           ...props.plan.routes.flatMap(routePoints),
           ...props.plan.unassigned.map((request) => [request.latitude, request.longitude]),
@@ -708,6 +730,8 @@ function showFocused() {
 
 watch(() => props.focusedRequestId, showFocused)
 watch(() => props.approved, drawPlan)
+// выбрали участки в списке маршрутов — показываем их крупно
+watch(() => props.chosenLegs, showSelectedRoute)
 </script>
 
 <template>

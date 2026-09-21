@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.free_id import smallest_free_id
 from src.core.local_day import day_bounds, local_timezone
-from src.models import Request, RequestStatus, RequestStatusId
+from src.models import Office, Request, RequestStatus, RequestStatusId
 from src.repositories.references import references_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
@@ -109,12 +109,18 @@ async def create_request(
     await check_references_exist(session, payload)
     await apply_work_type_norms(session, payload)
 
-    if (
-        payload.id is not None
-        and await requests_repository.get_request(session, payload.id) is not None
-    ):
+    taken = (
+        await requests_repository.get_request(session, payload.id)
+        if payload.id is not None
+        else None
+    )
+    if taken is not None:
         raise RequestDataError(
-            [f"заявка №{payload.id} уже существует — измените её или укажите другой номер"]
+            [
+                f"номер №{payload.id} уже занят заявкой"
+                f"{await elsewhere(session, taken.office_id, office_id)}. Номера общие для всех "
+                "офисов — оставьте поле пустым, и номер подберётся сам"
+            ]
         )
 
     fields = {**payload.model_dump(exclude={"equipment"}), "office_id": office_id}
@@ -624,3 +630,11 @@ async def check_references_exist(session: AsyncSession, payload: RequestWrite) -
         problems.append(f"оборудования {listed} нет в справочнике")
     if problems:
         raise RequestDataError(problems)
+
+
+async def elsewhere(session: AsyncSession, taken_office_id: int | None, office_id: int) -> str:
+    """Где занят номер: в другом офисе запись не видна, и без пояснения ошибка непонятна."""
+    if taken_office_id == office_id:
+        return " этого офиса"
+    office = await session.get(Office, taken_office_id) if taken_office_id else None
+    return f" офиса «{office.name}»" if office else " другого офиса"

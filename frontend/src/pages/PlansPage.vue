@@ -194,6 +194,46 @@ watch(selectedDay, () => {
   replanPlanId.value = null
 })
 
+// участки выбранного маршрута, которые показать на карте: огромный маршрут целиком не разглядеть.
+// { engineerId, indexes }; null — маршрут целиком
+const chosenLegs = ref(null)
+
+function chooseLegs({ engineerId, indexes }) {
+  chosenLegs.value = indexes.length ? { engineerId, indexes } : null
+  if (!indexes.length) return
+  // участки видно только на карте и только у выбранного маршрута
+  selectedEngineerId.value = engineerId
+  viewMode.value = 'map'
+}
+
+// выбрали другую бригаду или другой план — участки прошлого маршрута уже ни при чём
+watch([selectedEngineerId, selectedPlanId], ([engineerId]) => {
+  if (chosenLegs.value?.engineerId !== engineerId) chosenLegs.value = null
+})
+
+// открытый план и вид переживают перезагрузку страницы: иначе F5 выкидывает к списку планов.
+// Читаем до загрузки — загрузка списка сама сбрасывает выбранный план
+const OPENED_PLAN_KEY = 'routing.openedPlan'
+
+function storedOpenedPlan() {
+  try {
+    return JSON.parse(window.localStorage.getItem(OPENED_PLAN_KEY) ?? 'null')
+  } catch {
+    return null
+  }
+}
+
+const openedBeforeReload = storedOpenedPlan()
+
+watch([selectedPlanId, viewMode], ([planId, mode]) => {
+  try {
+    if (planId === null) window.localStorage.removeItem(OPENED_PLAN_KEY)
+    else window.localStorage.setItem(OPENED_PLAN_KEY, JSON.stringify({ day: selectedDay.value, planId, mode }))
+  } catch {
+    // не смогли запомнить — после перезагрузки откроется список планов
+  }
+})
+
 onMounted(async () => {
   await load()
   const planId = takePlanId()
@@ -201,6 +241,13 @@ onMounted(async () => {
   if (planId) {
     await selectPlan(planId)
     if (requestId !== null && plan.value) focusRequest(requestId)
+    return
+  }
+  // тот же день и план ещё есть в списке (его могли удалить или сменить офис)
+  const stored = openedBeforeReload
+  if (stored?.day === selectedDay.value && plans.value.some((summary) => summary.id === stored.planId)) {
+    await selectPlan(stored.planId)
+    if (stored.mode === 'map' || stored.mode === 'details') viewMode.value = stored.mode
   }
 })
 </script>
@@ -384,6 +431,7 @@ onMounted(async () => {
               :plan="plan"
               :selected-engineer-id="selectedEngineerId"
               :focused-request-id="focusedRequestId"
+              :chosen-legs="chosenLegs"
               :references="references"
               :approved="Boolean(openedSummary?.approved_at)"
               @select-engineer="selectEngineer"
@@ -400,6 +448,8 @@ onMounted(async () => {
               :focused-request-id="focusedRequestId"
               @visit-status-changed="markVisitStatus"
               @allow-departure="allowDeparture"
+              :chosen-legs="chosenLegs"
+              @choose-legs="chooseLegs"
               v-model:sync-selected="syncSelected"
               :syncable="syncable"
               @focus-request="focusVisit"

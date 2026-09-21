@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.errors import DataError, InUseError, NotFoundError
 from src.core.free_id import smallest_free_id
 from src.core.local_day import day_bounds, local_timezone
-from src.models import Engineer, Skill
+from src.models import Engineer, Office, Skill
 from src.repositories.brigades import brigades_repository
 from src.repositories.engineers import engineers_repository
 from src.repositories.offices import offices_repository
@@ -86,12 +86,18 @@ async def create_engineer(
     skills = await check_references(session, payload)
     await check_brigade_is_free(session, payload)
 
-    if (
-        payload.id is not None
-        and await engineers_repository.get_engineer(session, payload.id) is not None
-    ):
+    taken = (
+        await engineers_repository.get_engineer(session, payload.id)
+        if payload.id is not None
+        else None
+    )
+    if taken is not None:
         raise EngineerDataError(
-            [f"исполнитель №{payload.id} уже существует — измените его или укажите другой номер"]
+            [
+                f"номер №{payload.id} уже занят исполнителем «{taken.name}»"
+                f"{await elsewhere(session, taken.office_id, office_id)}. Номера общие для всех "
+                "офисов — оставьте поле пустым, и номер подберётся сам"
+            ]
         )
 
     fields = await with_office_start(
@@ -446,3 +452,11 @@ async def import_engineers_csv(
         raise EngineerDataError(shift_errors)
     await session.commit()
     return EngineerImportReport(created=created, updated=updated)
+
+
+async def elsewhere(session: AsyncSession, taken_office_id: int | None, office_id: int) -> str:
+    """Где занят номер: в другом офисе запись не видна, и без пояснения ошибка непонятна."""
+    if taken_office_id == office_id:
+        return " этого офиса"
+    office = await session.get(Office, taken_office_id) if taken_office_id else None
+    return f" офиса «{office.name}»" if office else " другого офиса"

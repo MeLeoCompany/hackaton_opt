@@ -27,6 +27,9 @@ const props = defineProps({
   syncable: { type: Boolean, default: false },
   // отмеченные маршруты — по бригадам; кнопка синхронизации у страницы, рядом с «Пересчитать»
   syncSelected: { type: Array, default: () => [] },
+  // участки маршрута, показанные на карте: { engineerId, indexes } — индекс визита, к которому
+  // ведёт участок; null — маршрут целиком
+  chosenLegs: { type: Object, default: null },
 })
 const emit = defineEmits([
   'select-engineer',
@@ -34,6 +37,8 @@ const emit = defineEmits([
   'focus-request',
   'allow-departure',
   'update:syncSelected',
+  // выбрали участки маршрута для карты: { engineerId, indexes }
+  'choose-legs',
 ])
 
 // своя копия выбора: несколько щелчков подряд успевают раньше, чем страница вернёт новый список
@@ -169,6 +174,87 @@ const visibleRoutes = computed(() => {
     .filter(({ route }) => !query || route.engineer_name.toLowerCase().includes(query) || visitsMatch(route, query))
 })
 
+// длинный маршрут свёрнут: видно начало, дальше стрелка «ещё …» открывает следующую часть.
+// Ищут по заявке — показываем маршрут целиком, иначе найденный визит может быть скрыт
+const COLLAPSE_FROM = 6 // с какой длины маршрут сворачивается
+const COLLAPSED_VISITS = 3 // сколько визитов видно у свёрнутого
+const EXPAND_STEP = 5 // сколько открывает одно нажатие на стрелку
+const shownVisits = reactive({}) // по бригаде: сколько визитов раскрыто
+const searchingVisits = computed(() => Boolean(routeFilters.visit.trim() || routeQuery.value.trim()))
+
+function visitsLimit(route) {
+  if (route.visits.length < COLLAPSE_FROM || searchingVisits.value) return route.visits.length
+  // к заявке перешли из «Заявок» — она должна быть видна
+  const focused = route.visits.findIndex((visit) => visit.request_id === props.focusedRequestId)
+  return Math.min(route.visits.length, Math.max(shownVisits[route.engineer_id] ?? COLLAPSED_VISITS, focused + 1))
+}
+
+function shownVisitsOf(route) {
+  return route.visits.slice(0, visitsLimit(route))
+}
+
+function hiddenCount(route) {
+  return route.visits.length - visitsLimit(route)
+}
+
+// можно свернуть обратно: маршрут длинный и раскрыт дальше начала
+function collapsible(route) {
+  return route.visits.length >= COLLAPSE_FROM && !searchingVisits.value && visitsLimit(route) > COLLAPSED_VISITS
+}
+
+function showMore(route) {
+  shownVisits[route.engineer_id] = visitsLimit(route) + EXPAND_STEP
+}
+
+function collapse(route) {
+  delete shownVisits[route.engineer_id]
+}
+
+// что скрыто: сколько заявок и до какого времени
+function moreText(route) {
+  const hidden = hiddenCount(route)
+  const last = route.visits[route.visits.length - 1]
+  const next = Math.min(EXPAND_STEP, hidden)
+  return `ещё ${hidden} до ${moscowTimeOf(last.planned_arrival_time)} — показать ${next === hidden ? 'все' : next}`
+}
+
+// участки маршрута: стрелка перед визитом — дорога к нему. Нажатие выбирает участок, Shift —
+// все участки от прошлого нажатия до этого; на карте остаются только выбранные
+let lastLeg = null // { engineerId, index } — от него считается диапазон по Shift
+
+function legChosen(route, index) {
+  return props.chosenLegs?.engineerId === route.engineer_id && props.chosenLegs.indexes.includes(index)
+}
+
+function chosenOf(route) {
+  return props.chosenLegs?.engineerId === route.engineer_id ? props.chosenLegs.indexes : []
+}
+
+function toggleLeg(route, index, event) {
+  const chosen = new Set(chosenOf(route))
+  if (event.shiftKey && lastLeg?.engineerId === route.engineer_id) {
+    const [from, to] = [Math.min(lastLeg.index, index), Math.max(lastLeg.index, index)]
+    for (let leg = from; leg <= to; leg += 1) chosen.add(leg)
+  } else if (chosen.has(index)) {
+    chosen.delete(index)
+  } else {
+    chosen.add(index)
+  }
+  lastLeg = { engineerId: route.engineer_id, index }
+  emit('choose-legs', { engineerId: route.engineer_id, indexes: [...chosen].sort((a, b) => a - b) })
+}
+
+function showWholeRoute(route) {
+  lastLeg = null
+  emit('choose-legs', { engineerId: route.engineer_id, indexes: [] })
+}
+
+function legTitle(route, index) {
+  const from = index === 0 ? 'старта' : `№${route.visits[index - 1].request_id}`
+  const action = legChosen(route, index) ? 'убрать с карты' : 'показать на карте только выбранные участки'
+  return `Участок от ${from} до №${route.visits[index].request_id}: ${action}. Shift — диапазон`
+}
+
 const activeRouteFilterCount = computed(
   () => Object.keys(EMPTY_ROUTE_FILTERS).filter((name) => routeFilters[name] !== EMPTY_ROUTE_FILTERS[name]).length,
 )
@@ -258,12 +344,21 @@ watch(() => props.plan.id, () => {
             </p>
             <ol class="visits">
               <li
-                v-for="visit in route.visits"
+                v-for="(visit, visitIndex) in shownVisitsOf(route)"
                 :key="visit.request_id"
                 :class="['visit-main', { focused: visit.request_id === focusedRequestId }]"
                 title="Почему визит стоит здесь"
                 @click.stop="showVisit(route, visit)"
               >
+                <button
+                  type="button"
+                  :class="['leg-button', { chosen: legChosen(route, visitIndex) }]"
+                  :title="legTitle(route, visitIndex)"
+                  :aria-pressed="legChosen(route, visitIndex)"
+                  @click.stop="toggleLeg(route, visitIndex, $event)"
+                >
+                  ↓
+                </button>
                 <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
                 <span :class="['visit-address', { 'visit-closed': ['done', 'cancelled', 'removed'].includes(visitMark(visit)), 'visit-removed': visitMark(visit) === 'removed' }]">
                   №{{ visit.request_id }} · {{ visit.address }}
@@ -283,7 +378,21 @@ watch(() => props.plan.id, () => {
                   ↩
                 </button>
               </li>
+              <li v-if="hiddenCount(route)" class="more-step">
+                <button type="button" class="route-toggle" @click.stop="showMore(route)">
+                  <span class="route-arrow" aria-hidden="true">↓</span>{{ moreText(route) }}
+                </button>
+              </li>
+              <li v-if="collapsible(route)" class="more-step">
+                <button type="button" class="route-toggle" @click.stop="collapse(route)">
+                  <span class="route-arrow" aria-hidden="true">↑</span>свернуть
+                </button>
+              </li>
             </ol>
+            <p v-if="chosenOf(route).length" class="legs-chosen">
+              На карте участков: {{ chosenOf(route).length }} из {{ route.visits.length }}
+              <button type="button" class="link" @click.stop="showWholeRoute(route)">весь маршрут</button>
+            </p>
           </article>
         </div>
       </template>
@@ -384,7 +493,8 @@ watch(() => props.plan.id, () => {
               <td>
                 <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
                 <strong>{{ route.engineer_name }}</strong>
-                <a v-if="route.phone" class="phone" :href="`tel:${route.phone}`" @click.stop>{{ route.phone }}</a>
+                <!-- телефон — своей строкой под названием: рядом с длинным названием он переносится -->
+                <a v-if="route.phone" class="phone phone-line" :href="`tel:${route.phone}`" @click.stop>{{ route.phone }}</a>
                 <span v-if="brigadeState(route)" class="brigade-state">{{ brigadeState(route) }}</span>
                 <span v-if="lateText(route)" class="brigade-late">{{ lateText(route) }}</span>
                 <span v-if="waitingText(route)" class="brigade-waiting">
@@ -411,13 +521,21 @@ watch(() => props.plan.id, () => {
                 <ol class="route-steps">
                   <li class="route-start">Старт</li>
                   <li
-                    v-for="visit in route.visits"
+                    v-for="(visit, visitIndex) in shownVisitsOf(route)"
                     :key="visit.request_id"
                     :class="['visit-step', { focused: visit.request_id === focusedRequestId }]"
                     title="Почему визит стоит здесь"
                     @click.stop="showVisit(route, visit)"
                   >
-                    <span class="route-arrow" aria-hidden="true">↓</span>
+                    <button
+                      type="button"
+                      :class="['leg-button', { chosen: legChosen(route, visitIndex) }]"
+                      :title="legTitle(route, visitIndex)"
+                      :aria-pressed="legChosen(route, visitIndex)"
+                      @click.stop="toggleLeg(route, visitIndex, $event)"
+                    >
+                      ↓
+                    </button>
                     <span class="time">{{ moscowTimeOf(visit.planned_arrival_time) }}</span>
                     <span :class="['visit-address', { 'visit-closed': ['done', 'cancelled', 'removed'].includes(visitMark(visit)), 'visit-removed': visitMark(visit) === 'removed' }]">
                       №{{ visit.request_id }} · {{ visit.address }}
@@ -437,7 +555,22 @@ watch(() => props.plan.id, () => {
                       ↩
                     </button>
                   </li>
+                  <!-- свёрнутая часть маршрута: стрелка в колонке стрелок открывает следующие визиты -->
+                  <li v-if="hiddenCount(route)" class="visit-step more-step">
+                    <button type="button" class="route-toggle" @click.stop="showMore(route)">
+                      <span class="route-arrow" aria-hidden="true">↓</span>{{ moreText(route) }}
+                    </button>
+                  </li>
+                  <li v-if="collapsible(route)" class="visit-step more-step">
+                    <button type="button" class="route-toggle" @click.stop="collapse(route)">
+                      <span class="route-arrow" aria-hidden="true">↑</span>свернуть
+                    </button>
+                  </li>
                 </ol>
+                <p v-if="chosenOf(route).length" class="legs-chosen">
+                  На карте участков: {{ chosenOf(route).length }} из {{ route.visits.length }}
+                  <button type="button" class="link" @click.stop="showWholeRoute(route)">весь маршрут</button>
+                </p>
               </td>
             </tr>
           </tbody>
@@ -632,6 +765,40 @@ watch(() => props.plan.id, () => {
   white-space: nowrap;
 }
 
+.phone-line {
+  display: block;
+  width: fit-content;
+  margin: 2px 0 0;
+}
+
+/* свёрнутая часть длинного маршрута: стрелка стоит в колонке стрелок визитов */
+.more-step {
+  list-style: none;
+}
+
+.route-toggle {
+  display: inline-flex;
+  align-items: center;
+  line-height: 18px;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1d4ed8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.route-toggle:hover {
+  text-decoration: underline;
+}
+
+/* стрелка «ещё» — в колонке стрелок участков, той же ширины */
+.route-toggle .route-arrow {
+  width: 18px;
+  color: #1d4ed8;
+}
+
 /* где бригада сейчас — по её отметкам в мобильном приложении */
 .brigade-state {
   display: block;
@@ -795,5 +962,45 @@ watch(() => props.plan.id, () => {
   min-width: 42px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* строка «ещё …» — не визит: её не подсвечиваем, подчёркивается только сама ссылка */
+.visit-step.more-step:hover,
+.visits li.more-step:hover {
+  background: none;
+}
+
+/* стрелка перед визитом — участок к нему: нажатием выбирают, какие участки показать на карте */
+.leg-button {
+  flex: none;
+  width: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: #94a3b8;
+  line-height: 18px;
+  text-align: center;
+}
+
+.leg-button:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.leg-button.chosen {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.legs-chosen {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 4px 0 0;
+  color: #1d4ed8;
+  font-size: 12px;
 }
 </style>
