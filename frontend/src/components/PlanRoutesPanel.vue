@@ -11,6 +11,7 @@ import { brigadeNow, routeProgress } from '../utils/routeFact.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { formatDuration } from '../utils/duration.js'
 import { routeColor } from '../utils/routeColors.js'
+import { estimateNote, isApproximate, providerTitle } from '../utils/routeProvider.js'
 
 import DurationInput from './DurationInput.vue'
 import PlanVisitDialog from './PlanVisitDialog.vue'
@@ -253,7 +254,7 @@ watch(() => props.plan.id, () => {
             <p class="muted">
               {{ route.visits.length }} заявок · {{ route.distance_km.toFixed(1) }} км ·
               {{ formatDuration(route.duration_min) }} в пути
-              <template v-if="route.provider !== 'valhalla'"> · оценка по прямой</template>
+              <template v-if="estimateNote(route.provider)"> · {{ estimateNote(route.provider) }}</template>
             </p>
             <ol class="visits">
               <li
@@ -400,9 +401,9 @@ watch(() => props.plan.id, () => {
               <td class="under-range-filter">{{ route.visits.length }}</td>
               <td
                 class="under-range-filter"
-                :title="route.provider !== 'valhalla' ? 'Оценка по прямой: маршрутизатор был недоступен' : ''"
+                :title="providerTitle(route.provider)"
               >
-                {{ route.distance_km.toFixed(1) }}<template v-if="route.provider !== 'valhalla'">*</template>
+                {{ route.distance_km.toFixed(1) }}<template v-if="isApproximate(route.provider)">*</template>
               </td>
               <td class="under-range-filter nowrap">{{ formatDuration(route.duration_min) }}</td>
               <td>

@@ -16,19 +16,16 @@
 пересчёта (planning_service.approve_plan) заменяет пересчитанный план.
 """
 
-import asyncio
 import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
 from src.core.config import settings
-from src.core.errors import ExternalServiceError
 from src.core.local_day import local_timezone
 from src.models import Assignment, Plan, PlanRunType, RequestStatusId
 from src.repositories.brigade import brigade_repository
@@ -44,7 +41,6 @@ from src.schemas.plans import (
     SolverName,
 )
 from src.schemas.system import SolverParams
-from src.schemas.travel import Point, TransportKind, TravelProvider
 from src.services.planner import planner_loader, planning_service, run_log, window_suggestions
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
@@ -52,9 +48,8 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_loader import EngineerStart
-from src.services.planner.planning_service import PlanDataError, PlanDistance, PlanInUseError
+from src.services.planner.planning_service import PlanDataError, PlanInUseError
 from src.services.requests import request_status_service
-from src.services.travel import build_route
 
 # заявки, которые бригада уже закрыла или начала: в пересчёте они остаются на месте
 KEPT_STATUSES = (
@@ -116,8 +111,11 @@ async def replan(
             params=params,
         )
         plan = built.plan
-        async with run_log.step("Считаю пробег маршрутов", 92, 99):
-            planning_service.set_plan_distance(plan, await full_routes_distance(session, plan))
+        # маршруты строятся один раз здесь и ложатся в кеш: открытие пересчёта возьмёт готовые
+        async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
+            await session.flush()
+            routes, _ = await planning_service.plan_routes(session, plan, strict=True)
+            planning_service.set_plan_distance(plan, planning_service.routes_distance(routes))
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await planning_service.summarize_plans(session, [plan]))[0]
@@ -481,54 +479,3 @@ async def brigade_positions(
             available_from=max(at, told or free_at),
         )
     return fixed, starts
-
-
-async def full_routes_distance(session: AsyncSession, plan: Plan) -> PlanDistance:
-    """Пробег нового плана целиком: от утреннего старта через закрытые, начатые и новые визиты."""
-    await session.flush()
-    routes: dict[int, list[Assignment]] = defaultdict(list)
-    for assignment in await plans_repository.list_plan_assignments(session, plan.id):
-        if assignment.engineer is not None and assignment.visit_order is not None:
-            routes[assignment.engineer_id].append(assignment)
-
-    async def route_distance(route: list[Assignment]) -> tuple[float, str]:
-        route.sort(key=lambda assignment: assignment.visit_order)
-        engineer = route[0].engineer
-        points = [
-            Point(
-                latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude)
-            )
-        ]
-        points += [
-            Point(latitude=float(a.request.latitude), longitude=float(a.request.longitude))
-            for a in route
-        ]
-        transport = TransportKind(engineer.transport_id)
-        if transport is TransportKind.PUBLIC_TRANSPORT:
-            departures = [engineer.shift_start]
-            departures += [
-                assignment.planned_arrival_time
-                + timedelta(minutes=assignment.request.duration_minutes)
-                for assignment in route[:-1]
-            ]
-            try:
-                travel = await build_route(
-                    points, transport, leg_departure_times=departures, allow_fallback=False
-                )
-            except (httpx.HTTPError, KeyError, ValueError) as error:
-                raise ExternalServiceError(f"R5 не смог измерить пробег плана: {error}") from error
-        else:
-            travel = await build_route(points, transport)
-        provider = (
-            travel.provider.value
-            if isinstance(travel.provider, TravelProvider)
-            else str(travel.provider)
-        )
-        return travel.distance_km, provider
-
-    distances = await asyncio.gather(*(route_distance(route) for route in routes.values()))
-    providers = {provider for _, provider in distances}
-    provider = providers.pop() if len(providers) == 1 else "mixed" if providers else None
-    return PlanDistance(
-        distance_km=round(sum(distance for distance, _ in distances), 3), provider=provider
-    )

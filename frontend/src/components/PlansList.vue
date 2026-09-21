@@ -6,6 +6,7 @@ import { computed } from 'vue'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveGoalLabel } from '../utils/planningPriorities.js'
 import ReplanMark from './ReplanMark.vue'
+import { isApproximate, providerTitle } from '../utils/routeProvider.js'
 
 const props = defineProps({
   plans: { type: Array, required: true },
@@ -49,14 +50,11 @@ function promiseWarning(summary) {
 
 function distanceLabel(summary) {
   if (summary.total_distance_km === null) return '—'
-  const approximate = summary.distance_provider === 'haversine' || summary.distance_provider === 'mixed'
-  return `${approximate ? '≈ ' : ''}${summary.total_distance_km.toFixed(1)}`
+  return `${isApproximate(summary.distance_provider) ? '≈ ' : ''}${summary.total_distance_km.toFixed(1)}`
 }
 
 function distanceTitle(summary) {
-  if (summary.distance_provider === 'haversine') return 'Приближённо: Valhalla была недоступна'
-  if (summary.distance_provider === 'mixed') return 'Часть маршрутов рассчитана приближённо'
-  return summary.distance_provider === 'valhalla' ? 'Рассчитано по дорогам через Valhalla' : ''
+  return providerTitle(summary.distance_provider)
 }
 
 function solveDuration(summary) {

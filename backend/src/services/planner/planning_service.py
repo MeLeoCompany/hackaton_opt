@@ -1,6 +1,8 @@
 """Построение плана дня выбранным решателем, сохранение и просмотр планов."""
 
 import asyncio
+import hashlib
+import json
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -37,7 +39,7 @@ from src.schemas.plans import (
     WithdrawnRequest,
 )
 from src.schemas.system import SolverParams
-from src.schemas.travel import Point, TransportKind, TravelProvider
+from src.schemas.travel import Point, TransportKind, TravelProvider, TravelRoute
 from src.services.planner import (
     baseline_solver,
     cuopt_solver,
@@ -156,8 +158,10 @@ async def build_plan_for_day(
                 solve_duration_ms=duration_ms,
                 objective_order=policy if solver is SolverName.CUOPT else None,
             )
-        async with run_log.step("Считаю пробег маршрутов", 92, 99):
-            set_plan_distance(plan, await total_route_distance(loaded, solution))
+        # маршруты строятся один раз здесь и ложатся в кеш: открытие плана возьмёт готовые
+        async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
+            routes, _ = await plan_routes(session, plan, strict=True)
+            set_plan_distance(plan, routes_distance(routes))
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await summarize_plans(session, [plan]))[0]
@@ -196,72 +200,6 @@ class PlanDistance:
 def set_plan_distance(plan: Plan, distance: PlanDistance) -> None:
     plan.total_distance_km = Decimal(str(distance.distance_km))
     plan.distance_provider = distance.provider
-
-
-async def total_route_distance(
-    loaded: LoadedDay, solution: cuopt_solver.DaySolution
-) -> PlanDistance:
-    """Общий пробег плана по дорогам — так же, как в просмотре плана: по /route от старта
-    исполнителя через его заявки по порядку. Сохраняется в план, чтобы список планов
-    показывал пробег без пересчёта маршрутов."""
-
-    async def route_distance(
-        engineer_index: int, visits: list[cuopt_solver.PlannedVisit]
-    ) -> tuple[float, str]:
-        engineer = loaded.engineers[engineer_index]
-        points = [
-            loaded.start_points[engineer_index]
-            if loaded.start_points is not None
-            else Point(
-                latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude)
-            )
-        ]
-        points += [
-            Point(
-                latitude=float(loaded.requests[visit.request_index].latitude),
-                longitude=float(loaded.requests[visit.request_index].longitude),
-            )
-            for visit in visits
-        ]
-        transport = TransportKind(engineer.transport_id)
-        # TODO: сделать fallback управляемым: retry/cached route и сохранять источник
-        # отдельно для каждого маршрута. Пока хотя бы честно помечаем весь пробег плана.
-        if transport is TransportKind.PUBLIC_TRANSPORT:
-            departures = [
-                loaded.day.from_minutes(loaded.instance.engineers[engineer_index].shift_start_min)
-            ]
-            departures += [
-                loaded.day.from_minutes(visit.work_start_minute)
-                + timedelta(minutes=loaded.requests[visit.request_index].duration_minutes)
-                for visit in visits[:-1]
-            ]
-            try:
-                travel = await build_route(
-                    points, transport, leg_departure_times=departures, allow_fallback=False
-                )
-            except (httpx.HTTPError, KeyError, ValueError) as error:
-                raise ExternalServiceError(f"R5 не смог измерить пробег плана: {error}") from error
-        else:
-            travel = await build_route(points, transport)
-        provider = (
-            travel.provider.value
-            if isinstance(travel.provider, TravelProvider)
-            else str(travel.provider)
-        )
-        return travel.distance_km, provider
-
-    routes = await asyncio.gather(
-        *(
-            route_distance(engineer_index, visits)
-            for engineer_index, visits in solution.routes.items()
-            if visits
-        )
-    )
-    providers = {provider for _, provider in routes}
-    provider = providers.pop() if len(providers) == 1 else "mixed" if providers else None
-    return PlanDistance(
-        distance_km=round(sum(distance for distance, _ in routes), 3), provider=provider
-    )
 
 
 async def delete_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> None:
@@ -903,19 +841,15 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
     assignments: list[AssignmentView] = list(stored_assignments)
     if plan.input_snapshot:
         assignments = [snapshot_assignment(a, plan.input_snapshot) for a in stored_assignments]
-    assignments_by_engineer: dict[int, list[AssignmentView]] = defaultdict(list)
-    unassigned = []
-    for assignment in assignments:
-        if assignment.engineer is None or assignment.engineer_id is None:
-            unassigned.append(to_unassigned_request(assignment))
-        else:
-            assignments_by_engineer[assignment.engineer_id].append(assignment)
-
-    engineer_assignments = sorted(assignments_by_engineer.values(), key=assigned_engineer_name)
-    candidates_by_request = candidate_engineers_by_request(plan.input_snapshot)
-    routes = await asyncio.gather(
-        *(build_engineer_route(group, candidates_by_request) for group in engineer_assignments)
-    )
+    unassigned = [
+        to_unassigned_request(assignment)
+        for assignment in assignments
+        if assignment.engineer is None or assignment.engineer_id is None
+    ]
+    # маршруты — готовые из кеша плана; строятся, только если их там нет (старые планы)
+    routes, built = await plan_routes(session, plan, stored_assignments)
+    if built:
+        await session.commit()
 
     # отметки бригад из мобильного приложения — факт поверх плана, и отставание от него
     facts = await brigade_repository.list_facts(
@@ -1022,29 +956,12 @@ def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
     return counts
 
 
-async def build_engineer_route(
-    assignments: list[AssignmentView], candidates_by_request: dict[int, int]
-) -> EngineerRoute:
-    """Маршрут одного исполнителя: визиты по порядку, пробег и линия для карты.
-
-    Пробег берётся из маршрутизатора (/route) по порядку визитов, а не из матрицы:
-    матрица приближённая и занижает длинные плечи.
-    """
-    if not assignments:
-        raise ValueError("маршрут не содержит назначений")
-    if any(
-        assignment.engineer is None
-        or assignment.visit_order is None
-        or assignment.planned_arrival_time is None
-        for assignment in assignments
-    ):
-        raise ValueError("назначенный маршрут содержит неполные данные")
-
-    ordered = sorted(assignments, key=assigned_visit_order)
+def route_request(
+    ordered: list[AssignmentView],
+) -> tuple[list[Point], TransportKind, list[datetime] | None]:
+    """По чему строится маршрут бригады: старт, заявки по порядку и, для общественного
+    транспорта, время отправления на каждом плече — расписание зависит от него."""
     engineer = ordered[0].engineer
-    if engineer is None:  # narrowing for static analysis; guarded above
-        raise ValueError("у маршрута нет исполнителя")
-
     points = [
         Point(latitude=float(engineer.start_latitude), longitude=float(engineer.start_longitude))
     ]
@@ -1056,17 +973,134 @@ async def build_engineer_route(
         for assignment in ordered
     ]
     transport = TransportKind(engineer.transport_id)
-    if transport is TransportKind.PUBLIC_TRANSPORT:
-        departures = [engineer.shift_start]
-        departures += [
-            assigned_arrival_time(assignment)
-            + timedelta(minutes=assignment.request.duration_minutes)
-            for assignment in ordered[:-1]
-        ]
-        travel = await build_route(points, transport, leg_departure_times=departures)
-    else:
-        travel = await build_route(points, transport)
+    if transport is not TransportKind.PUBLIC_TRANSPORT:
+        return points, transport, None
+    departures = [engineer.shift_start]
+    departures += [
+        assigned_arrival_time(assignment) + timedelta(minutes=assignment.request.duration_minutes)
+        for assignment in ordered[:-1]
+    ]
+    return points, transport, departures
 
+
+def route_fingerprint(
+    points: list[Point], transport: TransportKind, departures: list[datetime] | None
+) -> str:
+    """Отпечаток маршрута: совпал — готовый маршрут годится, не совпал — строим заново."""
+    source = {
+        "transport": transport.value,
+        "points": [[round(point.latitude, 6), round(point.longitude, 6)] for point in points],
+        "departures": [moment.isoformat() for moment in departures or []],
+    }
+    return hashlib.sha1(json.dumps(source).encode()).hexdigest()
+
+
+async def route_travel(
+    ordered: list[AssignmentView], cached: dict, *, strict: bool
+) -> tuple[TravelRoute, str, bool]:
+    """Маршрут бригады: из кеша плана, если он строился по тем же точкам, иначе — заново.
+
+    strict — расчёт плана: без R5 честного пробега ОТ нет, поэтому ошибка, а не оценка.
+    Возвращает маршрут, его отпечаток и признак, что он построен только что.
+    """
+    points, transport, departures = route_request(ordered)
+    fingerprint = route_fingerprint(points, transport, departures)
+    entry = cached.get(ordered[0].engineer.id)
+    if entry is not None and entry.fingerprint == fingerprint:
+        return TravelRoute.model_validate(entry.travel), fingerprint, False
+    if departures is None:
+        return await build_route(points, transport), fingerprint, True
+    try:
+        travel = await build_route(
+            points, transport, leg_departure_times=departures, allow_fallback=not strict
+        )
+    except (httpx.HTTPError, KeyError, ValueError) as error:
+        if not strict:
+            raise
+        raise ExternalServiceError(f"R5 не смог построить маршрут плана: {error}") from error
+    return travel, fingerprint, True
+
+
+async def plan_routes(
+    session: AsyncSession,
+    plan: Plan,
+    stored_assignments: list[Assignment] | None = None,
+    *,
+    strict: bool = False,
+) -> tuple[list[EngineerRoute], bool]:
+    """Маршруты всех бригад плана: линия для карты, участки и пробег.
+
+    Маршрутизатор на большом дне отвечает минутами, поэтому готовые маршруты лежат в plan_route
+    (db/init/042): расчёт строит их один раз, открытие плана берёт готовые. Возвращает маршруты
+    и признак, что какие-то из них построены сейчас и записаны в кеш — их надо сохранить.
+    """
+    if stored_assignments is None:
+        stored_assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    assignments: list[AssignmentView] = list(stored_assignments)
+    if plan.input_snapshot:
+        assignments = [snapshot_assignment(a, plan.input_snapshot) for a in stored_assignments]
+    by_engineer: dict[int, list[AssignmentView]] = defaultdict(list)
+    for assignment in assignments:
+        if assignment.engineer is not None and assignment.engineer_id is not None:
+            by_engineer[assignment.engineer_id].append(assignment)
+    groups = [
+        sorted(group, key=assigned_visit_order)
+        for group in sorted(by_engineer.values(), key=assigned_engineer_name)
+    ]
+    for group in groups:
+        if any(a.visit_order is None or a.planned_arrival_time is None for a in group):
+            raise ValueError("назначенный маршрут содержит неполные данные")
+
+    cached = await plans_repository.list_cached_routes(session, plan.id)
+    travels = await asyncio.gather(*(route_travel(group, cached, strict=strict) for group in groups))
+    built = False
+    for group, (travel, fingerprint, fresh) in zip(groups, travels, strict=True):
+        if fresh:
+            built = True
+            await plans_repository.save_cached_route(
+                session, plan.id, group[0].engineer.id, fingerprint, travel.model_dump(mode="json")
+            )
+    candidates_by_request = candidate_engineers_by_request(plan.input_snapshot)
+    routes = [
+        build_engineer_route(group, candidates_by_request, travel)
+        for group, (travel, _, _) in zip(groups, travels, strict=True)
+    ]
+    return routes, built
+
+
+# оценки вместо маршрута: маршрутизатор не ответил, и пробег посчитан приближённо
+APPROXIMATE_PROVIDERS = {TravelProvider.HAVERSINE.value, TravelProvider.TRANSIT_ESTIMATE.value}
+
+
+def routes_distance(routes: list[EngineerRoute]) -> PlanDistance:
+    """Пробег плана — сумма маршрутов бригад и чем он посчитан.
+
+    Valhalla (дороги) и R5 (расписание ОТ) — оба настоящий расчёт, поэтому их смесь — не
+    «приближённо», а «routed». «mixed» — только когда часть маршрутов досталась оценке.
+    """
+    providers = {route.provider for route in routes}
+    if not providers:
+        provider = None
+    elif len(providers) == 1:
+        provider = providers.pop()
+    elif providers & APPROXIMATE_PROVIDERS:
+        provider = "mixed"
+    else:
+        provider = "routed"
+    return PlanDistance(
+        distance_km=round(sum(route.distance_km for route in routes), 3), provider=provider
+    )
+
+
+def build_engineer_route(
+    ordered: list[AssignmentView], candidates_by_request: dict[int, int], travel: TravelRoute
+) -> EngineerRoute:
+    """Маршрут одного исполнителя из уже построенного пути: визиты по порядку, пробег и линия.
+
+    Пробег берётся из маршрутизатора (/route) по порядку визитов, а не из матрицы:
+    матрица приближённая и занижает длинные плечи.
+    """
+    engineer = ordered[0].engineer
     return EngineerRoute(
         engineer_id=engineer.id,
         engineer_name=engineer.name,

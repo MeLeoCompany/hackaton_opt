@@ -17,11 +17,8 @@ def patched_service(loaded, saved_plan):
     return (
         patch.object(planning_service, "load_planning_day", AsyncMock(return_value=loaded)),
         patch.object(planning_service, "save_solution", AsyncMock(return_value=saved_plan)),
-        patch.object(
-            planning_service,
-            "total_route_distance",
-            AsyncMock(return_value=planning_service.PlanDistance(12.0, "valhalla")),
-        ),
+        # маршруты бригад строит общий построитель с кешем — здесь он не нужен
+        patch.object(planning_service, "plan_routes", AsyncMock(return_value=([], False))),
         patch.object(planning_service, "summarize_plans", AsyncMock(return_value=["сводка"])),
     )
 

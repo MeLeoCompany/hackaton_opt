@@ -5,6 +5,7 @@ from src.models.equipment import Equipment
 from src.models.event import Event, EventType
 from src.models.office import Office
 from src.models.plan import Plan, PlanRunType
+from src.models.plan_route import PlanRoute
 from src.models.plan_run import PlanRun, PlanRunEvent
 from src.models.reference import Priority, Skill, Transport, WorkType
 from src.models.request import Request, RequestEquipment
@@ -30,6 +31,7 @@ __all__ = [
     "EventType",
     "Office",
     "Plan",
+    "PlanRoute",
     "PlanRun",
     "PlanRunEvent",
     "PlanRunType",

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import { TRAVEL_MODES } from '../api/travelApi.js'
+import { isApproximate, providerTitle } from '../utils/routeProvider.js'
 
 const props = defineProps({
   route: { type: Object, default: null },
@@ -49,7 +50,7 @@ function matrixLegSum(matrix) {
       <div v-if="route.waiting_duration_min"><dt>Ожидание</dt><dd>{{ formatDuration(route.waiting_duration_min) }}</dd></div>
       <div>
         <dt>Провайдер</dt>
-        <dd :class="{ fallback: route.provider !== 'valhalla' }">{{ route.provider }}</dd>
+        <dd :class="{ fallback: isApproximate(route.provider) }" :title="providerTitle(route.provider)">{{ route.provider }}</dd>
       </div>
     </dl>
     <ol v-if="route.legs?.length" class="legs">

@@ -7,7 +7,15 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models import Assignment, Plan, PlanRunType, Request, RequestFact, RequestStatusId
+from src.models import (
+    Assignment,
+    Plan,
+    PlanRoute,
+    PlanRunType,
+    Request,
+    RequestFact,
+    RequestStatusId,
+)
 
 
 def add_plan(
@@ -271,3 +279,18 @@ async def has_unapproved_replan(session: AsyncSession, plan_id: int) -> bool:
         )
     )
     return result.first() is not None
+
+
+async def list_cached_routes(session: AsyncSession, plan_id: int) -> dict[int, PlanRoute]:
+    """Уже построенные маршруты плана — по бригадам (db/init/042)."""
+    result = await session.execute(select(PlanRoute).where(PlanRoute.plan_id == plan_id))
+    return {route.engineer_id: route for route in result.scalars().all()}
+
+
+async def save_cached_route(
+    session: AsyncSession, plan_id: int, engineer_id: int, fingerprint: str, travel: dict
+) -> None:
+    """Запоминает построенный маршрут: следующее открытие плана возьмёт его отсюда."""
+    await session.merge(
+        PlanRoute(plan_id=plan_id, engineer_id=engineer_id, fingerprint=fingerprint, travel=travel)
+    )
