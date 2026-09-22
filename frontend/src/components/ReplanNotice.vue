@@ -58,11 +58,6 @@ function howWithdrawn(item) {
         </span>
       </li>
     </ul>
-    <!-- своей кнопки нет: пока плашка открыта, подсвечена кнопка «Пересчитать» у самого плана -->
-    <p class="replan-how">
-      Нажмите подсвеченную «Пересчитать»: выполненное и начатое останется за бригадами, остальное
-      разложится заново — получится новый план, его утверждение заменит этот.
-    </p>
   </ErrorMessage>
 </template>
 
@@ -83,12 +78,4 @@ function howWithdrawn(item) {
   text-decoration: underline;
 }
 
-.replan-how {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin: 8px 0 0;
-  color: #7f1d1d;
-}
 </style>
