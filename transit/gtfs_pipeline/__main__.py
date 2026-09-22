@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .bus_weekly import prepare_bus
 from .gtfs import build_gtfs
+from .local_bus import import_bus_html
 from .night_weekly import generate_night_weekly
 from .osm_mcc import collect_mcc_to_file
 from .osm_metro import collect_metro_network, collect_metro_to_file
@@ -60,6 +61,17 @@ def main() -> None:
     prepared_bus.add_argument("--end-date", required=True, type=date.fromisoformat)
     prepared_bus.add_argument("--retrospective", action="store_true")
     prepared_bus.add_argument("--output-dir", required=True, type=Path)
+    local_bus = commands.add_parser(
+        "import-bus-html",
+        help="импортировать сохранённые HTML двух направлений автобуса",
+    )
+    local_bus.add_argument("--input-dir", required=True, type=Path)
+    local_bus.add_argument("--archive-dir", required=True, type=Path)
+    local_bus.add_argument("--catalog", required=True, type=Path)
+    local_bus.add_argument("--output-dir", required=True, type=Path)
+    local_bus.add_argument("--inventory", type=Path)
+    local_bus.add_argument("--start-date", required=True, type=date.fromisoformat)
+    local_bus.add_argument("--end-date", required=True, type=date.fromisoformat)
     night_batch = commands.add_parser(
         "collect-night-bus-batch", help="получить все ночные автобусы из каталога"
     )
@@ -124,6 +136,17 @@ def main() -> None:
             retrospective=args.retrospective,
         )
         print(f"Создан ежедневный шаблон: {output}")
+    elif args.command == "import-bus-html":
+        imported = import_bus_html(
+            args.input_dir,
+            args.archive_dir,
+            args.catalog,
+            args.output_dir,
+            args.start_date,
+            args.end_date,
+            inventory_path=args.inventory,
+        )
+        print(f"Импортировано маршрутов: {len(imported)} ({', '.join(imported)})")
     elif args.command == "collect-night-bus-batch":
         from .common import read_json
 

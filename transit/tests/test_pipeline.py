@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from gtfs_pipeline.bus_weekly import prepare_bus
 from gtfs_pipeline.gtfs import build_gtfs
+from gtfs_pipeline.local_bus import import_bus_html
 from gtfs_pipeline.metro_transfers import (
     TRANSFER_TIME_SECONDS,
     cluster_metro_stations,
@@ -227,6 +228,53 @@ def test_prepare_bus_accepts_one_closed_circular_direction(tmp_path: Path) -> No
     )
 
     assert created.is_file()
+
+
+def test_import_bus_html_creates_schedule_and_archives_sources(tmp_path: Path) -> None:
+    incoming = tmp_path / "new"
+    archive = tmp_path / "added"
+    output = tmp_path / "data"
+    incoming.mkdir()
+    page = _page().replace(
+        'data-direction="0" data-stop="1"',
+        'data-direction="0" data-route="42" data-date="2026-09-22" data-stop="1"',
+    )
+    (incoming / "т1 - 1.html").write_text(page, encoding="utf-8")
+    reverse = page.replace('data-direction="0"', 'data-direction="1"')
+    (incoming / "т1 - 2.html").write_text(reverse, encoding="utf-8")
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "routes": [
+                    {"source_route_id": "42", "short_name": "т1", "mode": "bus"}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    inventory = tmp_path / "bus_names.txt"
+    inventory.write_text("А\n", encoding="utf-8")
+
+    imported = import_bus_html(
+        incoming,
+        archive,
+        catalog,
+        output,
+        date(2026, 8, 1),
+        date(2026, 12, 31),
+        inventory,
+    )
+
+    assert imported == ["т1"]
+    assert (output / "route-42-2026-09-22.json").is_file()
+    assert (output / "route-42-weekly.json").is_file()
+    assert sorted(path.name for path in archive.iterdir()) == [
+        "т1 - 1.html",
+        "т1 - 2.html",
+    ]
+    assert not list(incoming.iterdir())
+    assert inventory.read_text(encoding="utf-8") == "А\nт1\n"
 
 
 def test_transport_mos_parser_rejects_inconsistent_trip_count() -> None:

@@ -167,6 +167,22 @@ PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline prepare-bus \
 Точные сентябрьские даты в GTFS заменяют шаблон в соответствующие дни; для августа
 шаблон даёт возможность тестировать алгоритм, но не подтверждает историческую точность.
 
+Сохранённые вручную страницы двух направлений складывают в `bus_data/new` с
+именами `м1 - 1.html` и `м1 - 2.html`. Команда проверяет ID, дату, направления,
+остановки и расписания, создаёт точный снимок и ежедневный шаблон, обновляет
+перечень автобусов и переносит обработанные HTML в `bus_data/added`:
+
+```bash
+PYTHONPATH=transit transit/.venv/bin/python -m gtfs_pipeline import-bus-html \
+  --input-dir bus_data/new --archive-dir bus_data/added \
+  --catalog transit/data/bus/catalog.json \
+  --output-dir transit/data/bus --inventory bus_data/bus_names.txt \
+  --start-date 2026-08-01 --end-date 2026-12-31
+```
+
+Если хотя бы одна пара неполна или содержит противоречивые данные, импорт
+останавливается до переноса исходников, чтобы ошибочный маршрут не попал в архив.
+
 Получение первой линии метро из двух направленных отношений OSM:
 
 ```bash
