@@ -14,8 +14,10 @@ const KIND_NAMES = {
   build: 'расчёт дня',
   replan: 'пересчёт',
   preview: 'пробный пересчёт',
-  approval_preview: 'подбор окон перед утверждением',
+  approval_preview: 'подбор окон',
 }
+// полное название — в подсказке: в колонке короткое, чтобы не наезжать на «День»
+const KIND_TITLES = { approval_preview: 'подбор окон перед утверждением черновика' }
 const STATUS_NAMES = { running: 'идёт', done: 'готов', failed: 'ошибка', cancelled: 'прерван' }
 
 const runs = ref([])
@@ -115,7 +117,9 @@ onMounted(load)
           <template v-for="run in runs" :key="run.id">
             <tr :class="{ selected: run.id === openedId }" @click="toggle(run)">
               <td class="nowrap">{{ moscowTimeOf(run.started_at) }}</td>
-              <td class="nowrap">{{ KIND_NAMES[run.kind] ?? run.kind }}</td>
+              <td class="nowrap clipped" :title="KIND_TITLES[run.kind] ?? KIND_NAMES[run.kind] ?? run.kind">
+                {{ KIND_NAMES[run.kind] ?? run.kind }}
+              </td>
               <td class="nowrap">{{ run.plan_date ? formatDay(run.plan_date) : '—' }}</td>
               <td>{{ run.solver ?? '—' }}</td>
               <td>
@@ -218,5 +222,11 @@ onMounted(load)
 
 .steps .title {
   font-weight: 600;
+}
+
+/* длинное название не залезает на соседнюю колонку */
+.clipped {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

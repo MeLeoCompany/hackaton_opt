@@ -41,6 +41,7 @@ const {
   duplicate,
   setStatus,
   showNotice,
+  lastCreatedId,
 } = useRequestsTable()
 
 // что из данных видно: фильтры, сортировка, страница, выбранная заявка
@@ -59,7 +60,14 @@ const {
   pageRequests,
   selectedId,
   selectRequest,
-} = useRequestsView(requests, references)
+} = useRequestsView(requests, references, lastCreatedId)
+
+// добавили заявку — она первой строкой на первой странице и выделена: видно, что появилось
+watch(lastCreatedId, (requestId) => {
+  if (requestId === null) return
+  page.value = 1
+  selectedId.value = requestId
+})
 
 // пришли из маршрута плана — показываем ту самую заявку; обратно — «Открыть в плане»
 const { takeRequestId, openPlan } = usePlanFocus()

@@ -131,13 +131,34 @@ services:
       - ./backend/src:/app/src:ro
       - ./transit/generated:/app/transit:ro
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    # здоров — когда отвечает API: по этому ждут диспетчерский и мобильный фронтенды
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # база нужна для старта, при её перезапуске бэкенд перезапускается следом (restart: true).
+    # Маршрутизаторы — только запущены: Valhalla и R5 собирают данные минутами, а без них
+    # бэкенд работает и честно отвечает 503 на расчёты. R5 — в профиле transit, его может не быть
     depends_on:
       postgres:
         condition: service_healthy
+        restart: true
+      valhalla:
+        condition: service_started
+      r5:
+        condition: service_started
+        required: false
 
   frontend:
     image: node:22-alpine
     container_name: routing_frontend
+    restart: unless-stopped
+    # без API интерфейс бесполезен: стартует, когда бэкенд ответил на health
+    depends_on:
+      backend:
+        condition: service_healthy
     working_dir: /app
     ports:
       - "5173:5173"
@@ -157,6 +178,11 @@ services:
   mobile:
     image: node:22-alpine
     container_name: routing_mobile
+    restart: unless-stopped
+    # без API интерфейс бесполезен: стартует, когда бэкенд ответил на health
+    depends_on:
+      backend:
+        condition: service_healthy
     working_dir: /app
     ports:
       - "5175:5175"

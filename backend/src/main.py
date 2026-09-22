@@ -1,9 +1,13 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
+from asyncpg.exceptions import CannotConnectNowError
 from fastapi import FastAPI
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from src.api.v1.router import router as v1_router
 from src.core.config import settings
@@ -17,12 +21,39 @@ from src.core.errors import (
 from src.db.session import async_session_maker
 from src.services.system import system_service
 
+# сколько ждать базу при старте: после перезапуска Docker все контейнеры поднимаются разом,
+# и depends_on при этом не работает — бэкенд может проснуться раньше Postgres
+DB_WAIT_SECONDS = 90
+DB_RETRY_SECONDS = 2
+
+logger = logging.getLogger("src.startup")
+# база не принимает подключения: не запущена, стартует или восстанавливается
+DB_NOT_READY = (OSError, CannotConnectNowError, OperationalError, InterfaceError)
+
+
+async def load_offset_when_db_ready() -> None:
+    """Системное время могли перемотать для демонстрации — поднимаем сдвиг из базы.
+
+    База ещё не готова — ждём её, иначе приложение не стартует, а контейнер остаётся «живым»
+    (перезагрузчик uvicorn работает) и никто его не перезапустит.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + DB_WAIT_SECONDS
+    while True:
+        try:
+            async with async_session_maker() as session:
+                await system_service.load_offset(session)
+            return
+        except DB_NOT_READY as error:
+            if loop.time() >= deadline:
+                raise
+            logger.warning("база ещё не готова (%s) — жду %s с", error, DB_RETRY_SECONDS)
+            await asyncio.sleep(DB_RETRY_SECONDS)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # системное время могли перемотать для демонстрации — поднимаем сдвиг из базы
-    async with async_session_maker() as session:
-        await system_service.load_offset(session)
+    await load_offset_when_db_ready()
     yield
 
 

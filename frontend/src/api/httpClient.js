@@ -74,7 +74,7 @@ export function toApiError(status, body) {
   }
   if (Array.isArray(body?.detail)) {
     const details = body.detail.map((problem) => `${fieldLabel(problem.loc)}: ${explain(problem)}`)
-    return new ApiError('Проверьте данные заявки', details)
+    return new ApiError('Проверьте данные', details)
   }
   if (typeof body?.detail === 'string') {
     return new ApiError(body.detail)

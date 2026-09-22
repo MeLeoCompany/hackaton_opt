@@ -57,7 +57,7 @@ function emptyFilters() {
   }
 }
 
-export function useRequestsView(requests, references) {
+export function useRequestsView(requests, references, pinnedId = ref(null)) {
   const filters = reactive(emptyFilters())
   const sortKey = ref(DEFAULT_SORT)
   const sortDirection = ref('asc')
@@ -158,13 +158,17 @@ export function useRequestsView(requests, references) {
   }
 
   // без выбранной сортировки — порядок, в котором заявки пришли с бэкенда: по началу окна
-  const sortedRequests = computed(() =>
-    sortKey.value ? [...filteredRequests.value].sort(compareRequests) : filteredRequests.value,
-  )
+  const sortedRequests = computed(() => {
+    const sorted = sortKey.value ? [...filteredRequests.value].sort(compareRequests) : filteredRequests.value
+    // только что добавленная — первой строкой, пока не выбрали другую сортировку
+    const pinned = sorted.find((request) => request.id === pinnedId.value)
+    return pinned ? [pinned, ...sorted.filter((request) => request !== pinned)] : sorted
+  })
 
   // клик по заголовку по кругу: по возрастанию -> по убыванию -> как по умолчанию.
   // Другая колонка всегда начинает с возрастания.
   function toggleSort(key) {
+    pinnedId.value = null
     if (sortKey.value !== key) {
       sortKey.value = key
       sortDirection.value = 'asc'

@@ -29,6 +29,8 @@ export function useEngineersTable() {
 
   const loading = ref(false)
   const saving = ref(false)
+  // только что добавленная запись: таблица показывает её первой строкой, а не где-то по номеру
+  const lastCreatedId = ref(null)
   const { errorMessage, errorDetails, noticeMessage, showError, showNotice, clearMessages } = useMessages()
 
   // какая строка сейчас редактируется: номер исполнителя, NEW_ENGINEER для нового или null
@@ -128,6 +130,7 @@ export function useEngineersTable() {
       if (editingId.value === NEW_ENGINEER) {
         const created = await createEngineer({ ...payload, id: numberOrNull(form.value.id) })
         notice = `Исполнитель «${created.name}» добавлен`
+        lastCreatedId.value = created.id
       } else {
         const updated = await updateEngineer(editingId.value, payload)
         notice = `Исполнитель «${updated.name}» сохранён`
@@ -199,6 +202,7 @@ export function useEngineersTable() {
   })
 
   return {
+    lastCreatedId,
     engineers,
     references,
     loading,

@@ -30,6 +30,8 @@ export function useRequestsTable() {
 
   const loading = ref(false)
   const saving = ref(false)
+  // только что добавленная запись: таблица показывает её первой строкой, а не где-то по номеру
+  const lastCreatedId = ref(null)
   const { errorMessage, errorDetails, noticeMessage, showError, showNotice, clearMessages } = useMessages()
 
   // какая строка сейчас редактируется: номер заявки, NEW_REQUEST для новой или null
@@ -145,6 +147,7 @@ export function useRequestsTable() {
       if (editingId.value === NEW_REQUEST) {
         const created = await createRequest({ ...payload, id: numberOrNull(form.value.id) })
         notice = `Заявка №${created.id} добавлена`
+        lastCreatedId.value = created.id
       } else {
         await updateRequest(editingId.value, payload)
         notice = `Заявка №${editingId.value} сохранена`
@@ -262,6 +265,7 @@ export function useRequestsTable() {
   })
 
   return {
+    lastCreatedId,
     requests,
     references,
     applyWorkTypeNorms,

@@ -39,7 +39,7 @@ function emptyFilters() {
   }
 }
 
-export function useEngineersView(engineers, references) {
+export function useEngineersView(engineers, references, pinnedId = ref(null)) {
   const filters = reactive(emptyFilters())
   const sortKey = ref(DEFAULT_SORT)
   const sortDirection = ref('asc')
@@ -108,13 +108,17 @@ export function useEngineersView(engineers, references) {
   }
 
   // без выбранной сортировки — порядок бэкенда: в каком порядке исполнителей заводили
-  const sortedEngineers = computed(() =>
-    sortKey.value ? [...filteredEngineers.value].sort(compareEngineers) : filteredEngineers.value,
-  )
+  const sortedEngineers = computed(() => {
+    const sorted = sortKey.value ? [...filteredEngineers.value].sort(compareEngineers) : filteredEngineers.value
+    // только что добавленная — первой строкой, пока не выбрали другую сортировку
+    const pinned = sorted.find((engineer) => engineer.id === pinnedId.value)
+    return pinned ? [pinned, ...sorted.filter((engineer) => engineer !== pinned)] : sorted
+  })
 
   // клик по заголовку по кругу: по возрастанию -> по убыванию -> как по умолчанию.
   // Другая колонка всегда начинает с возрастания.
   function toggleSort(key) {
+    pinnedId.value = null
     if (sortKey.value !== key) {
       sortKey.value = key
       sortDirection.value = 'asc'

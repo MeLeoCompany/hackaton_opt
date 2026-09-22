@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
@@ -29,6 +29,7 @@ const {
   remove,
   exportDay,
   importDay,
+  lastCreatedId,
 } = useEngineersTable()
 
 // что из данных видно: фильтры, сортировка, выбранный исполнитель
@@ -42,7 +43,12 @@ const {
   sortDirection,
   toggleSort,
   selectedId,
-} = useEngineersView(engineers, references)
+} = useEngineersView(engineers, references, lastCreatedId)
+
+// добавили исполнителя — он первой строкой и выделен: видно, что появилось
+watch(lastCreatedId, (engineerId) => {
+  if (engineerId !== null) selectedId.value = engineerId
+})
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
