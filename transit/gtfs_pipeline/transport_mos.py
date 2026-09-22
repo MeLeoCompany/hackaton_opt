@@ -207,6 +207,40 @@ def _departures(stop: Tag, *, boundary_hour: int = 3) -> list[int]:
     return sorted(values)
 
 
+def _closed_shape(coordinates: list[list[float]]) -> bool:
+    """Кольцо портала иногда заканчивается рядом со стартом, но не в той же точке."""
+    if len(coordinates) < 2:
+        return False
+    lon1, lat1 = coordinates[0][:2]
+    lon2, lat2 = coordinates[-1][:2]
+    return (lon1 - lon2) ** 2 + (lat1 - lat2) ** 2 < 0.01**2
+
+
+def _align_circular_departures(stops: list[dict[str, Any]]) -> None:
+    """Сопоставить рейсы кольца после сброса расписания на контрольной остановке.
+
+    На Б/Бк портал в середине кольца снова нумерует отправления с первого рейса.
+    Сдвигаем список на следующий рейс; перенесённые через конец значения относятся
+    к следующим суткам. Для линейных маршрутов такая коррекция не применяется.
+    """
+    previous = stops[0]["departures"]
+    for stop in stops[1:]:
+        values = stop["departures"]
+        aligned = None
+        for shift in range(len(values)):
+            candidate = values[shift:] + [value + 24 * 60 for value in values[:shift]]
+            if all(
+                current >= before
+                for before, current in zip(previous, candidate, strict=True)
+            ):
+                aligned = candidate
+                break
+        if aligned is None:
+            raise ScheduleParseError("не удалось сопоставить рейсы кольцевого маршрута")
+        stop["departures"] = aligned
+        previous = aligned
+
+
 def parse_route_page(
     html: str, *, route_id: int, service_date: date, night: bool = False
 ) -> dict[str, Any]:
@@ -256,6 +290,8 @@ def parse_route_page(
     trip_count = len(stops[0]["departures"])
     if any(len(stop["departures"]) != trip_count for stop in stops):
         raise ScheduleParseError("число отправлений различается между остановками")
+    if _closed_shape(lines[0]["geometry"]["coordinates"]):
+        _align_circular_departures(stops)
     for trip_index in range(trip_count):
         trip_times = [stop["departures"][trip_index] for stop in stops]
         if trip_times != sorted(trip_times):
@@ -280,9 +316,20 @@ def collect_bus_route(
     source_urls = []
     for direction in (0, 1):
         html = fetch_route_page(route_id, service_date, direction)
-        parsed = parse_route_page(
-            html, route_id=route_id, service_date=service_date, night=night
-        )
+        try:
+            parsed = parse_route_page(
+                html, route_id=route_id, service_date=service_date, night=night
+            )
+        except ScheduleParseError:
+            # У кольцевых Б/Бк на портале существует только direction=0. Обычный
+            # маршрут без второго направления по-прежнему считается неполным.
+            if (
+                direction == 1
+                and len(patterns) == 1
+                and _closed_shape(patterns[0]["shape"])
+            ):
+                continue
+            raise
         patterns.append(parsed)
         soup = BeautifulSoup(html, "html.parser")
         page_route_name = soup.select_one("h1.h3mb")

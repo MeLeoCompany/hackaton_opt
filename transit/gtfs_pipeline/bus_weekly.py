@@ -31,13 +31,15 @@ def prepare_bus(
         if not path.is_file():
             collect_bus_to_file(route_id, service_date, path, route_name=short_name)
         data = read_json(path)
+        patterns = data.get("patterns", [])
+        directions = {pattern["direction_id"] for pattern in patterns}
+        circular = len(patterns) == 1 and _closed_shape(patterns[0].get("shape", []))
         if (
             data.get("kind") != "bus_exact"
             or data.get("route", {}).get("source_route_id") != str(route_id)
             or data["route"].get("short_name") != short_name
             or data.get("source", {}).get("service_date") != service_date.isoformat()
-            or {pattern["direction_id"] for pattern in data.get("patterns", [])}
-            != {0, 1}
+            or (directions != {0, 1} and not (directions == {0} and circular))
         ):
             raise ValueError(f"неполные или неверные данные маршрута: {path}")
         return path
@@ -69,3 +71,11 @@ def prepare_bus(
         },
     )
     return output
+
+
+def _closed_shape(coordinates: list[list[float]]) -> bool:
+    if len(coordinates) < 2:
+        return False
+    lon1, lat1 = coordinates[0][:2]
+    lon2, lat2 = coordinates[-1][:2]
+    return (lon1 - lon2) ** 2 + (lat1 - lat2) ** 2 < 0.01**2

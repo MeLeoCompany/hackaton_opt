@@ -20,6 +20,7 @@ from gtfs_pipeline.night_weekly import generate_night_weekly
 from gtfs_pipeline.osm_metro import MetroDataError, normalize_line
 from gtfs_pipeline.transport_mos import (
     ScheduleParseError,
+    _align_circular_departures,
     collect_bus_route,
     parse_catalog_page,
     parse_route_page,
@@ -87,6 +88,19 @@ def test_transport_mos_parser_preserves_service_day_order() -> None:
     assert result["stops"][0]["departures"] == [1438, 1448]
     assert result["stops"][1]["departures"] == [1452, 1462]
     assert result["stops"][1]["name"] == "Конец"
+
+
+def test_circular_bus_parser_aligns_trips_after_control_stop_reset() -> None:
+    stops = [
+        {"departures": [180, 195, 210, 225]},
+        {"departures": [194, 209, 224, 239]},
+        # На контрольной остановке портал снова начинает с первого рейса.
+        {"departures": [180, 195, 210, 225]},
+    ]
+
+    _align_circular_departures(stops)
+
+    assert stops[2]["departures"] == [195, 210, 225, 1620]
 
 
 def test_night_bus_parser_keeps_morning_departures_on_next_day() -> None:
@@ -188,6 +202,31 @@ def test_prepare_bus_requires_both_directions_and_repeats_daily(
             date(2026, 12, 31),
             tmp_path,
         )
+
+
+def test_prepare_bus_accepts_one_closed_circular_direction(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    source = root / "transit/data/bus/route-1048-2026-09-18.json"
+    data = json.loads(source.read_text())
+    data["route"]["source_route_id"] = "1049"
+    data["route"]["short_name"] = "Б"
+    data["source"]["service_date"] = "2026-09-22"
+    data["patterns"] = data["patterns"][:1]
+    data["patterns"][0]["shape"][-1] = data["patterns"][0]["shape"][0]
+    exact = tmp_path / "route-1049-2026-09-22.json"
+    exact.write_text(json.dumps(data), encoding="utf-8")
+
+    created = prepare_bus(
+        1049,
+        "Б",
+        date(2026, 9, 22),
+        date(2026, 8, 1),
+        date(2026, 12, 31),
+        tmp_path,
+        retrospective=True,
+    )
+
+    assert created.is_file()
 
 
 def test_transport_mos_parser_rejects_inconsistent_trip_count() -> None:
