@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from gtfs_pipeline.bus_weekly import prepare_bus
 from gtfs_pipeline.gtfs import build_gtfs
-from gtfs_pipeline.local_bus import import_bus_html
+from gtfs_pipeline.local_bus import _route_type, import_bus_html
 from gtfs_pipeline.metro_transfers import (
     TRANSFER_TIME_SECONDS,
     cluster_metro_stations,
@@ -275,6 +275,11 @@ def test_import_bus_html_creates_schedule_and_archives_sources(tmp_path: Path) -
     ]
     assert not list(incoming.iterdir())
     assert inventory.read_text(encoding="utf-8") == "А\nт1\n"
+
+
+def test_local_html_import_classifies_river_routes_as_ferries() -> None:
+    assert _route_type("Реч1") == 4
+    assert _route_type("м1") == 3
 
 
 def test_transport_mos_parser_rejects_inconsistent_trip_count() -> None:

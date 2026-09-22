@@ -125,7 +125,7 @@ def import_bus_html(
                 "route": {
                     "source_route_id": str(route_id),
                     "short_name": route["short_name"],
-                    "route_type": 3,
+                    "route_type": _route_type(route["short_name"]),
                 },
                 "patterns": route["patterns"],
             },
@@ -165,3 +165,8 @@ def _update_inventory(path: Path, route_names: list[str]) -> None:
     known = {line.casefold() for line in existing}
     existing.extend(name for name in route_names if name.casefold() not in known)
     path.write_text("\n".join(existing) + "\n", encoding="utf-8")
+
+
+def _route_type(short_name: str) -> int:
+    """Вернуть тип GTFS, исправляя ошибочную классификацию речных маршрутов портала."""
+    return 4 if short_name.casefold().startswith("реч") else 3
