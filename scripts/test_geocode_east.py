@@ -5,13 +5,23 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from scripts.geocode_east import pick, search_query, write_review
+from scripts.import_east import coordinate
 
 
 class GeocodeEastTest(unittest.TestCase):
+    def test_coordinate_accepts_southern_moscow_region(self) -> None:
+        self.assertEqual(str(coordinate("54.838645", latitude=True)), "54.838645")
+
     def test_query_separates_street_type_and_name(self) -> None:
         self.assertEqual(
             search_query("Город Москва, пр-кт.Волгоградский, д. 128 к 5"),
             "Москва, проспект Волгоградский, 128 к 5",
+        )
+
+    def test_query_normalizes_regional_and_postfix_street_addresses(self) -> None:
+        self.assertEqual(
+            search_query("МО, г. Кашира Центральная ул. д. 21"),
+            "Московская область, Кашира, улица Центральная 21",
         )
 
     def test_only_matching_house_is_accepted(self) -> None:

@@ -42,9 +42,9 @@ def coordinate(value: str, *, latitude: bool) -> Decimal:
     except InvalidOperation as exc:
         raise ValueError(f"Некорректная координата: {value!r}") from exc
     low, high = (
-        (Decimal("55.0"), Decimal("56.2"))
+        (Decimal("54.2"), Decimal("56.9"))
         if latitude
-        else (Decimal("36.0"), Decimal("39.0"))
+        else (Decimal("35.1"), Decimal("40.3"))
     )
     if not result.is_finite() or not low <= result <= high:
         raise ValueError(f"Координата за пределами Московского региона: {value!r}")
