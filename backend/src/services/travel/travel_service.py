@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta
 from itertools import pairwise
 
@@ -20,6 +21,7 @@ from src.services.travel import (
     r5_access,
     r5_provider,
     transit_provider,
+    travel_cache,
     valhalla_provider,
 )
 
@@ -69,8 +71,7 @@ async def _public_transport_matrix(
 
     await run_log.note("ОТ: времена по расписанию (R5)")
     try:
-        durations = await r5_provider.build_duration_matrix(points, departure_time)
-        durations = await r5_access.repair_duration_matrix(points, departure_time, durations)
+        durations = await _r5_durations(points, departure_time)
     except (httpx.HTTPError, KeyError, ValueError):
         if not allow_fallback:
             raise
@@ -116,6 +117,81 @@ async def _public_transport_matrix(
         distances_km=distances,
         durations_min=durations,
     )
+
+
+async def _r5_durations(points: list[Point], departure_time: datetime) -> list[list[float | None]]:
+    """Минуты R5 по расписанию для всех пар точек: из кеша, недостающие — у R5.
+
+    Недостающие пары покрываются как можно меньшим числом точек: для них R5 считает строки
+    «эти точки × все» и столбцы «все × эти точки». Потом — тот же досчёт изолированных
+    точек, что и без кеша, и новые пары ложатся в кеш (docs/algoCachV1.md).
+    """
+    size = len(points)
+    known = await travel_cache.load_matrix(points, departure_time)
+    if not known:
+        await run_log.note(f"R5: в кеше пар нет — считаю матрицу целиком ({size * (size - 1)} пар)")
+        durations = await r5_provider.build_duration_matrix(points, departure_time)
+        durations = await r5_access.repair_duration_matrix(points, departure_time, durations)
+        await travel_cache.save_matrix(
+            points,
+            departure_time,
+            durations,
+            ((i, j) for i in range(size) for j in range(size) if i != j),
+        )
+        return durations
+
+    durations: list[list[float | None]] = [
+        [0.0 if i == j else known.get((i, j)) for j in range(size)] for i in range(size)
+    ]
+    missing = {(i, j) for i in range(size) for j in range(size) if i != j and (i, j) not in known}
+    total = size * (size - 1)
+    if not missing:
+        await run_log.note(f"R5: все {total} пар матрицы из кеша — R5 для матрицы не нужен")
+    else:
+        rows = covering_points(missing)
+        others = [index for index in range(size) if index not in rows]
+        await run_log.note(
+            f"R5: пар из кеша {total - len(missing)} из {total}, досчитываю {len(missing)} — "
+            f"строки и столбцы {len(rows)} точек"
+        )
+        outward = await r5_provider.build_duration_block(
+            points, departure_time, rows, list(range(size))
+        )
+        for row_index, origin in enumerate(rows):
+            durations[origin] = outward[row_index]
+        if others:
+            inward = await r5_provider.build_duration_block(points, departure_time, others, rows)
+            for row_index, origin in enumerate(others):
+                for column_index, destination in enumerate(rows):
+                    durations[origin][destination] = inward[row_index][column_index]
+    repaired = await r5_access.repair_duration_matrix(points, departure_time, durations)
+    changed = [
+        (i, j)
+        for i in range(size)
+        for j in range(size)
+        if i != j and ((i, j) in missing or repaired[i][j] != known.get((i, j)))
+    ]
+    await travel_cache.save_matrix(points, departure_time, repaired, changed)
+    return repaired
+
+
+def covering_points(pairs: set[tuple[int, int]]) -> list[int]:
+    """Как можно меньше точек, чтобы каждая пара начиналась или кончалась в одной из них.
+
+    Обычно это новые точки — где бригада сейчас, новая заявка: жадно берём точку, на которую
+    приходится больше всего непокрытых пар.
+    """
+    left = set(pairs)
+    chosen: list[int] = []
+    while left:
+        load: dict[int, int] = defaultdict(int)
+        for origin, destination in left:
+            load[origin] += 1
+            load[destination] += 1
+        best = max(load, key=lambda index: (load[index], -index))
+        chosen.append(best)
+        left = {pair for pair in left if best not in pair}
+    return sorted(chosen)
 
 
 async def build_route(
@@ -176,7 +252,10 @@ async def _r5_route(
     for index, (origin, destination) in enumerate(pairwise(points)):
         if leg_departure_times is not None:
             current_departure = leg_departure_times[index]
-        result = await r5_access.route(origin, destination, current_departure)
+        # одно и то же плечо с той же минутой выезда R5 считает одинаково — берём из кеша
+        result = await travel_cache.cached_route(
+            origin, destination, current_departure, r5_access.route
+        )
         results.append(result)
         current_departure += timedelta(minutes=result.total_duration_min)
 

@@ -4,7 +4,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
-import { fetchSolverParams, saveSolverParams } from '../api/systemApi.js'
+import { clearTravelCache, fetchSolverParams, fetchTravelCache, saveSolverParams } from '../api/systemApi.js'
 import InfoHint from '../components/InfoHint.vue'
 import SolverParamRows from '../components/SolverParamRows.vue'
 import { limitFor, numericParams } from '../utils/solverParams.js'
@@ -90,6 +90,43 @@ async function saveOne(key, value) {
   }
 }
 
+// кеш ответов R5: матрица и плечи маршрутов не считаются заново (docs/algoCachV1.md)
+const travelCache = ref(null)
+const clearingCache = ref(false)
+
+async function loadTravelCache() {
+  try {
+    travelCache.value = await fetchTravelCache()
+  } catch {
+    // нет данных — строка кеша просто не покажется
+  }
+}
+
+const travelCacheSummary = computed(() => {
+  const cache = travelCache.value
+  if (!cache.matrix_pairs && !cache.routes && !cache.solutions) return `пусто · хранится ${cache.keep_days} дней`
+  const oldest = cache.oldest_at ? ` · самая старая запись ${moment(cache.oldest_at)}` : ''
+  return (
+    `пар матрицы ${cache.matrix_pairs.toLocaleString('ru-RU')}, плеч маршрутов ` +
+    `${cache.routes.toLocaleString('ru-RU')}, решений cuOpt ${cache.solutions.toLocaleString('ru-RU')} · ` +
+    `хранится ${cache.keep_days} дней${oldest}`
+  )
+})
+
+async function resetTravelCache() {
+  if (!window.confirm('Сбросить кеш маршрутов? Следующие расчёты заново спросят R5 и решат задачу с нуля — первый будет дольше.')) return
+  clearingCache.value = true
+  try {
+    const { deleted } = await clearTravelCache()
+    solverNotice.value = `Кеш маршрутов сброшен: удалено записей ${deleted.toLocaleString('ru-RU')}`
+    await loadTravelCache()
+  } catch (error) {
+    errorMessage.value = error.message
+  } finally {
+    clearingCache.value = false
+  }
+}
+
 const { now, shifted, demoMode, setDemoMode } = useSystemTime()
 const switchingDemo = ref(false)
 
@@ -113,6 +150,7 @@ const realClock = computed(() => moment(info.value?.time.real_now))
 onMounted(() => {
   load()
   loadSolver()
+  loadTravelCache()
 })
 </script>
 
@@ -247,6 +285,26 @@ onMounted(() => {
                 </tr>
               </template>
             </template>
+            <!-- кеш ответов R5: сколько лежит; сбросить — после замены карты или расписания -->
+            <tr v-if="travelCache" class="cache-row">
+              <td>
+                <strong>Кеш маршрутов</strong>
+                <InfoHint
+                  text="Ответы R5 (матрица и плечи общественного транспорта) и решения cuOpt: одинаковые запросы не считаются второй раз, а одинаковая задача даёт тот же план. Записи старше срока удаляются раз в сутки, при смене расписания GTFS — все сразу. Сбросьте вручную, если заменили карту."
+                />
+              </td>
+              <td class="summary">{{ travelCacheSummary }}</td>
+              <td class="cache-action">
+                <button
+                  type="button"
+                  class="link"
+                  :disabled="clearingCache || (!travelCache.matrix_pairs && !travelCache.routes && !travelCache.solutions)"
+                  @click="resetTravelCache"
+                >
+                  {{ clearingCache ? 'Сбрасываю…' : 'Сбросить' }}
+                </button>
+              </td>
+            </tr>
             <tr v-for="row in settingGroups.plain" :key="row.name">
               <td>{{ row.name }}</td>
               <td class="target">{{ row.value }}</td>
@@ -266,7 +324,7 @@ onMounted(() => {
       </div>
 
       <p class="muted">
-        <button class="link" :disabled="loading" @click="load">{{ loading ? 'Обновляю…' : 'Обновить' }}</button>
+        <button class="link" :disabled="loading" @click="load(); loadTravelCache()">{{ loading ? 'Обновляю…' : 'Обновить' }}</button>
       </p>
     </template>
 
@@ -438,5 +496,10 @@ dd {
 .count span {
   color: #64748b;
   font-size: 12px;
+}
+
+/* «Сбросить» кеша — в колонке карандашей, по её правому краю */
+.cache-action {
+  text-align: right;
 }
 </style>

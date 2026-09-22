@@ -8,6 +8,8 @@ from src.schemas.system.system_schema import (
     SystemInfo,
     SystemTimeRead,
     SystemTimeWrite,
+    TravelCacheCleared,
+    TravelCacheRead,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "SystemInfo",
     "SystemTimeRead",
     "SystemTimeWrite",
+    "TravelCacheCleared",
+    "TravelCacheRead",
 ]

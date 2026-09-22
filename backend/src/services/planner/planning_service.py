@@ -57,7 +57,7 @@ from src.services.planner.planner_loader import LoadedDay
 from src.services.planner.planner_problem import TOP_PRIORITY_LEVEL
 from src.services.planner.route_delay import RouteDelay, VisitFact, route_delay, visit_state
 from src.services.requests import request_status_service
-from src.services.travel import build_route
+from src.services.travel import build_route, travel_cache
 
 SOLVER_NAME = "cuopt"
 RUN_TYPE_BY_SOLVER = {
@@ -1112,9 +1112,15 @@ async def plan_routes(
             raise ValueError("назначенный маршрут содержит неполные данные")
 
     cached = await plans_repository.list_cached_routes(session, plan.id)
-    travels = await asyncio.gather(
-        *(route_travel(group, cached, strict=strict) for group in groups)
-    )
+    # плечи маршрутов обычно уже спрошены проверкой расписания — берутся из кеша R5
+    with travel_cache.counting() as counters:
+        travels = await asyncio.gather(
+            *(route_travel(group, cached, strict=strict) for group in groups)
+        )
+    if counters.from_cache or counters.from_r5:
+        await run_log.note(
+            f"Плечи маршрутов: из кеша {counters.from_cache}, запросов к R5 {counters.from_r5}"
+        )
     built = False
     for group, (travel, fingerprint, fresh) in zip(groups, travels, strict=True):
         if fresh:

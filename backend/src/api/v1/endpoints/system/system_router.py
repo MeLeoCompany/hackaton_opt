@@ -20,8 +20,11 @@ from src.schemas.system import (
     SystemInfo,
     SystemTimeRead,
     SystemTimeWrite,
+    TravelCacheCleared,
+    TravelCacheRead,
 )
 from src.services.system import system_service
+from src.services.travel import travel_cache
 
 router = APIRouter()
 
@@ -145,3 +148,31 @@ async def set_demo_mode(
     """В режиме можно переводить время и синхронизировать маршруты с планом; выключили —
     часы возвращаются к настоящему времени."""
     return await system_service.set_demo_mode(session, payload.enabled, user_id=user.id)
+
+
+@router.get(
+    "/travel-cache",
+    response_model=TravelCacheRead,
+    summary="Кеш расчёта: пары матрицы и плечи R5, решения cuOpt (только администратор)",
+    dependencies=[Depends(require_admin)],
+)
+async def read_travel_cache() -> TravelCacheRead:
+    stats = await travel_cache.stats()
+    return TravelCacheRead(
+        matrix_pairs=stats.matrix_pairs,
+        routes=stats.routes,
+        solutions=stats.solutions,
+        oldest_at=stats.oldest_at,
+        keep_days=stats.keep_days,
+    )
+
+
+@router.delete(
+    "/travel-cache",
+    response_model=TravelCacheCleared,
+    summary="Сбросить кеш расчёта: ответы R5 и решения cuOpt (только администратор)",
+    dependencies=[Depends(require_admin)],
+)
+async def clear_travel_cache() -> TravelCacheCleared:
+    """Нужно после замены карты или расписания вручную: следующие расчёты спросят R5 заново."""
+    return TravelCacheCleared(deleted=await travel_cache.clear())

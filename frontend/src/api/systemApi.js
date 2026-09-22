@@ -43,3 +43,13 @@ export function saveSolverParams(payload) {
 export function setDemoMode(enabled) {
   return apiRequest('PUT', '/system/demo', { json: { enabled } })
 }
+
+// кеш ответов R5 (docs/algoCachV1.md): сколько пар матрицы и плеч маршрутов лежит
+export function fetchTravelCache() {
+  return apiRequest('GET', '/system/travel-cache')
+}
+
+// сбросить кеш R5: следующие расчёты спросят R5 заново — после замены карты или расписания
+export function clearTravelCache() {
+  return apiRequest('DELETE', '/system/travel-cache')
+}

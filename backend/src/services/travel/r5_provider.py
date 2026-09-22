@@ -205,6 +205,75 @@ async def build_duration_matrix(
         return result
 
 
+async def build_duration_block(
+    points: list[Point],
+    departure_time: datetime,
+    origin_indices: list[int],
+    destination_indices: list[int],
+) -> list[list[float | None]]:
+    """Минуты R5 только для выбранных строк и столбцов: origin_indices × destination_indices.
+
+    Досчёт матрицы, часть которой уже в кеше (travel_cache). Тот же /matrix-block и те же
+    идентификаторы точек, что у полной матрицы, — поэтому и числа те же.
+    """
+    if departure_time.tzinfo is None:
+        raise ValueError("для матрицы R5 требуется время с часовым поясом")
+    request_points = [
+        {"id": _point_id(index), "lat": point.latitude, "lon": point.longitude}
+        for index, point in enumerate(points)
+    ]
+    departure = departure_time.isoformat()
+    result: list[list[float | None]] = [[None] * len(destination_indices) for _ in origin_indices]
+    origin_size = min(settings.r5_matrix_block_origins, settings.r5_matrix_block_max_pairs)
+    destination_size = max(
+        min(1000, settings.r5_matrix_block_max_pairs // min(origin_size, len(origin_indices))), 1
+    )
+    blocks_total = math.ceil(len(origin_indices) / origin_size) * math.ceil(
+        len(destination_indices) / destination_size
+    )
+    blocks_done = 0
+    async with httpx.AsyncClient(
+        base_url=settings.r5_url, timeout=settings.r5_timeout_seconds
+    ) as client:
+        for origin_start in range(0, len(origin_indices), origin_size):
+            origins = [
+                request_points[index]
+                for index in origin_indices[origin_start : origin_start + origin_size]
+            ]
+            for destination_start in range(0, len(destination_indices), destination_size):
+                destinations = [
+                    request_points[index]
+                    for index in destination_indices[
+                        destination_start : destination_start + destination_size
+                    ]
+                ]
+                response = await client.post(
+                    "/matrix-block",
+                    json={
+                        "origins": origins,
+                        "destinations": destinations,
+                        "departure_time": departure,
+                    },
+                )
+                response.raise_for_status()
+                block = _parse_block_durations(
+                    response.json(),
+                    [point["id"] for point in origins],
+                    [point["id"] for point in destinations],
+                )
+                for row_offset, row in enumerate(block):
+                    result[origin_start + row_offset][
+                        destination_start : destination_start + len(row)
+                    ] = row
+                blocks_done += 1
+                await run_log.check_cancelled()
+                await run_log.note(
+                    f"R5: досчёт, блок {blocks_done} из {blocks_total}",
+                    fraction=blocks_done / max(blocks_total, 1),
+                )
+    return result
+
+
 def _number(value: object, field: str, *, nullable: bool = False) -> float | None:
     if value is None and nullable:
         return None

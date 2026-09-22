@@ -35,6 +35,9 @@ from src.services.planner.planner_problem import (
 )
 from src.services.travel import build_matrix
 
+# шаг, до которого округляется время выезда матрицы пересчёта (docs/algoCachV1.md)
+MATRIX_DEPARTURE_STEP_MINUTES = 10
+
 MINUTES_IN_DAY = 24 * 60
 
 # если между точками нет дороги, пару заменяем заведомо непроходимым значением:
@@ -133,7 +136,6 @@ async def load_day(
             f"заявок к планированию {len(requests)}, смен бригад {len(engineers)}",
             details={"requests": len(requests), "engineers": len(engineers)},
         )
-
 
     def free_from(engineer: Engineer) -> datetime:
         start = starts.get(engineer.id)
@@ -337,6 +339,12 @@ async def build_day_matrices(
                 else engineer.shift_start
                 for engineer in transport_engineers
             )
+            if day_start is not None:
+                # пересчёт: момент каждый раз свой, а кеш R5 ищет пары по времени выезда —
+                # округляем вниз до 10 минут, чтобы пробный пересчёт и пересчёт после звонков
+                # взяли одну матрицу. Это только оценка для cuOpt: точное время каждого плеча
+                # проверяет R5 с настоящей минутой выезда (docs/algoCachV1.md)
+                departure_time = floor_to_minutes(departure_time, MATRIX_DEPARTURE_STEP_MINUTES)
             try:
                 matrix = await build_matrix(
                     points,
@@ -356,6 +364,11 @@ async def build_day_matrices(
             await describe_matrix(travel_min[transport_id], getattr(matrix, "provider", None))
 
     return distance_km, travel_min
+
+
+def floor_to_minutes(moment: datetime, step: int) -> datetime:
+    """14:43:20 -> 14:40:00 при шаге 10 минут."""
+    return moment.replace(minute=moment.minute - moment.minute % step, second=0, microsecond=0)
 
 
 def replace_unreachable(values: list[list[float | None]], unreachable: float) -> np.ndarray:

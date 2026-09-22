@@ -20,6 +20,7 @@ from src.core.errors import (
 )
 from src.db.session import async_session_maker
 from src.services.system import system_service
+from src.services.travel import travel_cache
 
 # сколько ждать базу при старте: после перезапуска Docker все контейнеры поднимаются разом,
 # и depends_on при этом не работает — бэкенд может проснуться раньше Postgres
@@ -54,7 +55,12 @@ async def load_offset_when_db_ready() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await load_offset_when_db_ready()
-    yield
+    # кеш R5: раз в сутки удаляем старое и сверяем расписание GTFS (docs/algoCachV1.md)
+    maintenance = asyncio.create_task(travel_cache.maintenance_loop())
+    try:
+        yield
+    finally:
+        maintenance.cancel()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

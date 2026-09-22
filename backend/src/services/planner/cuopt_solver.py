@@ -26,7 +26,7 @@ import numpy as np
 
 from src.core.errors import ExternalServiceError
 from src.schemas.system import SolverParams
-from src.services.planner import run_log
+from src.services.planner import run_log, solver_memory
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -86,6 +86,7 @@ class ObjectivePolicy:
 
     def reward_for(self, rank: int) -> float:
         return self.rank_rewards.get(rank, self.regular_reward)
+
     vehicle_cost: float
     distance_weight: float
     distance_scale: float
@@ -147,10 +148,20 @@ async def solve_day(
             params=params,
         )
         await describe_model(instance, inputs, task_request_indices, objective_order, ranks)
-        solving = asyncio.create_task(
-            asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
-        )
-        route_records = await run_log.wait_cancellable(solving)
+        # такую же задачу уже решали — берём то же решение: cuOpt на один вход каждый раз
+        # находит немного другое, а план должен воспроизводиться (solver_memory)
+        input_hash = solver_memory.fingerprint(inputs)
+        route_records = await solver_memory.recall(input_hash)
+        if route_records is not None:
+            await run_log.note(
+                "cuOpt: точно такая же задача уже решалась — беру то же решение без поиска"
+            )
+        else:
+            solving = asyncio.create_task(
+                asyncio.to_thread(run_cuopt, inputs, inputs.time_limit_seconds)
+            )
+            route_records = await run_log.wait_cancellable(solving)
+            await solver_memory.remember(input_hash, route_records)
         solution = parse_route_records(route_records, task_request_indices)
         assigned = sum(len(visits) for visits in solution.routes.values())
         await run_log.note(

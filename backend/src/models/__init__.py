@@ -18,6 +18,7 @@ from src.models.request_status import (
 )
 from src.models.solver_settings import SolverSettings
 from src.models.system_time import SystemTime
+from src.models.travel_cache import SolverMemory, TravelCache, TravelCacheState
 from src.models.user import AppUser, UserRole
 
 __all__ = [
@@ -44,9 +45,12 @@ __all__ = [
     "RequestStatusId",
     "RequestStatusTransition",
     "Skill",
+    "SolverMemory",
     "SolverSettings",
     "SystemTime",
     "Transport",
+    "TravelCache",
+    "TravelCacheState",
     "UserRole",
     "WorkType",
     "engineer_skill",

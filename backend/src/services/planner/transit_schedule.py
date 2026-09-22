@@ -14,7 +14,7 @@ from src.services.planner import cuopt_solver, run_log
 from src.services.planner.objective_policy import ObjectiveCriterion
 from src.services.planner.planner_loader import LoadedDay
 from src.services.planner.planner_problem import ProblemInstance
-from src.services.travel import build_route
+from src.services.travel import build_route, travel_cache
 
 TRANSIT_ID = TransportKind.PUBLIC_TRANSPORT.value
 logger = logging.getLogger(__name__)
@@ -128,6 +128,26 @@ async def check_schedule(
     return (cuopt_solver.DaySolution(routes) if valid else None), observations
 
 
+async def counted_check(
+    loaded: LoadedDay,
+    solution: cuopt_solver.DaySolution,
+    points: list[Point],
+    cache: dict[tuple[int, int, int], int],
+    *,
+    skip_infeasible: bool,
+) -> tuple[cuopt_solver.DaySolution | None, dict[tuple[int, int], int]]:
+    """Проверка расписания и строка журнала: сколько плеч взято из кеша R5, сколько спрошено."""
+    with travel_cache.counting() as counters:
+        result = await check_schedule(
+            loaded, solution, points, cache, skip_infeasible=skip_infeasible
+        )
+    if counters.from_cache or counters.from_r5:
+        await run_log.note(
+            f"Плечи проверки: из кеша {counters.from_cache}, запросов к R5 {counters.from_r5}"
+        )
+    return result
+
+
 def hhmm(minutes: float) -> str:
     """Минуты от начала дня — в часы и минуты: журнал читают люди."""
     total = int(minutes)
@@ -189,7 +209,7 @@ async def solve_day(
             instance, objective_order=objective_order, ranks=ranks, params=params
         )
         last_attempt = attempt + 1 == params.transit_attempts
-        checked, observations = await check_schedule(
+        checked, observations = await counted_check(
             loaded, solution, points, cache, skip_infeasible=last_attempt
         )
         if checked is not None:
@@ -201,9 +221,7 @@ async def solve_day(
             updated[origin, destination] = max(updated[origin, destination], duration)
         await explain_retry(instance.travel_min[TRANSIT_ID], updated, attempt, last_attempt)
         if np.array_equal(updated, instance.travel_min[TRANSIT_ID]):
-            repaired, _ = await check_schedule(
-                loaded, solution, points, cache, skip_infeasible=True
-            )
+            repaired, _ = await counted_check(loaded, solution, points, cache, skip_infeasible=True)
             assert repaired is not None
             return repaired
         instance = copy.copy(instance)

@@ -134,3 +134,17 @@ class SolverParamsRead(SolverParams):
 
     updated_at: datetime | None = None
     updated_by: str | None = None
+
+
+class TravelCacheRead(BaseModel):
+    """Кеш ответов R5 (docs/algoCachV1.md): сколько лежит и сколько хранится."""
+
+    matrix_pairs: int  # пары матрицы для cuOpt
+    routes: int  # плечи маршрутов для проверки расписания и карты
+    solutions: int = 0  # решения cuOpt по отпечатку задачи: одинаковая задача — одинаковый ответ
+    oldest_at: datetime | None = None  # самая старая запись; старше keep_days — удаляется
+    keep_days: int
+
+
+class TravelCacheCleared(BaseModel):
+    deleted: int

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     r5_matrix_block_origins: int = Field(default=5, ge=1, le=1000)
     r5_matrix_block_max_pairs: int = Field(default=500, ge=1, le=100_000)
     r5_matrix_single_max_points: int = Field(default=100, ge=2, le=1000)
+    # кеш ответов R5 в базе (docs/algoCachV1.md); в тестах без базы выключается
+    travel_cache_enabled: bool = True
+    # сколько дней хранится ответ R5; чистка идёт раз в сутки
+    travel_cache_days: int = Field(default=7, ge=1, le=90)
     walking_speed_kmh: float = Field(default=4.8, ge=0.5, le=25, allow_inf_nan=False)
     # подпись токенов входа; в любом общем окружении задайте свой AUTH_SECRET
     auth_secret: str = "dev-secret-change-me"
