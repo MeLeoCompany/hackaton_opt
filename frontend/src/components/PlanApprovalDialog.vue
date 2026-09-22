@@ -1,9 +1,10 @@
 <script setup>
 // Утверждение черновика, в который вошли не все заявки (docs/algoV2.md, шаги 2-5).
-// Утвердить можно сразу — невлезшие останутся «Новыми». Или сначала подобрать окна: второй
-// расчёт с раскрытыми окнами говорит, когда бригада сможет приехать, оператор обзванивает
-// клиентов, и по решениям день считается заново — новым черновиком, который утверждают отдельно.
-import { computed, onBeforeUnmount, ref } from 'vue'
+// Невлезшую заявку «Новой» без решения не оставляем: второй расчёт с раскрытыми окнами
+// говорит, когда бригада сможет приехать, оператор обзванивает клиентов и по каждой решает —
+// согласованное время, перенос на другой день или отмена. По решениям день считается заново —
+// новым черновиком, который утверждают отдельно. Сервер без решений черновик не утвердит.
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { previewApproval } from '../api/plansApi.js'
 import { usePlanRun } from '../composables/usePlanRun.js'
@@ -18,8 +19,8 @@ const props = defineProps({
 })
 const emit = defineEmits(['approve', 'decide', 'close'])
 
-const { preview, decisions, problems, tolerance, setPreview, decisionsReady, decidedCount, payload } =
-  useUnassignedDecisions(() => props.summary.plan_date, { allowSkip: true })
+const { preview, decisions, problems, tolerance, setPreview, decisionsReady, payload } =
+  useUnassignedDecisions(() => props.summary.plan_date)
 
 // невлезшие, по которым звонить не нужно: их уже забрал другой план или сняли
 const skipped = computed(() => Math.max(0, props.summary.unassigned_count - problems.value.length))
@@ -50,6 +51,9 @@ async function close() {
   emit('close')
 }
 
+// окна подбираем сразу: без решений по невлезшим утвердить всё равно нельзя
+onMounted(searchWindows)
+
 onBeforeUnmount(() => {
   if (searching.value) cancelRun()
 })
@@ -64,9 +68,8 @@ onBeforeUnmount(() => {
       </header>
 
       <p class="hint">
-        Не вошло в план: {{ summary.unassigned_count }}. Утвердите как есть — они останутся
-        «Новыми». Или подберите окна: второй расчёт предложит клиентам время, а по их ответам день
-        пересчитается новым черновиком.
+        Не вошло в план: {{ summary.unassigned_count }}. Без решения их не оставляем: второй расчёт
+        предложит клиентам время, а по их ответам день пересчитается новым черновиком.
       </p>
 
       <PlanRunProgress v-if="searching" :run="run" @cancel="cancelRun" />
@@ -74,7 +77,7 @@ onBeforeUnmount(() => {
 
       <p v-if="preview && !problems.length" class="hint">
         Звонить некому: невлезшие заявки уже не ждут планирования — закреплены за другим планом,
-        сняты или решены. Утвердите план как есть.
+        сняты или решены. План можно утверждать.
       </p>
 
       <UnassignedDecisions
@@ -84,33 +87,29 @@ onBeforeUnmount(() => {
         :decisions="decisions"
         :tolerance="tolerance"
         :disabled="building"
-        allow-skip
       >
-        Время подобрано с раскрытыми окнами, вошедшие в план заявки не сдвигаются. Не дозвонились
-        или решать рано — «Пока не решать».<template v-if="skipped">
+        Время подобрано с раскрытыми окнами, вошедшие в план заявки не сдвигаются. Решение нужно по
+        каждой; перенесённая войдёт в план своего дня.<template v-if="skipped">
           Ещё {{ skipped }} уже не ждут планирования: закреплены за другим планом или сняты.</template
         >
       </UnassignedDecisions>
 
       <footer>
         <button
-          v-if="!problems.length"
+          v-if="problems.length"
           class="primary"
-          :disabled="building || searching || Boolean(preview)"
-          @click="searchWindows"
-        >
-          {{ searching ? 'Подбираю…' : 'Подобрать окна' }}
-        </button>
-        <button
-          v-else
-          class="primary"
-          :disabled="building || !decisionsReady || !decidedCount"
-          :title="decidedCount ? '' : 'Отметьте ответ клиента хотя бы по одной заявке'"
+          :disabled="building || !decisionsReady"
           @click="emit('decide', { decisions: payload() })"
         >
-          {{ building ? 'Считаю…' : `Учесть решения (${decidedCount}) и пересчитать` }}
+          {{ building ? 'Считаю…' : 'Учесть решения и пересчитать' }}
         </button>
-        <button :disabled="building || searching" @click="emit('approve')">Утвердить как есть</button>
+        <!-- решать не по кому — утверждаем; подбор прервали или он упал — можно повторить -->
+        <button v-else-if="preview" class="primary" :disabled="building" @click="emit('approve')">
+          Утвердить
+        </button>
+        <button v-else class="primary" :disabled="building || searching" @click="searchWindows">
+          {{ searching ? 'Подбираю…' : 'Подобрать окна' }}
+        </button>
         <button class="cancel" :disabled="building" @click="close">Отмена</button>
       </footer>
     </div>

@@ -33,6 +33,15 @@ def transitions_allowed():
         yield require
 
 
+@pytest.fixture(autouse=True)
+def nothing_left_undecided():
+    # по умолчанию все заявки черновика вошли в план — утверждать можно
+    with patch.object(
+        planning_service.plans_repository, "list_plan_assignments", AsyncMock(return_value=[])
+    ) as listed:
+        yield listed
+
+
 def summary(plan_id):
     return PlanSummary(
         id=plan_id,
@@ -62,6 +71,36 @@ async def test_approval_holds_plan_requests():
 
     assert hold.await_args.args[1] is target
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_draft_with_undecided_requests_is_not_approved(nothing_left_undecided):
+    """Невлезшую заявку не оставляют «Новой» без решения: перенос, согласование или отмена."""
+    from src.models import RequestStatusId
+
+    def unassigned(request_id, status, approved_plan_id=None):
+        request = SimpleNamespace(status_id=status, approved_plan_id=approved_plan_id)
+        return SimpleNamespace(request_id=request_id, engineer_id=None, request=request)
+
+    nothing_left_undecided.return_value = [
+        unassigned(12, RequestStatusId.NEW),
+        # за другим планом или уже отменена — решать по ней нечего
+        unassigned(13, RequestStatusId.PLANNED, approved_plan_id=5),
+        unassigned(14, RequestStatusId.CANCELLED),
+    ]
+    session = SimpleNamespace(commit=AsyncMock())
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=plan(9))),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
+        patch.object(repository, "hold_plan_requests", AsyncMock()) as hold,
+        pytest.raises(PlanInUseError, match="№12:") as error,
+    ):
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
+
+    assert "№13" not in str(error.value) and "№14" not in str(error.value)
+    hold.assert_not_awaited()
 
 
 @pytest.mark.asyncio

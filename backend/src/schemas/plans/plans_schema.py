@@ -170,6 +170,8 @@ class PlanningDayOption(BaseModel):
 
     plan_date: date
     active_requests: int
+    # из них «Новых» с уже закрытым окном: хвост прошедшего дня — перенести или отменить
+    overdue_requests: int = 0
 
 
 class WithdrawnRequest(BaseModel):

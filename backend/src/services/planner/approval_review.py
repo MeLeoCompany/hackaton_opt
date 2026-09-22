@@ -1,7 +1,9 @@
 """Невлезшие заявки черновика — перед утверждением (docs/algoV2.md, шаги 2-5).
 
 Первый расчёт дня может не взять часть заявок: не хватило бригад или окна слишком узкие.
-Утвердить можно и так — они останутся «Новыми». Но лучше до утверждения обзвонить клиентов:
+Утвердить черновик, пока по невлезшим нет решения, нельзя (planning_service.approve_plan):
+иначе заявка молча висит «Новой», пока окно не закроется. Поэтому до утверждения оператор
+обзванивает клиентов:
 
 1. preview_approval — второй расчёт с раскрытыми окнами подбирает, когда бригада сможет
    приехать к каждой невлезшей заявке. Ничего не сохраняется;
@@ -18,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
 from src.core.config import settings
-from src.models import Plan, RequestStatusId
+from src.models import Plan
 from src.repositories.plans import plans_repository
 from src.schemas.plans import (
     PlanSummary,
@@ -51,18 +53,6 @@ async def reviewable_draft(session: AsyncSession, plan_id: int, *, office_id: in
     return plan
 
 
-async def waiting_unassigned(session: AsyncSession, plan: Plan) -> list:
-    """Невлезшие заявки черновика, которые всё ещё ждут планирования."""
-    assignments = await plans_repository.list_plan_assignments(session, plan.id)
-    return [
-        a
-        for a in assignments
-        if a.engineer_id is None
-        and a.request.status_id == RequestStatusId.NEW
-        and a.request.approved_plan_id is None
-    ]
-
-
 async def preview_approval(
     session: AsyncSession,
     plan_id: int,
@@ -86,7 +76,7 @@ async def preview_approval(
         user_id=user_id,
         run_id=run_id,
     ):
-        unassigned = await waiting_unassigned(session, draft)
+        unassigned = await planning_service.waiting_unassigned(session, draft)
         counts = await plans_repository.count_assignments_by_plan(session, [draft.id])
         _, assigned_count, _ = counts.get(draft.id, (0, 0, 0))
         suggestions = {}
@@ -156,7 +146,7 @@ async def decide_approval(
     draft = await reviewable_draft(session, plan_id, office_id=office_id)
     if not decisions:
         raise PlanDataError(["решений по заявкам нет — утвердите черновик как есть"])
-    waiting = {a.request_id for a in await waiting_unassigned(session, draft)}
+    waiting = {a.request_id for a in await planning_service.waiting_unassigned(session, draft)}
     stray = sorted({d.request_id for d in decisions} - waiting)
     if stray:
         raise PlanDataError(

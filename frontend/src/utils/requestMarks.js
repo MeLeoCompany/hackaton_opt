@@ -2,6 +2,16 @@
 // «требует уточнения» и причина отмены. Они же дают заявке ярус в расчёте.
 
 import { formatDay, moscowDateOf, moscowTimeOf } from './moscowTime.js'
+import { statusCode } from './requestStatuses.js'
+
+// значение фильтра статуса «Просроченные»: не статус из справочника, а «Новая» с закрытым окном
+export const OVERDUE_FILTER = 'overdue'
+
+// просрочена: всё ещё «Новая», а окно уже закрылось — хвост дня, который никто не решил.
+// now — системное время: в режиме демонстрации его перематывают
+export function isOverdue(request, references, now) {
+  return statusCode(references, request.status_id) === 'new' && new Date(request.window_end) <= now
+}
 
 // заявку перенесли с этого дня: в списке дня она остаётся, но работать по ней будут в другой
 export function movedAway(request, day) {
@@ -9,9 +19,10 @@ export function movedAway(request, day) {
 }
 
 // day — день, который открыт в списке: от него зависит, читать отметку «перенесена» как
-// «ушла отсюда» или «пришла из другого дня»
-export function requestMarks(request, day = null) {
+// «ушла отсюда» или «пришла из другого дня»; overdue — заявка просрочена (isOverdue)
+export function requestMarks(request, day = null, overdue = false) {
   const marks = []
+  if (overdue) marks.push({ kind: 'overdue', text: 'просрочена' })
   if (request.promised_from) {
     marks.push({
       kind: 'promised',

@@ -5,7 +5,9 @@ import { computed, reactive, ref, watch } from 'vue'
 
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { priorityLevel, referenceName } from '../utils/referenceNames.js'
+import { isOverdue, OVERDUE_FILTER } from '../utils/requestMarks.js'
 import { statusRank } from '../utils/requestStatuses.js'
+import { useSystemTime } from './useSystemTime.js'
 
 // значение фильтра транспорта «транспорт не важен» (в заявке transport_id = null)
 export const NO_TRANSPORT = 'none'
@@ -43,7 +45,7 @@ export const REQUEST_COLUMNS = [
 function emptyFilters() {
   return {
     idText: '', // часть номера заявки
-    statusId: '', // '' — любой статус, иначе номер статуса
+    statusId: '', // '' — любой статус, OVERDUE_FILTER — просроченные, иначе номер статуса
     text: '', // часть адреса
     coordinates: '', // часть координат, как они показаны в таблице
     workTypeId: '', // '' — любой тип работ
@@ -58,6 +60,7 @@ function emptyFilters() {
 }
 
 export function useRequestsView(requests, references, pinnedId = ref(null)) {
+  const { now } = useSystemTime()
   const filters = reactive(emptyFilters())
   const sortKey = ref(DEFAULT_SORT)
   const sortDirection = ref('asc')
@@ -72,7 +75,9 @@ export function useRequestsView(requests, references, pinnedId = ref(null)) {
   )
 
   function matchesFilters(request) {
-    if (filters.statusId !== '' && request.status_id !== filters.statusId) return false
+    if (filters.statusId === OVERDUE_FILTER) {
+      if (!isOverdue(request, references.value, now.value)) return false
+    } else if (filters.statusId !== '' && request.status_id !== filters.statusId) return false
 
     if (filters.idText && !String(request.id).includes(filters.idText.trim())) return false
 

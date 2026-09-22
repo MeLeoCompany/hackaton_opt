@@ -9,8 +9,6 @@ defineProps({
   problems: { type: Array, required: true },
   decisions: { type: Object, required: true },
   tolerance: { type: Number, required: true },
-  // при утверждении заявку можно оставить как есть — она останется «Новой»
-  allowSkip: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
 })
 </script>
@@ -38,7 +36,6 @@ defineProps({
           v-model="decisions[problem.request_id].action"
           :aria-label="`что ответил клиент по заявке №${problem.request_id}`"
         >
-          <option v-if="allowSkip" value="skip">Пока не решать — останется «Новой»</option>
           <option value="agree" :disabled="!problem.suggested_start">Согласен на предложенное окно</option>
           <option value="move">Сегодня не может — перенести</option>
           <option value="cancel">Работа не нужна</option>

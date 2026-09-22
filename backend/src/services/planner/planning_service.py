@@ -92,11 +92,20 @@ async def list_planning_days(session: AsyncSession, *, office_id: int) -> list[P
     """Московские дни, с которыми пересекаются окна активных заявок офиса."""
     requests = await requests_repository.list_active_requests(session, office_id=office_id)
     request_count_by_day: dict[date, int] = defaultdict(int)
+    # просроченные: «Новая», а окно уже закрылось — хвост прошедшего дня. Пересчитать тот день
+    # уже нельзя, поэтому такие заявки показываем отдельно: перенести или отменить
+    overdue_by_day: dict[date, int] = defaultdict(int)
+    now = clock.now()
     for request in requests:
+        overdue = request.status_id == RequestStatusId.NEW and request.window_end <= now
         for plan_date in intersected_local_dates(request.window_start, request.window_end):
             request_count_by_day[plan_date] += 1
+            if overdue:
+                overdue_by_day[plan_date] += 1
     return [
-        PlanningDayOption(plan_date=plan_date, active_requests=count)
+        PlanningDayOption(
+            plan_date=plan_date, active_requests=count, overdue_requests=overdue_by_day[plan_date]
+        )
         for plan_date, count in sorted(request_count_by_day.items())
     ]
 
@@ -270,6 +279,17 @@ async def approve_plan(
             "и утверждённый пересчёт его заменит"
         )
 
+    # невлезшие заявки без решения не оставляем: иначе они молча висят «Новыми», пока окно
+    # не закроется. Оператор переносит их, согласует время или отменяет (подбор окон при
+    # утверждении) — перенесённая войдёт в план своего дня
+    waiting = await waiting_unassigned(session, plan)
+    if waiting:
+        numbers = ", ".join(f"№{assignment.request_id}" for assignment in waiting)
+        raise PlanInUseError(
+            f"В план №{plan_id} не вошли заявки {numbers}: сначала решите по каждой — "
+            "согласуйте другое время, перенесите на другой день или отмените"
+        )
+
     # заявки плана переходят «Новая» -> «В плане»: переход системный, он должен быть в таблице
     await request_status_service.require_transition(
         session, RequestStatusId.NEW, RequestStatusId.PLANNED, manual=False
@@ -305,6 +325,21 @@ async def approve_plan(
             "обновите список планов"
         ) from error
     return (await summarize_plans(session, [plan]))[0]
+
+
+async def waiting_unassigned(session: AsyncSession, plan: Plan) -> list[Assignment]:
+    """Не вошедшие в план заявки, которые всё ещё ждут планирования: «Новые», ничьи.
+
+    Закреплённые за другим планом, снятые и отменённые сюда не попадают — по ним решать нечего.
+    """
+    assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    return [
+        a
+        for a in assignments
+        if a.engineer_id is None
+        and a.request.status_id == RequestStatusId.NEW
+        and a.request.approved_plan_id is None
+    ]
 
 
 async def approve_replan(

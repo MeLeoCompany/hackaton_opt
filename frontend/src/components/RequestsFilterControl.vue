@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 
 import { EQUIPMENT_ANY, NO_TRANSPORT } from '../composables/useRequestsView.js'
+import { OVERDUE_FILTER } from '../utils/requestMarks.js'
 import { orderedStatuses } from '../utils/requestStatuses.js'
 
 import TimeInput from './TimeInput.vue'
@@ -44,6 +45,8 @@ const workTypeOrEquipment = computed({
   <select v-else-if="column === 'status'" v-model="filters.statusId" aria-label="фильтр по статусу">
     <option value="">любой</option>
     <option v-for="status in orderedStatuses(references)" :key="status.id" :value="status.id">{{ status.name }}</option>
+    <!-- не статус, а хвост: «Новая» с уже закрытым окном -->
+    <option :value="OVERDUE_FILTER">Просроченные</option>
   </select>
 
   <input

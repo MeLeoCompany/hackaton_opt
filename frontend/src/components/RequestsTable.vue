@@ -5,7 +5,8 @@ import { NEW_REQUEST } from '../composables/useRequestsTable.js'
 import { useColumnWidths } from '../composables/useColumnWidths.js'
 import { REQUEST_COLUMNS as COLUMNS } from '../composables/useRequestsView.js'
 import { priorityBadgeClass, referenceName } from '../utils/referenceNames.js'
-import { movedAway, requestMarks } from '../utils/requestMarks.js'
+import { isOverdue, movedAway, requestMarks } from '../utils/requestMarks.js'
+import { useSystemTime } from '../composables/useSystemTime.js'
 import { statusCode } from '../utils/requestStatuses.js'
 import IconButton from './IconButton.vue'
 import TimeRangeValue from './TimeRangeValue.vue'
@@ -28,6 +29,9 @@ const props = defineProps({
   // открытый день: по нему видно, что заявку перенесли отсюда в другой день
   planDate: { type: String, default: '' },
 })
+
+// просрочку считаем по системному времени: в режиме демонстрации его перематывают
+const { now } = useSystemTime()
 defineEmits([
   'edit',
   'cancel',
@@ -169,7 +173,7 @@ onMounted(scrollToSelected)
               <!-- след разговора с клиентом: под статусом видно, что заявке обещали или
                    почему её отменили (docs/algoV2.md, шаг 4) -->
               <span
-                v-for="mark in requestMarks(request, planDate)"
+                v-for="mark in requestMarks(request, planDate, isOverdue(request, references, now))"
                 :key="mark.text"
                 :class="['request-mark', mark.kind]"
               >
@@ -260,6 +264,12 @@ onMounted(scrollToSelected)
   margin-top: 2px;
   font-size: 11px;
   line-height: 1.3;
+}
+
+/* «Новая», а окно закрылось — день уже не пересчитать, решает оператор */
+.request-mark.overdue {
+  color: #b91c1c;
+  font-weight: 600;
 }
 
 .request-mark.promised {

@@ -14,9 +14,11 @@ import RequestsTable from '../components/RequestsTable.vue'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { useDayPlanWarning } from '../composables/useDayPlanWarning.js'
 import { useSelectedDay } from '../composables/useSelectedDay.js'
+import { useSystemTime } from '../composables/useSystemTime.js'
 import { useRequestsTable } from '../composables/useRequestsTable.js'
 import { REQUEST_COLUMNS, useRequestsView } from '../composables/useRequestsView.js'
-import { movedAway } from '../utils/requestMarks.js'
+import { formatDay } from '../utils/moscowTime.js'
+import { movedAway, OVERDUE_FILTER } from '../utils/requestMarks.js'
 
 // данные и их изменение
 const {
@@ -114,7 +116,30 @@ function showOnMap(requestId) {
   viewMode.value = 'map'
 }
 
-const { selectedDay, refreshDaysWithRequests } = useSelectedDay()
+const { selectedDay, daysWithRequests, selectDay, refreshDaysWithRequests } = useSelectedDay()
+
+// хвосты дней: «Новые» заявки с уже закрытым окном. Прошедший день не пересчитать — такие
+// заявки иначе висят незамеченными; по клику — день и только просроченные
+const overdueDays = computed(() => daysWithRequests.value.filter((day) => day.overdue_requests > 0))
+const overdueTotal = computed(() => overdueDays.value.reduce((sum, day) => sum + day.overdue_requests, 0))
+
+function plural(count, one, few, many) {
+  const tens = count % 100
+  const units = count % 10
+  if (tens >= 11 && tens <= 14) return `${count} ${many}`
+  if (units === 1) return `${count} ${one}`
+  if (units >= 2 && units <= 4) return `${count} ${few}`
+  return `${count} ${many}`
+}
+
+// перевели системные часы — просроченными стали другие заявки: перечитываем дни
+const { offsetSeconds } = useSystemTime()
+watch(offsetSeconds, () => refreshDaysWithRequests())
+
+function showOverdue(day) {
+  selectDay(day)
+  filters.statusId = OVERDUE_FILTER
+}
 
 // утверждённый план дня: если с ним что-то разошлось, предупреждаем прямо здесь
 const { planSummary, pendingReplan, needsReplan, load: loadDayPlan } = useDayPlanWarning()
@@ -205,6 +230,21 @@ onMounted(async () => {
       <span>⚠ Рекомендуется пересчитать план</span>
       <button type="button" class="link" @click="openPlan(planSummary.id)">Открыть план №{{ planSummary.id }} →</button>
     </p>
+
+    <!-- хвосты прошедших дней: списком по датам, по клику — день с фильтром «Просроченные» -->
+    <section v-if="overdueDays.length" class="overdue-panel">
+      <header>
+        <strong>⚠ Просроченные заявки: {{ overdueTotal }}</strong>
+        <span>окно закрылось, а заявка всё ещё «Новая» — перенесите или отмените</span>
+      </header>
+      <ul>
+        <li v-for="day in overdueDays" :key="day.plan_date" :class="{ current: day.plan_date === selectedDay }">
+          <span class="overdue-day">{{ formatDay(day.plan_date) }}</span>
+          <span class="overdue-count">{{ plural(day.overdue_requests, 'заявка', 'заявки', 'заявок') }}</span>
+          <button type="button" class="link" @click="showOverdue(day.plan_date)">показать →</button>
+        </li>
+      </ul>
+    </section>
 
     <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
 
@@ -350,6 +390,61 @@ onMounted(async () => {
 }
 
 .replan-warning .link {
+  color: #b45309;
+  font-weight: 600;
+}
+
+/* просроченные заявки: заголовок и даты столбиком — у каждой ссылка на свой день */
+.overdue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.overdue-panel header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.overdue-panel header span {
+  color: #a16207;
+  font-size: 12px;
+}
+
+.overdue-panel ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overdue-panel li {
+  display: grid;
+  grid-template-columns: 96px 90px auto;
+  align-items: baseline;
+  padding-left: 18px;
+}
+
+.overdue-panel li.current .overdue-day {
+  font-weight: 700;
+}
+
+.overdue-day {
+  font-variant-numeric: tabular-nums;
+}
+
+.overdue-panel .link {
+  justify-self: start;
   color: #b45309;
   font-weight: 600;
 }

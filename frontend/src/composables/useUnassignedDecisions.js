@@ -1,6 +1,6 @@
 // Решения по заявкам, на которые не успеваем (docs/algoV2.md, шаги 3-4): оператор обзванивает
 // клиентов и по каждой заявке отмечает ответ. Общее для пересчёта утверждённого плана и для
-// утверждения черновика; allowSkip — при утверждении заявку можно оставить «Новой» без решения.
+// утверждения черновика: и там, и там решение нужно по каждой заявке.
 
 import { computed, reactive, ref } from 'vue'
 
@@ -8,10 +8,10 @@ import { fromMoscowInputValue, moscowTimeOf, nextDay } from '../utils/moscowTime
 
 const TIME = /^\d\d:\d\d$/
 
-export function useUnassignedDecisions(planDate, { allowSkip = false } = {}) {
+export function useUnassignedDecisions(planDate) {
   // ответ второго расчёта; null — ещё не проверяли
   const preview = ref(null)
-  // решение по каждой заявке: { action: 'agree' | 'move' | 'cancel' | 'no_answer' | 'skip', date, from, to, reason }
+  // решение по каждой заявке: { action: 'agree' | 'move' | 'cancel' | 'no_answer', date, from, to, reason }
   const decisions = reactive({})
 
   const problems = computed(() => preview.value?.unassigned ?? [])
@@ -19,10 +19,9 @@ export function useUnassignedDecisions(planDate, { allowSkip = false } = {}) {
 
   function setPreview(result) {
     for (const problem of result?.unassigned ?? []) {
-      // есть предложение из второго расчёта — начинаем разговор с него; иначе при пересчёте
-      // заявка уезжает на завтра, а при утверждении пока остаётся как есть
+      // есть предложение из второго расчёта — начинаем разговор с него, иначе — на завтра
       decisions[problem.request_id] = {
-        action: problem.suggested_start ? 'agree' : allowSkip ? 'skip' : 'move',
+        action: problem.suggested_start ? 'agree' : 'move',
         date: nextDay(planDate()),
         from: moscowTimeOf(problem.window_start),
         to: moscowTimeOf(problem.window_end),
@@ -49,10 +48,6 @@ export function useUnassignedDecisions(planDate, { allowSkip = false } = {}) {
   }
 
   const decisionsReady = computed(() => problems.value.every(decisionReady))
-  // сколько заявок решено — без «пока не решать»
-  const decidedCount = computed(
-    () => problems.value.filter((problem) => decisions[problem.request_id]?.action !== 'skip').length,
-  )
 
   function decisionPayload(problem) {
     const decision = decisions[problem.request_id]
@@ -72,10 +67,8 @@ export function useUnassignedDecisions(planDate, { allowSkip = false } = {}) {
   }
 
   function payload() {
-    return problems.value
-      .filter((problem) => decisions[problem.request_id]?.action !== 'skip')
-      .map(decisionPayload)
+    return problems.value.map(decisionPayload)
   }
 
-  return { preview, decisions, problems, tolerance, setPreview, decisionsReady, decidedCount, payload }
+  return { preview, decisions, problems, tolerance, setPreview, decisionsReady, payload }
 }
