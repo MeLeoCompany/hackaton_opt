@@ -10,6 +10,7 @@ from src.schemas.travel import (
     TransportKind,
     TravelLeg,
     TravelMatrix,
+    TravelMode,
     TravelProvider,
     TravelRoute,
 )
@@ -162,6 +163,10 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
     )
 
 
+# чем человек идёт по участку: у машины это дорога, у пешехода — ходьба (как в ОТ)
+LEG_MODES = {TransportKind.PEDESTRIAN: TravelMode.WALK}
+
+
 async def route_legs(points: list[Point], transport: TransportKind) -> list[TravelLeg]:
     """Маршрут через точки по порядку, разобранный на переезды между соседними точками.
 
@@ -191,6 +196,9 @@ async def route_legs(points: list[Point], transport: TransportKind) -> list[Trav
                             _transport_minutes(float(leg["summary"]["time"]), transport), 1
                         ),
                         geometry=leg["shape"],
+                        # пешая бригада идёт пешком так же, как и на пересадке в ОТ:
+                        # участок помечаем одинаково, чтобы и рисовался он одинаково
+                        mode=LEG_MODES.get(transport, TravelMode.ROAD),
                     )
                 )
 
