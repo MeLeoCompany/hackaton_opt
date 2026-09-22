@@ -145,6 +145,15 @@ function solveDuration(summary) {
             <span v-else-if="summary.approved_at" class="badge approved" title="Заявки этого плана закреплены за днём">
               действует с {{ moscowTimeOf(summary.approved_at) }}
             </span>
+            <!-- на день уже действует другой план: этот расчёт остаётся историей -->
+            <span
+              v-else-if="summary.outdated"
+              class="muted"
+              title="На этот день действует другой план — этот расчёт уже не утвердить. Он остаётся в истории дня"
+            >
+              черновик · неактуален
+            </span>
+            <span v-else class="muted">черновик</span>
             <!-- пересчёт посчитан, но не утверждён: пока он есть, бригады не выезжают -->
             <span v-if="summary.pending_replan_id" class="replan-of">
               пересчёт
@@ -153,7 +162,6 @@ function solveDuration(summary) {
               </button>
               ждёт утверждения
             </span>
-            <span v-else class="muted">черновик</span>
           </td>
           <td>
             <!-- заменённый план — история: по нему уже не ездят, действий нет -->

@@ -268,6 +268,14 @@ onMounted(async () => {
             заменён в {{ moscowTimeOf(openedSummary.superseded_at) }}
           </span>
           <span v-else-if="openedSummary?.approved_at" class="badge approved">утверждён</span>
+          <!-- на день действует другой план: этот расчёт уже не утвердить -->
+          <span
+            v-else-if="openedSummary?.outdated"
+            class="badge outdated"
+            title="На этот день действует другой план — этот расчёт остаётся в истории дня"
+          >
+            неактуален
+          </span>
           <span v-if="openedSummary?.parent_plan_id" class="replan-title">
             пересчёт плана
             <button class="link plan-link" @click="openPlan(openedSummary.parent_plan_id)">
@@ -650,5 +658,11 @@ onMounted(async () => {
   .plan-view.with-map .panel-area {
     overflow: visible;
   }
+}
+
+/* устаревший черновик: не ошибка, просто история дня */
+.badge.outdated {
+  background: #f1f5f9;
+  color: #64748b;
 }
 </style>

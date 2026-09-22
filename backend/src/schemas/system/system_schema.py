@@ -141,7 +141,6 @@ class TravelCacheRead(BaseModel):
 
     matrix_pairs: int  # пары матрицы для cuOpt
     routes: int  # плечи маршрутов для проверки расписания и карты
-    solutions: int = 0  # решения cuOpt по отпечатку задачи: одинаковая задача — одинаковый ответ
     oldest_at: datetime | None = None  # самая старая запись; старше keep_days — удаляется
     keep_days: int
 

@@ -697,9 +697,28 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
     assigned_request_ids = await plans_repository.assigned_request_ids_by_plan(session, plan_ids)
     replaced_by = await plans_repository.approved_replan_of(session, plan_ids)
     pending_replan = await plans_repository.pending_replan_of(session, plan_ids)
+    # действующий утверждённый план каждого дня: по нему видно, какие черновики уже неактуальны
+    active_by_day = {
+        plan.plan_date: await plans_repository.get_approved_plan(
+            session, plan.plan_date, office_id=plan.office_id
+        )
+        for plan in plans
+        if plan.plan_date is not None
+    }
     summaries = []
     for plan in plans:
         engineers_used, assigned, unassigned = counts.get(plan.id, (0, 0, 0))
+        active = active_by_day.get(plan.plan_date)
+        # черновик, который уже не утвердить: на его день действует другой план, и это не
+        # пересчёт этого плана. Такой расчёт — история, его не с чем сверять
+        outdated = (
+            plan.approved_at is None
+            and active is not None
+            and getattr(plan, "parent_plan_id", None) != active.id
+        )
+        # обещания сверяем только с тем, что ещё в игре: заменённый план и устаревший черновик
+        # физически не могли учесть обещание, данное после них
+        live = not outdated and getattr(plan, "superseded_at", None) is None
         urgent_assigned_count = count_urgent_assignments(
             plan.input_snapshot, assigned_request_ids.get(plan.id, set())
         )
@@ -737,7 +756,8 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                     and getattr(plan, "superseded_at", None) is None
                     and not await plan_in_work(session, plan)
                 ),
-                broken_promises=await broken_promises(session, plan),
+                outdated=outdated,
+                broken_promises=await broken_promises(session, plan) if live else [],
                 **(await replan_reasons(session, plan)),
             )
         )

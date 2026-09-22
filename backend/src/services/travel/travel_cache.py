@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import insert
 from src.core.config import settings
 from src.core.local_day import local_timezone
 from src.db.session import async_session_maker
-from src.models import SolverMemory, TravelCache, TravelCacheState
+from src.models import TravelCache, TravelCacheState
 from src.schemas.travel import Point, TravelLeg, TravelProvider
 from src.services.travel.r5_provider import RouteResult
 
@@ -294,8 +294,6 @@ async def _upsert(rows: list[dict]) -> None:
 class CacheStats:
     matrix_pairs: int
     routes: int
-    # решения cuOpt по отпечатку задачи (solver_memory) — живут и чистятся вместе с кешем R5
-    solutions: int
     oldest_at: datetime | None
     keep_days: int
 
@@ -309,30 +307,20 @@ async def stats() -> CacheStats:
                 )
             )
         ).all()
-        solutions, oldest_solution = (
-            await session.execute(select(func.count(), func.min(SolverMemory.created_at)))
-        ).one()
     counts = {kind: count for kind, count, _ in rows}
     oldest = [created for _, _, created in rows if created is not None]
-    if oldest_solution is not None:
-        oldest.append(oldest_solution)
     return CacheStats(
         matrix_pairs=counts.get(MATRIX, 0),
         routes=counts.get(ROUTE, 0),
-        solutions=solutions,
         oldest_at=min(oldest) if oldest else None,
         keep_days=settings.travel_cache_days,
     )
 
 
 async def clear() -> int:
-    """Сбросить весь кеш — кнопкой в «Системе» или при смене расписания.
-
-    Решения cuOpt сбрасываются вместе с ним: они посчитаны по матрицам из этого кеша.
-    """
+    """Сбросить весь кеш — кнопкой в «Системе» или при смене расписания."""
     async with async_session_maker() as session:
         deleted = (await session.execute(delete(TravelCache))).rowcount or 0
-        deleted += (await session.execute(delete(SolverMemory))).rowcount or 0
         await session.execute(
             update(TravelCacheState).where(TravelCacheState.id == 1).values(cleaned_at=func.now())
         )

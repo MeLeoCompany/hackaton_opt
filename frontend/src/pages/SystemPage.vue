@@ -104,17 +104,16 @@ async function loadTravelCache() {
 
 const travelCacheSummary = computed(() => {
   const cache = travelCache.value
-  if (!cache.matrix_pairs && !cache.routes && !cache.solutions) return `пусто · хранится ${cache.keep_days} дней`
+  if (!cache.matrix_pairs && !cache.routes) return `пусто · хранится ${cache.keep_days} дней`
   const oldest = cache.oldest_at ? ` · самая старая запись ${moment(cache.oldest_at)}` : ''
   return (
     `пар матрицы ${cache.matrix_pairs.toLocaleString('ru-RU')}, плеч маршрутов ` +
-    `${cache.routes.toLocaleString('ru-RU')}, решений cuOpt ${cache.solutions.toLocaleString('ru-RU')} · ` +
-    `хранится ${cache.keep_days} дней${oldest}`
+    `${cache.routes.toLocaleString('ru-RU')} · хранится ${cache.keep_days} дней${oldest}`
   )
 })
 
 async function resetTravelCache() {
-  if (!window.confirm('Сбросить кеш маршрутов? Следующие расчёты заново спросят R5 и решат задачу с нуля — первый будет дольше.')) return
+  if (!window.confirm('Сбросить кеш маршрутов R5? Следующие расчёты заново спросят R5 — первый будет дольше.')) return
   clearingCache.value = true
   try {
     const { deleted } = await clearTravelCache()
@@ -288,9 +287,9 @@ onMounted(() => {
             <!-- кеш ответов R5: сколько лежит; сбросить — после замены карты или расписания -->
             <tr v-if="travelCache" class="cache-row">
               <td>
-                <strong>Кеш маршрутов</strong>
+                <strong>Кеш маршрутов R5</strong>
                 <InfoHint
-                  text="Ответы R5 (матрица и плечи общественного транспорта) и решения cuOpt: одинаковые запросы не считаются второй раз, а одинаковая задача даёт тот же план. Записи старше срока удаляются раз в сутки, при смене расписания GTFS — все сразу. Сбросьте вручную, если заменили карту."
+                  text="Матрица и плечи маршрутов общественного транспорта: одинаковые запросы R5 не считает второй раз. Записи старше срока удаляются раз в сутки, при смене расписания GTFS — все сразу. Сбросьте вручную, если заменили карту."
                 />
               </td>
               <td class="summary">{{ travelCacheSummary }}</td>
@@ -298,7 +297,7 @@ onMounted(() => {
                 <button
                   type="button"
                   class="link"
-                  :disabled="clearingCache || (!travelCache.matrix_pairs && !travelCache.routes && !travelCache.solutions)"
+                  :disabled="clearingCache || (!travelCache.matrix_pairs && !travelCache.routes)"
                   @click="resetTravelCache"
                 >
                   {{ clearingCache ? 'Сбрасываю…' : 'Сбросить' }}

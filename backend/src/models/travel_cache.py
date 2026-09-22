@@ -36,13 +36,3 @@ class TravelCacheState(Base):
     gtfs_fingerprint: Mapped[str | None] = mapped_column(Text)
     cleaned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-
-class SolverMemory(Base):
-    """Решение cuOpt по отпечатку входа (db/init/045): одинаковая задача — одинаковый ответ."""
-
-    __tablename__ = "solver_memory"
-
-    input_hash: Mapped[str] = mapped_column(Text, primary_key=True)
-    route_records: Mapped[list] = mapped_column(JSONB)
-    objective: Mapped[float | None] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
