@@ -214,6 +214,9 @@ class PlanSummary(BaseModel):
     superseded_at: datetime | None = None
     # какой пересчёт его заменил: по цепочке планов видно, что происходило за день
     replaced_by_plan_id: int | None = None
+    # посчитанный, но не утверждённый пересчёт этого плана: пока он есть, выезд бригад закрыт —
+    # его надо утвердить или удалить, а не считать ещё один (docs/algoV2.md, шаг 8)
+    pending_replan_id: int | None = None
     # черновик посчитан после решений оператора по невлезшим заявкам другого черновика
     decisions_from_plan_id: int | None = None
     decisions_count: int | None = None

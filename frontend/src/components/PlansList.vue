@@ -16,6 +16,8 @@ const props = defineProps({
   heldRequests: { type: Array, default: () => [] },
   // план, чья плашка «стоит пересчитать» открыта: его «Пересчитать» подсвечена
   attentionPlanId: { type: Number, default: null },
+  // а если пересчёт уже посчитан — подсвечено «Утвердить» у самого пересчёта
+  attentionReplanId: { type: Number, default: null },
 })
 defineEmits(['select', 'remove', 'approve', 'cancel-approval', 'replan-info', 'replan'])
 
@@ -143,6 +145,14 @@ function solveDuration(summary) {
             <span v-else-if="summary.approved_at" class="badge approved" title="Заявки этого плана закреплены за днём">
               действует с {{ moscowTimeOf(summary.approved_at) }}
             </span>
+            <!-- пересчёт посчитан, но не утверждён: пока он есть, бригады не выезжают -->
+            <span v-if="summary.pending_replan_id" class="replan-of">
+              пересчёт
+              <button class="link plan-link" @click.stop="$emit('select', summary.pending_replan_id)">
+                №{{ summary.pending_replan_id }}
+              </button>
+              ждёт утверждения
+            </span>
             <span v-else class="muted">черновик</span>
           </td>
           <td>
@@ -151,7 +161,7 @@ function solveDuration(summary) {
             <div v-else class="row-actions">
               <button
                 v-if="summary.approved_at"
-                :class="['primary', { 'attention-pulse': summary.id === attentionPlanId }]"
+                :class="['primary', { 'attention-pulse': summary.id === attentionPlanId && !summary.pending_replan_id }]"
                 :disabled="busy"
                 title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
                 @click.stop="$emit('replan', summary)"
@@ -170,6 +180,7 @@ function solveDuration(summary) {
               </button>
               <button
                 v-if="!summary.approved_at"
+                :class="{ 'attention-pulse': summary.id === attentionReplanId }"
                 :disabled="busy || Boolean(approveBlockedBy(summary))"
                 :title="
                   approveBlockedBy(summary)

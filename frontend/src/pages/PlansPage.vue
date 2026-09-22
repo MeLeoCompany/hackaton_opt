@@ -340,6 +340,7 @@ onMounted(async () => {
           :busy="building"
           :held-requests="dayCheck?.held_requests ?? []"
           :attention-plan-id="replanSummary?.approved_at ? replanSummary.id : null"
+          :attention-replan-id="replanSummary?.pending_replan_id ?? null"
           @select="openPlan"
           @remove="removePlan"
           @approve="requestApproval"
@@ -415,7 +416,12 @@ onMounted(async () => {
           </button>
           <button
             v-if="openedSummary?.approved_at && !openedSummary?.superseded_at"
-            :class="['primary', 'replan-button', { 'attention-pulse': replanSummary?.approved_at && replanSummary.id === openedSummary.id }]"
+            :class="['primary', 'replan-button', {
+              'attention-pulse':
+                replanSummary?.approved_at &&
+                replanSummary.id === openedSummary.id &&
+                !replanSummary.pending_replan_id,
+            }]"
             :disabled="building"
             title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
             @click="replanTarget = openedSummary"
@@ -448,6 +454,7 @@ onMounted(async () => {
               @visit-status-changed="markVisitStatus"
               @allow-departure="allowDeparture"
               :chosen-legs="chosenLegs"
+              :pending-replan-id="openedSummary?.pending_replan_id ?? null"
               @choose-legs="chooseLegs"
               v-model:sync-selected="syncSelected"
               :syncable="syncable"

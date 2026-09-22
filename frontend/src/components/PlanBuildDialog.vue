@@ -279,6 +279,16 @@ async function submit() {
         </template>
       </section>
 
+      <!-- один пересчёт уже посчитан и не утверждён: пока он есть, бригады не выезжают -->
+      <p v-if="replanOf?.pending_replan_id" class="warning">
+        <span class="mark">!</span>
+        <span>
+          Пересчёт №{{ replanOf.pending_replan_id }} уже посчитан и ждёт утверждения. Пока он
+          не утверждён, бригады не выезжают. Лучше закрыть это окно и утвердить его — или
+          удалить, если он не нужен. Новый расчёт добавит ещё один неутверждённый пересчёт.
+        </span>
+      </p>
+
       <p v-if="heldRequests.length && !replanOf" class="warning">
         <span class="mark">!</span>
         <span>

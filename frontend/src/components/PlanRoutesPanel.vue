@@ -30,6 +30,8 @@ const props = defineProps({
   // участки маршрута, показанные на карте: { engineerId, indexes } — индекс визита, к которому
   // ведёт участок; null — маршрут целиком
   chosenLegs: { type: Object, default: null },
+  // посчитанный, но не утверждённый пересчёт плана: из-за него закрыт выезд у всех бригад
+  pendingReplanId: { type: Number, default: null },
 })
 const emit = defineEmits([
   'select-engineer',
@@ -135,7 +137,10 @@ const WAITING_CAUSES = {
 function waitingText(route) {
   if (!props.approved || !route.waiting_reason) return ''
   const late = lateParts(route)
-  const cause = WAITING_CAUSES[route.waiting_cause]
+  const ready = route.waiting_cause === 'replan_pending' && props.pendingReplanId
+  const cause = ready
+    ? `пересчёт №${props.pendingReplanId} посчитан — утвердите`
+    : WAITING_CAUSES[route.waiting_cause]
   const since = route.waiting_since ? ` с ${moscowTimeOf(route.waiting_since)}` : ''
   const listed = late.some((part) => part.startsWith('не успевает к окну'))
   return [`ждёт плана${since}`, ...late, ...(cause && !(route.waiting_cause === 'at_risk' && listed) ? [cause] : [])].join(' · ')

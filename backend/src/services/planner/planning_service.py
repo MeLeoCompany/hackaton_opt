@@ -696,6 +696,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
     counts = await plans_repository.count_assignments_by_plan(session, plan_ids)
     assigned_request_ids = await plans_repository.assigned_request_ids_by_plan(session, plan_ids)
     replaced_by = await plans_repository.approved_replan_of(session, plan_ids)
+    pending_replan = await plans_repository.pending_replan_of(session, plan_ids)
     summaries = []
     for plan in plans:
         engineers_used, assigned, unassigned = counts.get(plan.id, (0, 0, 0))
@@ -726,6 +727,9 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 replanned_at=getattr(plan, "replanned_at", None),
                 superseded_at=getattr(plan, "superseded_at", None),
                 replaced_by_plan_id=replaced_by.get(plan.id),
+                pending_replan_id=(
+                    pending_replan.get(plan.id) if plan.approved_at is not None else None
+                ),
                 decisions_from_plan_id=getattr(plan, "decisions_from_plan_id", None),
                 decisions_count=getattr(plan, "decisions_count", None),
                 can_cancel_approval=(

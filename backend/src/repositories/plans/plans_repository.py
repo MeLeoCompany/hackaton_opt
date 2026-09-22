@@ -270,6 +270,22 @@ async def approved_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict
     return {parent_id: plan_id for parent_id, plan_id in result.all()}
 
 
+async def pending_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[int, int]:
+    """Посчитанный, но не утверждённый пересчёт каждого плана: id родителя -> id пересчёта.
+
+    Пока он есть, выезд бригад закрыт (departure_gate), поэтому его надо утвердить или удалить,
+    а не считать ещё один. Если пересчётов несколько, берётся последний.
+    """
+    if not plan_ids:
+        return {}
+    result = await session.execute(
+        select(Plan.parent_plan_id, Plan.id)
+        .where(Plan.parent_plan_id.in_(plan_ids), Plan.approved_at.is_(None))
+        .order_by(Plan.id)
+    )
+    return {parent_id: plan_id for parent_id, plan_id in result.all()}
+
+
 async def has_unapproved_replan(session: AsyncSession, plan_id: int) -> bool:
     """Есть ли у плана посчитанный, но не утверждённый пересчёт (docs/algoV2.md, шаг 8)."""
     result = await session.execute(

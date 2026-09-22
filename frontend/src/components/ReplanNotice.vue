@@ -16,6 +16,10 @@ defineEmits(['close'])
 
 const { openRequest } = usePlanFocus()
 
+// пересчёт уже посчитан и ждёт утверждения: пока он есть, выезд бригад закрыт,
+// поэтому звать считать ещё раз нельзя — надо утвердить или удалить этот
+const pending = computed(() => props.summary.pending_replan_id ?? null)
+
 const withdrawn = computed(() => props.summary.withdrawn_requests ?? [])
 // аварийные — часть новых: показываем их первым пунктом и в остальных новых не повторяем
 const emergency = computed(() => props.summary.urgent_request_ids ?? [])
@@ -30,7 +34,18 @@ function howWithdrawn(item) {
 </script>
 
 <template>
-  <ErrorMessage :message="`План №${summary.id} стоит пересчитать`" @close="$emit('close')">
+  <ErrorMessage
+    :message="
+      pending
+        ? `Пересчёт №${pending} посчитан — утвердите его`
+        : `План №${summary.id} стоит пересчитать`
+    "
+    @close="$emit('close')"
+  >
+    <p v-if="pending" class="replan-pending">
+      Пока пересчёт не утверждён, бригады ждут нового плана и не выезжают. Утвердите его — или
+      удалите, если он не нужен, и бригады поедут по этому плану.
+    </p>
     <ul class="replan-reasons">
       <li v-if="emergency.length">
         Новые аварийные заявки — план их не видел, а их нужно выполнить в первую очередь:
@@ -78,4 +93,11 @@ function howWithdrawn(item) {
   text-decoration: underline;
 }
 
+
+/* пересчёт ждёт утверждения: главное, что нужно сделать прямо сейчас */
+.replan-pending {
+  margin: 6px 0 0;
+  color: #7f1d1d;
+  font-weight: 600;
+}
 </style>
