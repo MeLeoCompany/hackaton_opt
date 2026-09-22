@@ -34,12 +34,29 @@ STREET_TYPES = {
 
 
 def search_query(address: str) -> str:
+    value = address
+    value = re.sub(r"^г\.?Город Москва,?\s*", "Москва, ", value, flags=re.IGNORECASE)
+    value = re.sub(r"^(?:г\.)?Город Москва,?\s*", "Москва, ", value, flags=re.IGNORECASE)
     value = re.sub(
-        r"^(?:г\.)?Город Москва,\s*", "Москва, ", address, flags=re.IGNORECASE
+        r"^(?:обл\.)?Московская область,?\s*", "Московская область, ", value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(r"^МО(?:,|\s)+", "Московская область, ", value, flags=re.IGNORECASE)
+    value = re.sub(r"(?<!\w)г\.\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"(?<!\w)пгт\.\s*", "посёлок ", value, flags=re.IGNORECASE)
+    value = re.sub(r"(?<!\w)пр-зд\.?(?=\s|$)", "проезд", value, flags=re.IGNORECASE)
+    value = re.sub(
+        r"(?:,|\s)([А-Яа-яЁё0-9-]+)\s+ул\.?(?=\s|,)",
+        r", улица \1",
+        value,
+        flags=re.IGNORECASE,
     )
     for short, full in STREET_TYPES.items():
         value = re.sub(
-            rf"(?<!\w){re.escape(short)}\.", full + " ", value, flags=re.IGNORECASE
+            rf"(?<!\w){re.escape(short)}(?:\.|\s+)",
+            full + " ",
+            value,
+            flags=re.IGNORECASE,
         )
     value = re.sub(r"(?<!\w)д\.\s*", "", value, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", value).strip()

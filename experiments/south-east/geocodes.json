@@ -1,0 +1,471 @@
+{
+  "Город Москва, проезд.Гурьевский, д. 23 к 1": {
+    "status": "exact_house",
+    "latitude": 55.607424,
+    "longitude": 37.753662,
+    "matched_house": "23 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Кустанайская, д. 8 к 1": {
+    "status": "exact_house",
+    "latitude": 55.61886,
+    "longitude": 37.751604,
+    "matched_house": "8 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ш.Каширское, д. 136": {
+    "status": "exact_house",
+    "latitude": 55.599662,
+    "longitude": 37.721909,
+    "matched_house": "136",
+    "osm_type": "apartments"
+  },
+  "Домодедово, ул.Зеленая, д. 85": {
+    "status": "exact_house",
+    "latitude": 55.425109,
+    "longitude": 37.770059,
+    "matched_house": "85",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Москворечье, д. 4 к 6": {
+    "status": "exact_house",
+    "latitude": 55.643317,
+    "longitude": 37.654848,
+    "matched_house": "4 к6",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Загорьевский, д. 9": {
+    "status": "exact_house",
+    "latitude": 55.578085,
+    "longitude": 37.677552,
+    "matched_house": "9",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Бирюлёвская, д. 39": {
+    "status": "exact_house",
+    "latitude": 55.588126,
+    "longitude": 37.665877,
+    "matched_house": "39",
+    "osm_type": "apartments"
+  },
+  "Кашира, ул.Победы, д. 9": {
+    "status": "exact_house",
+    "latitude": 54.838645,
+    "longitude": 38.193432,
+    "matched_house": "9",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Братеевская, д. 18 к 1": {
+    "status": "exact_house",
+    "latitude": 55.636244,
+    "longitude": 37.769258,
+    "matched_house": "18 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, б-р.Ореховый, д. 35 к 1": {
+    "status": "exact_house",
+    "latitude": 55.614938,
+    "longitude": 37.735426,
+    "matched_house": "35 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, пр-кт.Пролетарский, д. 14А": {
+    "status": "exact_house",
+    "latitude": 55.636011,
+    "longitude": 37.653363,
+    "matched_house": "14А",
+    "osm_type": "apartments"
+  },
+  "Домодедово, ул.Корнеева, д. 50": {
+    "status": "exact_house",
+    "latitude": 55.422667,
+    "longitude": 37.777954,
+    "matched_house": "50",
+    "osm_type": "apartments"
+  },
+  "Домодедово, ул.Корнеева, д. 40": {
+    "status": "exact_house",
+    "latitude": 55.425513,
+    "longitude": 37.778349,
+    "matched_house": "40",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Ереванская, д. 29": {
+    "status": "exact_house",
+    "latitude": 55.629584,
+    "longitude": 37.679058,
+    "matched_house": "29",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Севанская, д. 15 к 1": {
+    "status": "exact_house",
+    "latitude": 55.623495,
+    "longitude": 37.653893,
+    "matched_house": "15 к1",
+    "osm_type": "apartments"
+  },
+  "Кашира, ул.Садовая, д. 18": {
+    "status": "exact_house",
+    "latitude": 54.842329,
+    "longitude": 38.245398,
+    "matched_house": "18",
+    "osm_type": "yes"
+  },
+  "Город Москва, ул.Паромная, д. 9 к 1": {
+    "status": "exact_house",
+    "latitude": 55.636913,
+    "longitude": 37.763098,
+    "matched_house": "9 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Братеевская, д. 16 к 1": {
+    "status": "exact_house",
+    "latitude": 55.634346,
+    "longitude": 37.765894,
+    "matched_house": "16 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Борисовские Пруды, д. 20 к 1": {
+    "status": "exact_house",
+    "latitude": 55.637983,
+    "longitude": 37.751842,
+    "matched_house": "20 к1",
+    "osm_type": "apartments"
+  },
+  "Кашира, ул.Юбилейная, д. 9": {
+    "status": "exact_house",
+    "latitude": 54.840088,
+    "longitude": 38.249487,
+    "matched_house": "9",
+    "osm_type": "yes"
+  },
+  "Город Москва, б-р.Ореховый, д. 7 к 1": {
+    "status": "exact_house",
+    "latitude": 55.609666,
+    "longitude": 37.706047,
+    "matched_house": "7 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ш.Каширское, д. 94 к 1": {
+    "status": "exact_house",
+    "latitude": 55.614969,
+    "longitude": 37.713784,
+    "matched_house": "94 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, б-р.Ореховый, д. 11 к 1": {
+    "status": "exact_house",
+    "latitude": 55.610875,
+    "longitude": 37.712846,
+    "matched_house": "11 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Борисовский, д. 44 к 3": {
+    "status": "exact_house",
+    "latitude": 55.614413,
+    "longitude": 37.722695,
+    "matched_house": "44 к3",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Ореховый, д. 41": {
+    "status": "exact_house",
+    "latitude": 55.616534,
+    "longitude": 37.730724,
+    "matched_house": "41",
+    "osm_type": "apartments"
+  },
+  "Домодедово, ул.Ильюшина, д. 20": {
+    "status": "exact_house",
+    "latitude": 55.410537,
+    "longitude": 37.837823,
+    "matched_house": "20",
+    "osm_type": "apartments"
+  },
+  "Кашира, ул.Юбилейная, д. 8": {
+    "status": "exact_house",
+    "latitude": 54.841963,
+    "longitude": 38.248056,
+    "matched_house": "8",
+    "osm_type": "yes"
+  },
+  "Город Москва, ул.Кустанайская, д. 9 к 1": {
+    "status": "exact_house",
+    "latitude": 55.618075,
+    "longitude": 37.754316,
+    "matched_house": "9 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, пр-кт.Пролетарский, д. 18 к 4": {
+    "status": "exact_house",
+    "latitude": 55.633855,
+    "longitude": 37.65384,
+    "matched_house": "18 к4",
+    "osm_type": "apartments"
+  },
+  "Кашира, ул.Кржижановского, д. 7": {
+    "status": "exact_house",
+    "latitude": 54.83987,
+    "longitude": 38.239905,
+    "matched_house": "7",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Медынская, д. 5 к 1": {
+    "status": "exact_house",
+    "latitude": 55.589995,
+    "longitude": 37.648374,
+    "matched_house": "5 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Борисовские Пруды, д. 48 к 2": {
+    "status": "exact_house",
+    "latitude": 55.641823,
+    "longitude": 37.7748,
+    "matched_house": "48 к2",
+    "osm_type": "apartments"
+  },
+  "Ступино, ул.Калинина, д. 34": {
+    "status": "exact_house",
+    "latitude": 54.891794,
+    "longitude": 38.069205,
+    "matched_house": "34",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Шипиловский, д. 59 к 2": {
+    "status": "exact_house",
+    "latitude": 55.606056,
+    "longitude": 37.706711,
+    "matched_house": "59 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Востряковский, д. 15 к 2": {
+    "status": "exact_house",
+    "latitude": 55.576055,
+    "longitude": 37.646168,
+    "matched_house": "15 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Бирюлёвская, д. 58 к 3": {
+    "status": "exact_house",
+    "latitude": 55.58067,
+    "longitude": 37.668148,
+    "matched_house": "58 к3",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Домодедовская, д. 31": {
+    "status": "exact_house",
+    "latitude": 55.6039,
+    "longitude": 37.716126,
+    "matched_house": "31",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Весёлая, д. 33 к 7": {
+    "status": "exact_house",
+    "latitude": 55.623513,
+    "longitude": 37.663133,
+    "matched_house": "33 к7",
+    "osm_type": "apartments"
+  },
+  "Домодедово, ул.Ильюшина, д. 11 к 2": {
+    "status": "exact_house",
+    "latitude": 55.414487,
+    "longitude": 37.842475,
+    "matched_house": "11 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Востряковский, д. 15 к 4": {
+    "status": "exact_house",
+    "latitude": 55.576874,
+    "longitude": 37.64924,
+    "matched_house": "15 к4",
+    "osm_type": "apartments"
+  },
+  "Домодедово, ул.Корнеева, д. 48": {
+    "status": "exact_house",
+    "latitude": 55.423584,
+    "longitude": 37.778289,
+    "matched_house": "48",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Луганская, д. 4 к 1": {
+    "status": "exact_house",
+    "latitude": 55.624817,
+    "longitude": 37.665112,
+    "matched_house": "4 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Луганская, д. 3 к 1": {
+    "status": "exact_house",
+    "latitude": 55.627836,
+    "longitude": 37.664554,
+    "matched_house": "3 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Луганская, д. 1": {
+    "status": "exact_house",
+    "latitude": 55.628703,
+    "longitude": 37.66372,
+    "matched_house": "1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Кантемировская, д. 5 к 2": {
+    "status": "exact_house",
+    "latitude": 55.635114,
+    "longitude": 37.677397,
+    "matched_house": "5 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Загорьевский, д. 7 к 2": {
+    "status": "exact_house",
+    "latitude": 55.574132,
+    "longitude": 37.666365,
+    "matched_house": "7 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Маршала Захарова, д. 18 к 1": {
+    "status": "exact_house",
+    "latitude": 55.620441,
+    "longitude": 37.695885,
+    "matched_house": "18 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Генерала Белова, д. 45 к 2": {
+    "status": "exact_house",
+    "latitude": 55.607211,
+    "longitude": 37.726134,
+    "matched_house": "45 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Шипиловская, д. 38": {
+    "status": "exact_house",
+    "latitude": 55.620511,
+    "longitude": 37.724507,
+    "matched_house": "38",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Гурьевский, д. 19 к 2": {
+    "status": "exact_house",
+    "latitude": 55.607134,
+    "longitude": 37.750341,
+    "matched_house": "19 к2",
+    "osm_type": "apartments"
+  },
+  "Город Москва, проезд.Ореховый, д. 23 к 1": {
+    "status": "exact_house",
+    "latitude": 55.622825,
+    "longitude": 37.731378,
+    "matched_house": "23 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Булатниковская, д. 4 к 1": {
+    "status": "exact_house",
+    "latitude": 55.581201,
+    "longitude": 37.647514,
+    "matched_house": "4 к1",
+    "osm_type": "apartments"
+  },
+  "Город Москва, б-р.Ореховый, д. 61 к 1": {
+    "status": "exact_house",
+    "latitude": 55.617082,
+    "longitude": 37.758389,
+    "matched_house": "61 к1",
+    "osm_type": "apartments"
+  },
+  "Домодедово, проезд.Кутузовский, д. 16": {
+    "status": "exact_house",
+    "latitude": 55.437187,
+    "longitude": 37.761946,
+    "matched_house": "16",
+    "osm_type": "yes"
+  },
+  "Кашира, ул.Ленина, д. 11 к 3": {
+    "status": "exact_house",
+    "latitude": 54.842912,
+    "longitude": 38.190727,
+    "matched_house": "11 к3",
+    "osm_type": "apartments"
+  },
+  "Кашира, ул.Металлургов, д. 5 к 3": {
+    "status": "exact_house",
+    "latitude": 54.840998,
+    "longitude": 38.189764,
+    "matched_house": "5 к3",
+    "osm_type": "apartments"
+  },
+  "Город Москва, ул.Мусы Джалиля, д. 9 к 1": {
+    "status": "exact_house",
+    "latitude": 55.62745,
+    "longitude": 37.743797,
+    "matched_house": "9 к1",
+    "osm_type": "apartments"
+  },
+  "Домодедово, проезд.Советский 1-й, д. 1А": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.6-я Радиальная, д. 5 к 3": {
+    "status": "not_found"
+  },
+  "Город Москва, ул.6-я Радиальная, д. 7/1 к 2": {
+    "status": "not_found"
+  },
+  "Кашира, ул.Садовая, д. 2/11": {
+    "status": "review_required"
+  },
+  "Кашира, ул.8 Марта, д. 22": {
+    "status": "review_required"
+  },
+  "Домодедово, ул.Гагарина, д. 55/2": {
+    "status": "review_required"
+  },
+  "Домодедово, ул.1-я Коммунистическая, д. 39": {
+    "status": "not_found"
+  },
+  "обл.Московская область, г.Домодедово, пгт.Востряково-1, ул.Жуковского, д. 14/18": {
+    "status": "not_found"
+  },
+  "МО, г. Кашира Центральная ул. д. 21": {
+    "status": "exact_house",
+    "latitude": 54.842123,
+    "longitude": 38.239767,
+    "matched_house": "21",
+    "osm_type": "apartments"
+  },
+  "МО, г. Кашира Кржижановского ул. д. 5/1": {
+    "status": "review_required"
+  },
+  "МО, г. Кашира Кржижановского ул. д. 7к2": {
+    "status": "review_required"
+  },
+  "МО, г. Кашира Кржижановского ул. д. 5/3": {
+    "status": "review_required"
+  },
+  "МО, г. Кашира Кржижановского ул. д. 5/2": {
+    "status": "review_required"
+  },
+  "МО, г. Ступино Андропова ул. д. 37": {
+    "status": "exact_house",
+    "latitude": 54.885827,
+    "longitude": 38.08216,
+    "matched_house": "37",
+    "osm_type": "apartments"
+  },
+  "МО, г. Ступино Андропова ул. д. 33": {
+    "status": "exact_house",
+    "latitude": 54.885756,
+    "longitude": 38.082999,
+    "matched_house": "33",
+    "osm_type": "apartments"
+  },
+  "МО, г. Кашира Центральная ул. д. 19": {
+    "status": "exact_house",
+    "latitude": 54.841513,
+    "longitude": 38.240773,
+    "matched_house": "19",
+    "osm_type": "yes"
+  },
+  "Москва Бирюлевская ул. д. 44": {
+    "status": "review_required"
+  },
+  "Москва Булатниковский пр-зд. д. 6к1": {
+    "status": "review_required"
+  }
+}

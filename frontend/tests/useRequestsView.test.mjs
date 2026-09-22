@@ -15,11 +15,13 @@ async function harness(requests) {
     watch: () => {},
   }
   globalThis.__vueStub = vue
+  globalThis.__timeStub = { useSystemTime: () => ({ now: { value: new Date('2026-08-17T09:00:00Z') } }) }
   const moduleUrl = new URL('../src/composables/useRequestsView.js', import.meta.url)
   const fs = await import('node:fs')
   const source = fs
     .readFileSync(moduleUrl, 'utf8')
     .replace("import { computed, reactive, ref, watch } from 'vue'", 'const { computed, reactive, ref, watch } = globalThis.__vueStub')
+    .replace("import { useSystemTime } from './useSystemTime.js'", 'const { useSystemTime } = globalThis.__timeStub')
     .replaceAll("from '../utils/", `from '${new URL('../src/utils/', import.meta.url).href}`)
   const dataUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
   const { useRequestsView } = await import(dataUrl)
