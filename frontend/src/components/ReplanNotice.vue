@@ -12,7 +12,7 @@ const props = defineProps({
   summary: { type: Object, required: true },
   references: { type: Object, required: true },
 })
-defineEmits(['close', 'replan'])
+defineEmits(['close'])
 
 const { openRequest } = usePlanFocus()
 
@@ -58,10 +58,10 @@ function howWithdrawn(item) {
         </span>
       </li>
     </ul>
+    <!-- своей кнопки нет: пока плашка открыта, подсвечена кнопка «Пересчитать» у самого плана -->
     <p class="replan-how">
-      Пересчёт с текущего момента оставит выполненное и начатое за бригадами и разложит остальное
-      заново — получится новый план, его утверждение заменит этот.
-      <button type="button" class="primary" @click="$emit('replan')">Пересчитать</button>
+      Нажмите подсвеченную «Пересчитать»: выполненное и начатое останется за бригадами, остальное
+      разложится заново — получится новый план, его утверждение заменит этот.
     </p>
   </ErrorMessage>
 </template>

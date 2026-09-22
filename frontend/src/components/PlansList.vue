@@ -14,6 +14,8 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
   // заявки дня, занятые утверждённым планом другого дня — о них предупреждаем у каждой строки
   heldRequests: { type: Array, default: () => [] },
+  // план, чья плашка «стоит пересчитать» открыта: его «Пересчитать» подсвечена
+  attentionPlanId: { type: Number, default: null },
 })
 defineEmits(['select', 'remove', 'approve', 'cancel-approval', 'replan-info', 'replan'])
 
@@ -149,7 +151,7 @@ function solveDuration(summary) {
             <div v-else class="row-actions">
               <button
                 v-if="summary.approved_at"
-                class="primary"
+                :class="['primary', { 'attention-pulse': summary.id === attentionPlanId }]"
                 :disabled="busy"
                 title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
                 @click.stop="$emit('replan', summary)"

@@ -103,21 +103,42 @@ function brigadeState(route) {
 // отставание от плана по отметкам бригады: меньше 5 минут — не шум
 const LATE_MINUTES = 5
 
-function lateText(route) {
-  if (!props.approved || (route.delay_minutes ?? 0) < LATE_MINUTES) return ''
-  // маршрут закрыт — опаздывать уже некуда; иначе после перемотки времени висят «803 ч»
+// опоздание и заявки, к окнам которых уже не успеть; пусто — идёт по плану
+function lateParts(route) {
+  if (!props.approved) return []
+  const parts = []
   const { done, total } = routeProgress(route, props.references, props.plan.id)
-  if (total && done >= total) return ''
+  // маршрут закрыт — опаздывать уже некуда; иначе после перемотки времени висят «803 ч»
+  if ((route.delay_minutes ?? 0) >= LATE_MINUTES && !(total && done >= total)) {
+    parts.push(`опаздывает на ${formatDuration(route.delay_minutes)}`)
+  }
   const atRisk = route.at_risk_request_ids ?? []
-  const risk = atRisk.length ? ` · не успевает к окну: ${atRisk.map((id) => `№${id}`).join(', ')}` : ''
-  return `опаздывает на ${formatDuration(route.delay_minutes)}${risk}`
+  if (parts.length && atRisk.length) parts.push(`не успевает к окну: ${atRisk.map((id) => `№${id}`).join(', ')}`)
+  return parts
+}
+
+function lateText(route) {
+  // ждёт плана — опоздание уже в строке ожидания, второй раз не пишем
+  if (waitingText(route)) return ''
+  return lateParts(route).join(' · ')
+}
+
+const WAITING_CAUSES = {
+  replan_pending: 'идёт пересчёт',
+  not_departed: 'не выехала по плану',
+  at_risk: 'к окну уже не успеть',
 }
 
 // бригада выбилась из плана: выезд закрыт, пока оператор не разрешит или не пересчитает
-// (docs/algoV2.md, шаги 7-9)
+// (docs/algoV2.md, шаги 7-9). Одной строкой вместе с опозданием: причина «к окну не
+// успеть» не повторяется, если список таких заявок уже есть
 function waitingText(route) {
   if (!props.approved || !route.waiting_reason) return ''
-  return `ждёт плана · ${route.waiting_reason}`
+  const late = lateParts(route)
+  const cause = WAITING_CAUSES[route.waiting_cause]
+  const since = route.waiting_since ? ` с ${moscowTimeOf(route.waiting_since)}` : ''
+  const listed = late.some((part) => part.startsWith('не успевает к окну'))
+  return [`ждёт плана${since}`, ...late, ...(cause && !(route.waiting_cause === 'at_risk' && listed) ? [cause] : [])].join(' · ')
 }
 
 function visitMarkName(visit) {
@@ -334,7 +355,7 @@ watch(() => props.plan.id, () => {
                 title="Клиент согласился подождать: бригада едет как есть"
                 @click.stop="emit('allow-departure', route.waiting_request_id)"
               >
-                Разрешить выезд
+                Разрешить выезд к №{{ route.waiting_request_id }}
               </button>
             </p>
             <p class="muted">
@@ -503,7 +524,7 @@ watch(() => props.plan.id, () => {
                     title="Клиент согласился подождать: бригада едет как есть"
                     @click.stop="emit('allow-departure', route.waiting_request_id)"
                   >
-                    Разрешить выезд
+                    Разрешить выезд к №{{ route.waiting_request_id }}
                   </button>
                 </span>
               </td>

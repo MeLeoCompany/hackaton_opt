@@ -972,3 +972,29 @@ button.link:disabled {
   background: #f1f5f9;
   color: #64748b;
 }
+
+/* кнопка, на которую указывает подсказка (например, «Пересчитать» при открытой плашке
+   «план стоит пересчитать»): синяя рамка с отступом, как у фокуса, и мягкое свечение —
+   заметно, но спокойно */
+.attention-pulse {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+  animation: attention-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes attention-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(37 99 235 / 0%);
+  }
+
+  50% {
+    box-shadow: 0 0 0 7px rgb(37 99 235 / 22%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attention-pulse {
+    animation: none;
+  }
+}

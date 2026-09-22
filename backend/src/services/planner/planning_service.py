@@ -767,6 +767,9 @@ def set_waiting(route: EngineerRoute, facts: dict, replan_pending: bool) -> None
         cause = departure_gate.OPERATOR_REASON.get(check.reason, check.reason)
         route.waiting_request_id = next_visit.request_id
         route.waiting_reason = f"с {since} · {cause} · ближайшая заявка №{next_visit.request_id}"
+        # то же по частям: интерфейс собирает одну строку вместе с опозданием, без повторов
+        route.waiting_since = next_visit.planned_arrival_time
+        route.waiting_cause = departure_gate.REASON_CODE.get(check.reason)
 
 
 async def allow_departure(

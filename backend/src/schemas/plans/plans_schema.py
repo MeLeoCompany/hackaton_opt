@@ -304,6 +304,10 @@ class EngineerRoute(BaseModel):
     # бригада выбилась из плана и ждёт нового: выезд на следующую заявку закрыт
     waiting_request_id: int | None = None
     waiting_reason: str | None = None
+    # с какого времени ждёт (плановое начало ближайшей заявки) и почему кодом:
+    # replan_pending — идёт пересчёт, not_departed — не выехала, at_risk — к окну не успеть
+    waiting_since: datetime | None = None
+    waiting_cause: str | None = None
     shift_start: datetime
     shift_end: datetime
     visits: list[PlanVisit]

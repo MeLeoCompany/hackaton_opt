@@ -327,7 +327,6 @@ onMounted(async () => {
         :summary="replanSummary"
         :references="references"
         @close="replanPlanId = null"
-        @replan="replanTarget = replanSummary"
       />
 
       <p v-if="loadingDays" class="muted">Загружаю планы…</p>
@@ -340,6 +339,7 @@ onMounted(async () => {
           :selected-plan-id="selectedPlanId"
           :busy="building"
           :held-requests="dayCheck?.held_requests ?? []"
+          :attention-plan-id="replanSummary?.approved_at ? replanSummary.id : null"
           @select="openPlan"
           @remove="removePlan"
           @approve="requestApproval"
@@ -371,7 +371,6 @@ onMounted(async () => {
         :summary="replanSummary"
         :references="references"
         @close="replanPlanId = null"
-        @replan="replanTarget = replanSummary"
       />
 
       <PlanRunProgress v-if="building" :run="planRun" @cancel="cancelRun" />
@@ -416,7 +415,7 @@ onMounted(async () => {
           </button>
           <button
             v-if="openedSummary?.approved_at && !openedSummary?.superseded_at"
-            class="primary replan-button"
+            :class="['primary', 'replan-button', { 'attention-pulse': replanSummary?.approved_at && replanSummary.id === openedSummary.id }]"
             :disabled="building"
             title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
             @click="replanTarget = openedSummary"
