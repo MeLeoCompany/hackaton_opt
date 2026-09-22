@@ -20,6 +20,12 @@ from src.services.travel import build_route
 TRANSIT_ID = TransportKind.PUBLIC_TRANSPORT.value
 logger = logging.getLogger(__name__)
 
+# Вставка одного визита меняет время выезда на всех следующих плечах. Проверяем
+# ограниченное число наиболее коротких по матрице вариантов, чтобы R5 не выполнял
+# тысячи подробных запросов при большом дне. Лимит потом калибруем на реальных днях.
+MAX_INSERTION_CHECKS_PER_REQUEST = 24
+MAX_INSERTION_CHECKS_PER_PLAN = 120
+
 
 def node_points(loaded: LoadedDay) -> list[Point]:
     starts = loaded.start_points or [
@@ -30,6 +36,34 @@ def node_points(loaded: LoadedDay) -> list[Point]:
         *starts,
         *(Point(latitude=float(r.latitude), longitude=float(r.longitude)) for r in loaded.requests),
     ]
+
+
+async def leg_duration(
+    loaded: LoadedDay,
+    points: list[Point],
+    cache: dict[tuple[int, int, int], int],
+    engineer_index: int,
+    previous: int,
+    next_node: int,
+    available: float,
+) -> int:
+    """Реальное время ОТ в момент выезда; другие режимы используют свою матрицу."""
+    engineer = loaded.instance.engineers[engineer_index]
+    if engineer.transport_id != TRANSIT_ID:
+        return int(loaded.instance.travel_min[engineer.transport_id][previous, next_node])
+    key = (previous, next_node, available)
+    if key not in cache:
+        try:
+            route = await build_route(
+                [points[previous], points[next_node]],
+                TransportKind.PUBLIC_TRANSPORT,
+                departure_time=loaded.day.from_minutes(available),
+                allow_fallback=False,
+            )
+        except (httpx.HTTPError, KeyError, ValueError) as error:
+            raise ExternalServiceError(f"R5 не смог проверить расписание плана: {error}") from error
+        cache[key] = math.ceil(route.duration_min - 1e-9)
+    return cache[key]
 
 
 async def check_schedule(
@@ -65,21 +99,9 @@ async def check_schedule(
         actual_visits = []
         for visit in visits:
             next_node = instance.request_node(visit.request_index)
-            key = (previous, next_node, available)
-            if key not in cache:
-                try:
-                    route = await build_route(
-                        [points[previous], points[next_node]],
-                        TransportKind.PUBLIC_TRANSPORT,
-                        departure_time=loaded.day.from_minutes(available),
-                        allow_fallback=False,
-                    )
-                except (httpx.HTTPError, KeyError, ValueError) as error:
-                    raise ExternalServiceError(
-                        f"R5 не смог проверить расписание плана: {error}"
-                    ) from error
-                cache[key] = math.ceil(route.duration_min - 1e-9)
-            duration = cache[key]
+            duration = await leg_duration(
+                loaded, points, cache, engineer_index, previous, next_node, available
+            )
             observations[previous, next_node] = max(
                 observations.get((previous, next_node), 0), duration
             )
@@ -181,6 +203,146 @@ def checked_solution_score(
     )
 
 
+def insertion_positions(
+    instance: ProblemInstance, solution: cuopt_solver.DaySolution, request_index: int
+) -> list[tuple[int, int]]:
+    """Позиции по приблизительному приросту километров, чередуя подходящие бригады."""
+    request_node = instance.request_node(request_index)
+    by_engineer: list[list[tuple[float, int, int]]] = []
+    for engineer_index in instance.candidates(request_index):
+        visits = solution.routes.get(engineer_index, [])
+        matrix = instance.distance_km[instance.engineers[engineer_index].transport_id]
+        choices = []
+        for position in range(len(visits) + 1):
+            previous = (
+                instance.start_node(engineer_index)
+                if position == 0
+                else instance.request_node(visits[position - 1].request_index)
+            )
+            next_node = (
+                instance.request_node(visits[position].request_index)
+                if position < len(visits)
+                else None
+            )
+            increase = float(matrix[previous, request_node])
+            if next_node is not None:
+                increase += float(matrix[request_node, next_node] - matrix[previous, next_node])
+            choices.append((increase, engineer_index, position))
+        by_engineer.append(sorted(choices))
+
+    # Сначала хотя бы один вариант для каждой бригады; затем самые дешёвые оставшиеся
+    # позиции независимо от бригады. Так лимит не съедают только первые маршруты.
+    first = sorted(choices.pop(0) for choices in by_engineer if choices)
+    remaining = sorted(choice for choices in by_engineer for choice in choices)
+    return [
+        (engineer_index, position)
+        for _, engineer_index, position in (first + remaining)[:MAX_INSERTION_CHECKS_PER_REQUEST]
+    ]
+
+
+async def inserted_route(
+    loaded: LoadedDay,
+    solution: cuopt_solver.DaySolution,
+    points: list[Point],
+    cache: dict[tuple[int, int, int], int],
+    engineer_index: int,
+    position: int,
+    request_index: int,
+) -> list[cuopt_solver.PlannedVisit] | None:
+    """Проверить новое плечо и весь изменившийся хвост маршрута по времени выезда."""
+    instance = loaded.instance
+    engineer = instance.engineers[engineer_index]
+    existing = solution.routes.get(engineer_index, [])
+    prefix = list(existing[:position])
+    if prefix:
+        last = prefix[-1]
+        available = last.work_start_minute + instance.requests[last.request_index].duration_min
+        previous = instance.request_node(last.request_index)
+    else:
+        available = engineer.shift_start_min
+        previous = instance.start_node(engineer_index)
+
+    for index in [request_index, *(visit.request_index for visit in existing[position:])]:
+        next_node = instance.request_node(index)
+        try:
+            duration = await leg_duration(
+                loaded, points, cache, engineer_index, previous, next_node, available
+            )
+        except ExternalServiceError as error:
+            cause = error.__cause__
+            if isinstance(cause, httpx.HTTPStatusError) and cause.response.status_code == 404:
+                return None
+            raise
+        request = instance.requests[index]
+        start = max(available + duration, request.window_start_min)
+        if start > request.window_end_min or start + request.duration_min > engineer.shift_end_min:
+            return None
+        prefix.append(cuopt_solver.PlannedVisit(index, start))
+        available = start + request.duration_min
+        previous = next_node
+    return prefix
+
+
+async def repair_unassigned(
+    loaded: LoadedDay,
+    solution: cuopt_solver.DaySolution,
+    points: list[Point],
+    cache: dict[tuple[int, int, int], int],
+    objective_order: tuple[ObjectiveCriterion, ...],
+    ranks: dict[int, int] | None,
+) -> cuopt_solver.DaySolution:
+    """Довставить заявки без сдвига уже назначенных между бригадами и без нарушения R5."""
+    instance = loaded.instance
+    assigned = {visit.request_index for visits in solution.routes.values() for visit in visits}
+    pending = set(cuopt_solver.schedulable_request_indices(instance)) - assigned
+    if not pending:
+        return solution
+    ordered = sorted(
+        pending,
+        key=lambda index: (
+            (ranks or {}).get(index, instance.requests[index].objective_rank),
+            instance.requests[index].window_end_min,
+            instance.requests[index].request_id,
+        ),
+    )
+    await run_log.note(f"Доразмещаю {len(ordered)} неназначенных заявок через R5")
+    current = solution
+    current_score = checked_solution_score(instance, current, objective_order, ranks)
+    checks = 0
+    restored = 0
+    for request_index in ordered:
+        winner = None
+        winner_score = current_score
+        for engineer_index, position in insertion_positions(instance, current, request_index):
+            if checks >= MAX_INSERTION_CHECKS_PER_PLAN:
+                break
+            await run_log.check_cancelled()
+            checks += 1
+            route = await inserted_route(
+                loaded, current, points, cache, engineer_index, position, request_index
+            )
+            if route is None:
+                continue
+            candidate = cuopt_solver.DaySolution({**current.routes, engineer_index: route})
+            score = checked_solution_score(instance, candidate, objective_order, ranks)
+            if score > winner_score:
+                winner, winner_score = candidate, score
+        if winner is not None:
+            current, current_score = winner, winner_score
+            restored += 1
+            await run_log.note(
+                f"№{instance.requests[request_index].request_id} доразмещена; "
+                f"назначено {sum(len(route) for route in current.routes.values())}"
+            )
+        if checks >= MAX_INSERTION_CHECKS_PER_PLAN:
+            break
+    await run_log.note(
+        f"Доразмещение: возвращено {restored} из {len(ordered)}, проверено {checks} вставок",
+        details={"restored": restored, "unassigned": len(ordered), "checked": checks},
+    )
+    return current
+
+
 async def explain_retry(
     current: np.ndarray, updated: np.ndarray, attempt: int, last_attempt: bool
 ) -> None:
@@ -249,14 +411,14 @@ async def solve_day(
                 await run_log.note(
                     f"Расписание сходится, но вариант попытки {best_attempt} лучше — сохраняю его"
                 )
-                return best
+                return await repair_unassigned(loaded, best, points, cache, objective_order, ranks)
             if last_attempt and sum(map(len, checked.routes.values())) < sum(
                 map(len, solution.routes.values())
             ):
                 await run_log.note("Сохраняю проверенную часть последнего варианта")
             else:
                 await run_log.note("Расписание сходится: план принят")
-            return checked
+            return await repair_unassigned(loaded, checked, points, cache, objective_order, ranks)
         # Даже если статическая матрица ошиблась, оставшаяся часть маршрута может быть
         # выполнима. Сохраняем её до следующего запуска cuOpt: последний вариант не
         # обязан быть лучше предыдущего.
@@ -286,7 +448,7 @@ async def solve_day(
             await run_log.note(
                 f"Матрица больше не меняется: сохраняю вариант попытки {best_attempt}"
             )
-            return best
+            return await repair_unassigned(loaded, best, points, cache, objective_order, ranks)
         instance = copy.copy(instance)
         instance.travel_min = {**instance.travel_min, TRANSIT_ID: updated}
     raise AssertionError("цикл проверки расписания завершился без результата")
