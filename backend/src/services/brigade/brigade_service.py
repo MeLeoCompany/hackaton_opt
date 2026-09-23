@@ -167,9 +167,7 @@ async def apply_departure_gate(
     )
     if next_visit is None:
         return
-    assignment = next(
-        item for item in assignments if item.request_id == next_visit.request_id
-    )
+    assignment = next(item for item in assignments if item.request_id == next_visit.request_id)
     check = await departure_state(
         session, plan, assignment.request, assignment, assignments, next_visit.departed_at
     )

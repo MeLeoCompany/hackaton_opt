@@ -40,9 +40,7 @@ def verify_password(password: str, stored: str) -> bool:
         return False
     if scheme != "scrypt":
         return False
-    candidate = hashlib.scrypt(
-        password.encode(), salt=_decode(salt), n=int(n), r=int(r), p=int(p)
-    )
+    candidate = hashlib.scrypt(password.encode(), salt=_decode(salt), n=int(n), r=int(r), p=int(p))
     return hmac.compare_digest(candidate, _decode(digest))
 
 

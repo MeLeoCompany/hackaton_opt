@@ -31,7 +31,9 @@ class PlanRun(Base):
     status: Mapped[str] = mapped_column(Text)  # running / done / failed
     step: Mapped[str] = mapped_column(Text, default="")
     progress: Mapped[int] = mapped_column(SmallInteger, default=0)
-    plan_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("plan.id", ondelete="SET NULL"))
+    plan_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("plan.id", ondelete="SET NULL")
+    )
     error: Mapped[str | None] = mapped_column(Text)
     user_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("app_user.id", ondelete="SET NULL")

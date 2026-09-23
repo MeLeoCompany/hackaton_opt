@@ -43,7 +43,9 @@ def run(session, due, approve):
     with (
         patch.object(replan_autoapply, "async_session_maker", lambda: session),
         patch.object(
-            replan_autoapply.plans_repository, "due_replans", AsyncMock(return_value=due)
+            replan_autoapply.plans_repository,
+            "due_replans",
+            AsyncMock(side_effect=[due, []] if due else [[]]),
         ),
         patch.object(replan_autoapply.planning_service, "approve_replan", approve),
         patch.object(replan_autoapply.clock, "now", return_value=NOW),

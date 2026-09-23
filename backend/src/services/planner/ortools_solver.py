@@ -52,6 +52,40 @@ def _cost(value: float) -> int:
     return round(value * COST_SCALE)
 
 
+def most_valuable_feasible_order(inputs: SolverInputs) -> int | None:
+    """Выбирает лучшую заявку, которую хотя бы одна бригада может выполнить в одиночку.
+
+    Повторный запуск с обязательной заявкой нужен только для режимов, где цена выхода
+    бригады делает пустой маршрут формально выгодным. Нельзя просто брать максимальную
+    награду: самая ценная заявка может не помещаться в смену, хотя остальные выполнимы.
+    """
+    feasible: list[int] = []
+    for order, location in enumerate(inputs.order_locations):
+        service = int(inputs.order_service_minutes[order])
+        for vehicle in inputs.order_allowed_vehicles[order]:
+            vehicle = int(vehicle)
+            transport = int(inputs.vehicle_types[vehicle])
+            travel = math.ceil(
+                float(
+                    inputs.travel_time_matrices[transport][int(inputs.vehicle_locations[vehicle])][
+                        int(location)
+                    ]
+                )
+            )
+            work_start = max(
+                int(inputs.vehicle_shift_start[vehicle]) + travel,
+                int(inputs.order_window_start[order]),
+            )
+            if work_start <= int(inputs.order_window_end[order]) and work_start + service <= int(
+                inputs.vehicle_shift_end[vehicle]
+            ):
+                feasible.append(order)
+                break
+    if not feasible:
+        return None
+    return max(feasible, key=lambda order: (float(inputs.order_prizes[order]), -order))
+
+
 def solve(
     inputs: SolverInputs, time_limit_seconds: float, *, required_order: int | None = None
 ) -> list[tuple[int, int, float]]:
@@ -218,17 +252,18 @@ async def solve_day(
             # награды, и по формуле дешевле всего не выводить никого. cuOpt так тоже не делает.
             # Обязываем взять самую ценную заявку, а сколько бригад для этого вывести —
             # решатель выберет сам
-            required = int(inputs.order_prizes.argmax())
-            await run_log.note(
-                "OR-Tools: по цене выгоднее никого не выводить — считаю ещё раз, "
-                "сделав самую ценную заявку обязательной"
-            )
-            solving = asyncio.create_task(
-                asyncio.to_thread(
-                    solve, inputs, inputs.time_limit_seconds, required_order=required
+            required = most_valuable_feasible_order(inputs)
+            if required is not None:
+                await run_log.note(
+                    "OR-Tools: по цене выгоднее никого не выводить — считаю ещё раз, "
+                    "сделав самую ценную выполнимую заявку обязательной"
                 )
-            )
-            visits = await run_log.wait_cancellable(solving)
+                solving = asyncio.create_task(
+                    asyncio.to_thread(
+                        solve, inputs, inputs.time_limit_seconds, required_order=required
+                    )
+                )
+                visits = await run_log.wait_cancellable(solving)
     except ExternalServiceError:
         raise
     except (RuntimeError, ValueError, KeyError, IndexError, OSError) as error:

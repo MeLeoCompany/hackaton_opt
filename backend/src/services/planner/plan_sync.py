@@ -104,12 +104,17 @@ async def sync_routes(
             request = assignment.request
             start = assignment.planned_arrival_time
             work_end = start + timedelta(minutes=request.duration_minutes)
-            if request.approved_plan_id != plan.id or request.status_id == RequestStatusId.CANCELLED:
+            if (
+                request.approved_plan_id != plan.id
+                or request.status_id == RequestStatusId.CANCELLED
+            ):
                 free_from = work_end
                 continue
             # выезжает, чтобы приехать к началу работ, но не раньше, чем освободилась
             travel = (travel_minutes or {}).get(request.id)
-            departed = free_from if travel is None else max(free_from, start - timedelta(minutes=travel))
+            departed = (
+                free_from if travel is None else max(free_from, start - timedelta(minutes=travel))
+            )
             state = planned_state(min(departed, start), start, request.duration_minutes, now)
             if request.status_id != state.status_id:
                 request_statuses_repository.add_history(

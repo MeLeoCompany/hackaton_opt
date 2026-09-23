@@ -43,9 +43,7 @@ async def list_events(session: AsyncSession, run_id: uuid.UUID) -> list[PlanRunE
 
 async def request_cancel(session: AsyncSession, run_id: uuid.UUID, *, user_id: int | None) -> None:
     """Ставит флаг «Прервать» и пишет об этом в журнал: видно, кто остановил расчёт."""
-    await session.execute(
-        update(PlanRun).where(PlanRun.id == run_id).values(cancel_requested=True)
-    )
+    await session.execute(update(PlanRun).where(PlanRun.id == run_id).values(cancel_requested=True))
     session.add(
         PlanRunEvent(
             run_id=run_id,
