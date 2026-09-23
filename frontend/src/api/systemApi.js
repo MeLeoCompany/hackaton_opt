@@ -20,6 +20,11 @@ export function listPlanRuns(limit = 50) {
   return apiRequest('GET', `/system/runs?limit=${limit}`)
 }
 
+// идёт ли расчёт прямо сейчас: по нему страница планов возвращает полосу хода
+export function fetchActiveRun() {
+  return apiRequest('GET', '/system/runs/active')
+}
+
 // ход одного расчёта: текущий шаг, процент и события по порядку
 export function fetchPlanRun(runId) {
   return apiRequest('GET', `/system/runs/${runId}`)

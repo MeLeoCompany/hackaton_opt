@@ -216,6 +216,16 @@ async def list_runs(session: AsyncSession, *, office_id: int, limit: int = 50) -
     return [run_summary(run, user_name) for run, user_name in rows]
 
 
+async def active_run(session: AsyncSession, *, office_id: int) -> PlanRunRead | None:
+    """Идёт ли сейчас расчёт офиса: страница планов по нему возвращает полосу хода.
+
+    Расчёт живёт на сервере, а не в браузере: оператор может уйти на другую страницу или
+    перезагрузить её, и, вернувшись, должен снова видеть, что план считается.
+    """
+    run = await plan_runs_repository.active_run(session, office_id=office_id)
+    return run_summary(run, None) if run is not None else None
+
+
 async def get_run(session: AsyncSession, run_id: UUID, *, office_id: int) -> PlanRunRead:
     """Один запуск со всеми его шагами: по нему рисуется прогресс и разбирается зависание."""
     row = await plan_runs_repository.get_run(session, run_id, office_id=office_id)

@@ -41,6 +41,11 @@ class PlanRun(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # когда запись появилась в базе, по настоящим часам: started_at — время системных часов,
+    # а их в демонстрации переводят, и по ним порядок запусков не восстановить (048)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class PlanRunEvent(Base):

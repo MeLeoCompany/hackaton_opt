@@ -12,6 +12,7 @@ import PlansList from '../components/PlansList.vue'
 import ReplanMark from '../components/ReplanMark.vue'
 import ReplanNotice from '../components/ReplanNotice.vue'
 import PlanRunProgress from '../components/PlanRunProgress.vue'
+import { fetchActiveRun } from '../api/systemApi.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { usePlanRun } from '../composables/usePlanRun.js'
 import { useSystemTime } from '../composables/useSystemTime.js'
@@ -80,6 +81,31 @@ async function withRunLog(params, action) {
     stopRun()
   }
 }
+
+// расчёт идёт на сервере, а не в браузере: ушли со страницы и вернулись — снова показываем
+// его ход. Иначе кажется, что расчёт пропал, хотя он считается дальше
+const backgroundRun = ref(false)
+const runInProgress = computed(() => building.value || backgroundRun.value)
+
+async function attachRunningCalculation() {
+  try {
+    const active = await fetchActiveRun()
+    if (!active) return
+    backgroundRun.value = true
+    watchRun(active.id)
+  } catch {
+    // журнал — подсказка, а не работа: без него страница работает как раньше
+  }
+}
+
+// расчёт, к которому мы подключились, закончился: снимаем полосу и перечитываем планы —
+// в списке должен появиться готовый план
+watch(planRun, async (value) => {
+  if (!backgroundRun.value || !value || value.status === 'running') return
+  backgroundRun.value = false
+  stopRun()
+  await load()
+})
 
 // утверждение черновика, в который вошли не все заявки: сначала предлагаем подобрать окна
 const approvalTarget = ref(null)
@@ -239,6 +265,7 @@ watch([selectedPlanId, viewMode], ([planId, mode]) => {
 
 onMounted(async () => {
   await load()
+  attachRunningCalculation()
   const planId = takePlanId()
   const requestId = takePlanRequestId()
   if (planId) {
@@ -332,13 +359,18 @@ onMounted(async () => {
       />
 
       <section class="plan-toolbar">
-        <button class="primary" :disabled="!selectedDay || building" @click="buildDialogOpen = true">
-          {{ building ? 'Считаю…' : 'Построить план' }}
+        <button
+          class="primary"
+          :disabled="!selectedDay || runInProgress"
+          :title="backgroundRun ? 'Расчёт уже идёт — дождитесь его или прервите' : ''"
+          @click="buildDialogOpen = true"
+        >
+          {{ runInProgress ? 'Считаю…' : 'Построить план' }}
         </button>
       </section>
 
       <!-- расчёт идёт: видно, что именно считается и сколько уже прошло -->
-      <PlanRunProgress v-if="building" :run="planRun" @cancel="cancelRun" />
+      <PlanRunProgress v-if="runInProgress" :run="planRun" @cancel="cancelRun" />
 
       <ErrorMessage v-if="errorMessage" :message="errorMessage" :details="errorDetails" @close="errorMessage = ''" />
       <ReplanNotice
@@ -349,14 +381,16 @@ onMounted(async () => {
       />
 
       <p v-if="loadingDays" class="muted">Загружаю планы…</p>
-      <p v-else-if="!plans.length && !building" class="muted">На этот день планов ещё нет — постройте первый.</p>
+      <p v-else-if="!plans.length && !runInProgress" class="muted">
+        На этот день планов ещё нет — постройте первый.
+      </p>
 
       <section v-else class="plans-block">
         <h2>Планы на {{ formatDay(selectedDay) }} · {{ plans.length }}</h2>
         <PlansList
           :plans="plans"
           :selected-plan-id="selectedPlanId"
-          :busy="building"
+          :busy="runInProgress"
           :held-requests="dayCheck?.held_requests ?? []"
           :attention-plan-id="replanSummary?.approved_at ? replanSummary.id : null"
           :attention-replan-id="replanSummary?.pending_replan_id ?? null"
@@ -393,7 +427,7 @@ onMounted(async () => {
         @close="replanPlanId = null"
       />
 
-      <PlanRunProgress v-if="building" :run="planRun" @cancel="cancelRun" />
+      <PlanRunProgress v-if="runInProgress" :run="planRun" @cancel="cancelRun" />
 
       <p v-if="loadingPlan && !plan" class="muted">Загружаю план…</p>
 

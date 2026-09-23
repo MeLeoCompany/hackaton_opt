@@ -3,7 +3,7 @@
 // у каждого — кнопка удаления, чтобы день можно было пересчитать заново.
 import { computed } from 'vue'
 
-import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
+import { formatDay, moscowShortDateTimeOf, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveGoalLabel } from '../utils/planningPriorities.js'
 import { approvalWindow } from '../utils/planWindow.js'
 import { useSystemTime } from '../composables/useSystemTime.js'
@@ -107,7 +107,7 @@ function solveDuration(summary) {
             <span v-if="heldWarning" class="held-warning" :title="heldWarning">!</span>
             <span v-if="promiseWarning(summary)" class="promise-warning" :title="promiseWarning(summary)">☎</span>
           </td>
-          <td class="nowrap">{{ moscowTimeOf(summary.created_at) }}</td>
+          <td class="nowrap">{{ moscowShortDateTimeOf(summary.created_at) }}</td>
           <td class="nowrap">{{ summary.solver ?? '—' }}</td>
           <td class="nowrap">{{ objectiveGoalLabel(summary.objective_order) }}</td>
           <td class="number-cell">{{ summary.assigned_count }}</td>

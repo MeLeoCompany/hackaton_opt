@@ -7,7 +7,7 @@ import ErrorMessage from '../components/ErrorMessage.vue'
 import RunEventTable from '../components/RunEventTable.vue'
 import { fetchPlanRun, listPlanRuns } from '../api/systemApi.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
-import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
+import { formatDay, moscowDateTimeOf } from '../utils/moscowTime.js'
 import { eventTree } from '../utils/runEvents.js'
 
 const KIND_NAMES = {
@@ -89,7 +89,7 @@ onMounted(load)
       <!-- ширины заданы жёстко: раскрытие расчёта не должно двигать колонки -->
       <table class="data-table runs-table">
         <colgroup>
-          <col style="width: 72px" />
+          <col style="width: 136px" />
           <col style="width: 130px" />
           <col style="width: 104px" />
           <col style="width: 88px" />
@@ -116,7 +116,7 @@ onMounted(load)
           </tr>
           <template v-for="run in runs" :key="run.id">
             <tr :class="{ selected: run.id === openedId }" @click="toggle(run)">
-              <td class="nowrap">{{ moscowTimeOf(run.started_at) }}</td>
+              <td class="nowrap">{{ moscowDateTimeOf(run.started_at) }}</td>
               <td class="nowrap clipped" :title="KIND_TITLES[run.kind] ?? KIND_NAMES[run.kind] ?? run.kind">
                 {{ KIND_NAMES[run.kind] ?? run.kind }}
               </td>

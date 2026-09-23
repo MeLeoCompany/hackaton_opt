@@ -77,6 +77,19 @@ async def list_runs(
 
 
 @router.get(
+    "/runs/active",
+    response_model=PlanRunRead | None,
+    summary="Расчёт, который идёт прямо сейчас; null — ничего не считается",
+)
+async def read_active_run(
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    _: AppUser = Depends(current_user),
+) -> PlanRunRead | None:
+    return await system_service.active_run(session, office_id=office_id)
+
+
+@router.get(
     "/runs/{run_id}",
     response_model=PlanRunRead,
     summary="Ход одного расчёта по шагам: по нему рисуется прогресс",

@@ -25,6 +25,19 @@ export function moscowLogTimeOf(isoString) {
   return asMoscowIso(isoString).slice(11, 23)
 }
 
+// "2026-08-17T15:00:00Z" -> "17.08.2026 18:00" — когда одного времени мало: расчёт мог
+// идти вчера, а план быть на завтра
+export function moscowDateTimeOf(isoString) {
+  const moscow = asMoscowIso(isoString)
+  return `${formatDay(moscow.slice(0, 10))} ${moscow.slice(11, 16)}`
+}
+
+// "2026-08-17T15:00:00Z" -> "17.08 18:00" — то же, но короче: для узких колонок таблиц
+export function moscowShortDateTimeOf(isoString) {
+  const moscow = asMoscowIso(isoString)
+  return `${moscow.slice(8, 10)}.${moscow.slice(5, 7)} ${moscow.slice(11, 16)}`
+}
+
 // "2026-08-17" -> "17.08.2026"
 export function formatDay(day) {
   return `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
