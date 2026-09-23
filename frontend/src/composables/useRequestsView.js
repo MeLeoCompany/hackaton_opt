@@ -25,6 +25,8 @@ const DEFAULT_SORT = ''
 // колонка с переносом по словам, забирает остаток ширины по весу; floor — до какой ширины
 // колонку можно сузить без обрезки (useColumnWidths.js). Колонки при этом не прыгают.
 export const REQUEST_COLUMNS = [
+  // галочки: отмеченные строки меняют и удаляют группой
+  { key: 'select', label: '', sortKey: null, width: '40px', fixed: true },
   { key: 'id', label: '№', sortKey: 'id', width: '100px' },
   // плашка статуса одной ширины и значок истории рядом
   { key: 'status', label: 'Статус', sortKey: 'status', width: '150px' },

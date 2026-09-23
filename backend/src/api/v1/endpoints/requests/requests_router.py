@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
 from src.models import AppUser
+from src.schemas.bulk import BulkDeleteReport, BulkIds, BulkUpdateReport
 from src.schemas.requests import (
     CancelledTransfer,
     RequestActivityReport,
     RequestActivityUpdate,
+    RequestBulkUpdate,
     RequestCreate,
     RequestImportReport,
     RequestRead,
@@ -116,6 +118,29 @@ async def set_requests_status(
     return await requests_service.set_requests_status(
         session, payload.request_ids, payload.status_id, office_id, user.id
     )
+
+
+@router.patch(
+    "",
+    response_model=BulkUpdateReport,
+    summary="Изменить несколько заявок: только отмеченные поля",
+)
+async def update_requests(
+    payload: RequestBulkUpdate,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    return await requests_service.update_requests(session, payload, office_id, user.id)
+
+
+@router.delete("", response_model=BulkDeleteReport, summary="Удалить несколько заявок")
+async def delete_requests(
+    payload: BulkIds,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await requests_service.delete_requests(session, payload.ids, office_id)
 
 
 @router.get(

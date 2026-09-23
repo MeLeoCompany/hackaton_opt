@@ -13,6 +13,8 @@ defineProps({
   filters: { type: Object, required: true }, // объект из useRequestsView, меняется напрямую
   references: { type: Object, required: true },
   activeCount: { type: Number, required: true },
+  // отмеченные галочками строки: «Сбросить» снимает и их
+  checkedCount: { type: Number, default: 0 },
 })
 const emit = defineEmits(['reset', 'widths'])
 
@@ -39,6 +41,7 @@ watch(widths, (value) => emit('widths', value), { immediate: true })
               :filters="filters"
               :references="references"
               :active-filter-count="activeCount"
+              :checked-count="checkedCount"
               @reset="$emit('reset')"
             />
           </th>

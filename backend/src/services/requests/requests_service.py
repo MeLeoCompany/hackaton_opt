@@ -11,9 +11,11 @@ from src.models import Office, Request, RequestStatus, RequestStatusId
 from src.repositories.references import references_repository
 from src.repositories.request_statuses import request_statuses_repository
 from src.repositories.requests import requests_repository
+from src.schemas.bulk import BulkDeleteProblem, BulkDeleteReport, BulkUpdateReport
 from src.schemas.requests import (
     CancelledTransfer,
     RequestActivityReport,
+    RequestBulkUpdate,
     RequestCreate,
     RequestImportReport,
     RequestStatusHistoryItem,
@@ -238,6 +240,135 @@ async def delete_request(session: AsyncSession, request_id: int, office_id: int)
 
     await requests_repository.delete_request(session, request)
     await session.commit()
+
+
+async def delete_requests(
+    session: AsyncSession, request_ids: list[int], office_id: int
+) -> BulkDeleteReport:
+    """Удаляет выбранные заявки: те, что можно, — остальные возвращает с причинами.
+
+    Оператор отмечает галочками десятки строк, и одна заявка в плане не должна отменять
+    удаление всех прочих: удаляем что получается, а по остальным объясняем почему.
+    """
+    problems = []
+    deleted = 0
+    for request_id in dict.fromkeys(request_ids):
+        try:
+            await delete_request(session, request_id, office_id)
+            deleted += 1
+        except (RequestNotFoundError, RequestInUseError) as error:
+            problems.append(BulkDeleteProblem(id=request_id, reason=str(error)))
+    return BulkDeleteReport(deleted=deleted, problems=problems)
+
+
+async def update_requests(
+    session: AsyncSession,
+    payload: RequestBulkUpdate,
+    office_id: int,
+    user_id: int | None = None,
+) -> BulkUpdateReport:
+    """Групповая правка: меняет у выбранных заявок только отмеченные оператором поля.
+
+    Либо меняются все заявки, либо ни одна: если хоть одну править нельзя или окно после
+    правки развалится, оператор сначала узнаёт об этом, а данные остаются как были.
+    Статус — не поле, а переход: его можно сменить и у заявки, которую править нельзя.
+    """
+    unique_ids = list(dict.fromkeys(payload.request_ids))
+    stored = await requests_repository.get_requests_by_ids(session, unique_ids)
+    requests = [request for request in stored.values() if request.office_id == office_id]
+    missing = [request_id for request_id in unique_ids if request_id not in {r.id for r in requests}]
+    if missing:
+        listed = ", ".join(f"№{request_id}" for request_id in missing)
+        raise RequestNotFoundError(f"Не найдены заявки: {listed}")
+
+    changes = payload.changes()
+    # меняем только статус — заявке в плане это разрешено, правка полей ей запрещена
+    if changes or payload.move_to_day is not None:
+        blocked = [reason for request in requests if (reason := not_editable_reason(request))]
+        if blocked:
+            raise RequestDataError(blocked)
+
+    await check_bulk_references(session, changes)
+    if changes.get("work_type_id") is not None:
+        changes = await with_work_type_norms(session, changes)
+
+    problems = []
+    for request in requests:
+        window = new_window(request, changes, payload.move_to_day)
+        if window["window_end"] <= window["window_start"]:
+            problems.append(
+                f"заявка №{request.id}: конец окна должен быть позже начала "
+                f"({local_period(window)})"
+            )
+    if problems:
+        raise RequestDataError(problems)
+
+    for request in requests:
+        window = new_window(request, changes, payload.move_to_day)
+        requests_repository.apply_changes(request, {**changes, **window})
+    if payload.status_id is not None:
+        await request_status_service.change_status(
+            session, requests, payload.status_id, manual=True, user_id=user_id
+        )
+    await session.commit()
+    return BulkUpdateReport(updated=len(requests))
+
+
+def new_window(request: Request, changes: dict, move_to_day: date | None) -> dict:
+    """Окно заявки после правки: что задали явно, что сдвинули на другой день, что было."""
+    timezone = local_timezone()
+    window = {
+        "window_start": changes.get("window_start") or request.window_start,
+        "window_end": changes.get("window_end") or request.window_end,
+    }
+    if move_to_day is not None:
+        # день другой, время суток то же: длина окна и часы работы сохраняются
+        window = {
+            name: moment.astimezone(timezone).replace(
+                year=move_to_day.year, month=move_to_day.month, day=move_to_day.day
+            )
+            for name, moment in window.items()
+        }
+        if window["window_end"] <= window["window_start"]:
+            window["window_end"] += timedelta(days=1)  # окно через полночь остаётся ночным
+    return window
+
+
+def local_period(window: dict) -> str:
+    timezone = local_timezone()
+    start = window["window_start"].astimezone(timezone)
+    end = window["window_end"].astimezone(timezone)
+    return f"{start:%d.%m %H:%M}–{end:%d.%m %H:%M}"
+
+
+async def check_bulk_references(session: AsyncSession, changes: dict) -> None:
+    """Те же справочники, что и у одной заявки, но проверяем только заданные поля."""
+    references = await load_reference_lookup(session)
+    catalogues = {
+        "priority_id": (references.priorities, "приоритета"),
+        "skill_id": (references.skills, "навыка"),
+        "work_type_id": (references.work_types, "типа работ"),
+        "transport_id": (references.transports, "транспорта"),
+    }
+    problems = [
+        f"{title} №{changes[field]} нет в справочнике"
+        for field, (catalogue, title) in catalogues.items()
+        if changes.get(field) is not None and str(changes[field]) not in catalogue.id_by_key
+    ]
+    if problems:
+        raise RequestDataError(problems)
+
+
+async def with_work_type_norms(session: AsyncSession, changes: dict) -> dict:
+    """Тип работ задаёт навык и, если длительность не указали, её норматив."""
+    references = await load_reference_lookup(session)
+    norm = references.work_type_norms.get(changes["work_type_id"])
+    if norm is None:
+        return changes
+    filled = {**changes, "skill_id": norm.skill_id}
+    if filled.get("duration_minutes") is None:
+        filled["duration_minutes"] = norm.work_minutes
+    return filled
 
 
 async def set_requests_active(

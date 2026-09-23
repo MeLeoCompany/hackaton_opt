@@ -5,7 +5,7 @@
 
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { formatMoscowWindow } from '../utils/moscowTime.js'
 import { referenceName } from '../utils/referenceNames.js'
@@ -15,12 +15,20 @@ const props = defineProps({
   engineers: { type: Array, required: true },
   references: { type: Object, required: true },
   selectedId: { type: Number, default: null },
+  // отмеченные галочками строки таблицы: на карте они в синем кольце, остальные приглушены
+  checkedIds: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['select'])
+
+// отмеченные приходят списком номеров — для отрисовки удобнее множество
+const checked = computed(() => new Set(props.checkedIds))
+// сколько отмеченных смен реально видно на карте: часть могла уйти под фильтры
+const checkedOnMap = computed(() => props.engineers.filter((engineer) => checked.value.has(engineer.id)).length)
 
 const container = ref(null)
 let map = null
 let markerLayer = null
+let haloLayer = null
 let officeLayer = null
 const markerByEngineerId = new Map()
 // номера исполнителей, под которых последний раз подгонялся масштаб
@@ -34,6 +42,30 @@ function markerStyle(engineer) {
     weight: isSelected ? 3 : 2,
     fillColor: transportColor(engineer.transport_id),
     fillOpacity: 0.9,
+  }
+}
+
+// кольцо вокруг отмеченной смены: отдельным слоем под точками, кликам не мешает
+function drawHalos() {
+  haloLayer.clearLayers()
+  for (const engineer of props.engineers) {
+    if (!checked.value.has(engineer.id)) continue
+    L.circleMarker([engineer.start_latitude, engineer.start_longitude], {
+      radius: 14,
+      color: '#2563eb',
+      weight: 3,
+      opacity: 1,
+      fill: false,
+      interactive: false,
+    }).addTo(haloLayer)
+  }
+}
+
+// отметки поменялись: перерисовываем кольца и приглушение, не трогая масштаб
+function redrawChecked() {
+  drawHalos()
+  for (const engineer of props.engineers) {
+    markerByEngineerId.get(engineer.id)?.setStyle(markerStyle(engineer))
   }
 }
 
@@ -114,6 +146,8 @@ onMounted(async () => {
   }).addTo(map)
   // офисы ниже точек исполнителей: кружок бригады, стоящей в офисе, лежит поверх квадрата
   officeLayer = L.layerGroup().addTo(map)
+  // кольца отмеченных смен ложатся под точки
+  haloLayer = L.layerGroup().addTo(map)
   markerLayer = L.layerGroup().addTo(map)
 
   // карта появляется по кнопке — даём раскладке досчитать размер контейнера
@@ -121,12 +155,16 @@ onMounted(async () => {
   map.invalidateSize()
   drawOffices()
   drawMarkers()
+  drawHalos()
   highlightSelected()
 })
 
 onBeforeUnmount(() => map?.remove())
 
-watch(() => props.engineers, drawMarkers)
+watch(() => props.engineers, () => {
+  drawMarkers()
+  drawHalos()
+})
 watch(
   () => props.references,
   () => {
@@ -135,6 +173,7 @@ watch(
   },
 )
 watch(() => props.selectedId, highlightSelected)
+watch(() => props.checkedIds, redrawChecked)
 </script>
 
 <template>
@@ -145,6 +184,11 @@ watch(() => props.selectedId, highlightSelected)
         <i class="legend-dot" :style="{ background: transportColor(transport.id) }"></i>{{ transport.name }}
       </span>
       <span v-if="references.offices?.length"><i class="office-legend"></i>офис</span>
+      <span v-if="checkedIds.length" class="checked-note">
+        <i class="legend-ring"></i>отмечено: {{ checkedOnMap }}<template v-if="checkedOnMap < checkedIds.length">
+          из {{ checkedIds.length }} — остальные скрыты фильтрами</template
+        >
+      </span>
       <span class="muted">на карте: {{ engineers.length }}</span>
     </div>
   </div>

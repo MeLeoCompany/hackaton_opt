@@ -17,6 +17,16 @@ export function deleteEngineer(engineerId) {
   return apiRequest('DELETE', `/engineers/${engineerId}`)
 }
 
+// групповая правка смен: в fields только отмеченные поля — меняются все или ни одна
+export function updateEngineers(engineerIds, fields) {
+  return apiRequest('PATCH', '/engineers', { json: { engineer_ids: engineerIds, ...fields } })
+}
+
+// групповое удаление: удаляется всё, что можно, остальное вернётся с причинами
+export function deleteEngineers(engineerIds) {
+  return apiRequest('DELETE', '/engineers', { json: { ids: engineerIds } })
+}
+
 // слепок дня: выгрузка исполнителей выбранного дня
 export function exportEngineersCsv(planDate) {
   return apiDownload(`/engineers/export?plan_date=${encodeURIComponent(planDate)}`)

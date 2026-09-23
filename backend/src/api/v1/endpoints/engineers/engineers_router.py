@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import current_office_id
 from src.db.session import get_db
+from src.schemas.bulk import BulkDeleteReport, BulkIds, BulkUpdateReport
 from src.schemas.engineers import (
+    EngineerBulkUpdate,
     EngineerCreate,
     EngineerImportReport,
     EngineerRead,
@@ -72,6 +74,28 @@ async def import_engineers(
     if len(content) > MAX_CSV_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Файл больше 5 МБ")
     return await engineers_service.import_engineers_csv(session, content, office_id, plan_date)
+
+
+@router.patch(
+    "",
+    response_model=BulkUpdateReport,
+    summary="Изменить несколько смен: только отмеченные поля",
+)
+async def update_engineers(
+    payload: EngineerBulkUpdate,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await engineers_service.update_engineers(session, payload, office_id)
+
+
+@router.delete("", response_model=BulkDeleteReport, summary="Удалить несколько смен")
+async def delete_engineers(
+    payload: BulkIds,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    return await engineers_service.delete_engineers(session, payload.ids, office_id)
 
 
 @router.get("/{engineer_id}", response_model=EngineerRead, summary="Один исполнитель")

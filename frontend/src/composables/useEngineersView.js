@@ -9,6 +9,8 @@ import { referenceName } from '../utils/referenceNames.js'
 // sortKey: null — по колонке не сортируем; key — какой фильтр стоит под колонкой;
 // width — фиксированная ширина, чтобы колонки не прыгали при фильтрации и правке строки
 export const ENGINEER_COLUMNS = [
+  // галочки: отмеченные строки меняют и удаляют группой
+  { key: 'select', label: '', sortKey: null, width: '40px', fixed: true },
   { key: 'id', label: '№', sortKey: 'id', width: '90px' },
   { key: 'name', label: 'Бригада', sortKey: 'name', grow: 1, minWidth: 170, floor: 130 },
   { key: 'transport', label: 'Транспорт', sortKey: 'transport', width: '215px', floor: 170 },

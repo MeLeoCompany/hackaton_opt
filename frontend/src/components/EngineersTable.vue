@@ -24,8 +24,23 @@ const props = defineProps({
   emptyText: { type: String, default: 'Исполнителей нет' },
   filters: { type: Object, required: true },
   activeFilterCount: { type: Number, required: true },
+  // отмеченные галочками строки: их меняют и удаляют группой
+  selectedIds: { type: Array, default: () => [] },
+  allSelected: { type: Boolean, default: false },
+  someSelected: { type: Boolean, default: false },
 })
-defineEmits(['edit', 'cancel', 'save', 'remove', 'sort', 'select', 'reset-filters', 'show-on-map'])
+defineEmits([
+  'edit',
+  'cancel',
+  'save',
+  'remove',
+  'sort',
+  'select',
+  'reset-filters',
+  'show-on-map',
+  'toggle-row',
+  'toggle-all',
+])
 
 // старты остальных бригад — ориентир на карте выбора координаты
 const contextPoints = computed(() =>
@@ -38,6 +53,9 @@ const contextPoints = computed(() =>
     })),
 )
 
+
+// отмеченные строки приходят списком номеров — в разметке удобнее множество
+const selected = computed(() => new Set(props.selectedIds))
 
 function sortArrow(columnSortKey) {
   if (props.sortKey !== columnSortKey) return '↕'
@@ -89,12 +107,28 @@ onMounted(scrollToSelected)
 
         <!-- отдельная строка фильтров под названиями колонок -->
         <tr class="filter-row filter-controls">
-          <th v-for="column in COLUMNS" :key="column.key" :class="{ 'actions-cell': column.key === 'actions' }">
+          <th
+            v-for="column in COLUMNS"
+            :key="column.key"
+            :class="{ 'actions-cell': column.key === 'actions', 'select-cell': column.key === 'select' }"
+          >
+            <label v-if="column.key === 'select'" class="check-box">
+              <input
+                type="checkbox"
+                :checked="allSelected"
+                :indeterminate.prop="someSelected"
+                :aria-label="allSelected ? 'снять отметки со всех строк' : 'отметить все строки'"
+                :title="allSelected ? 'Снять отметки со всех строк' : 'Отметить все строки'"
+                @click.stop="$emit('toggle-all')"
+              />
+            </label>
             <EngineersFilterControl
+              v-else
               :column="column.key"
               :filters="filters"
               :references="references"
               :active-filter-count="activeFilterCount"
+              :checked-count="selectedIds.length"
               @reset="$emit('reset-filters')"
             />
           </th>
@@ -102,6 +136,7 @@ onMounted(scrollToSelected)
       </thead>
       <tbody>
         <tr v-if="editingId === NEW_ENGINEER" class="editing">
+          <td class="select-cell"></td>
           <td>
             <input v-model="form.id" type="number" min="1" class="short-input" placeholder="авто" />
           </td>
@@ -119,10 +154,24 @@ onMounted(scrollToSelected)
           v-for="engineer in engineers"
           :key="engineer.id"
           :data-engineer-id="engineer.id"
-          :class="{ editing: engineer.id === editingId, selected: engineer.id === selectedId }"
+          :class="{
+            checked: selected.has(engineer.id),
+            editing: engineer.id === editingId,
+            selected: engineer.id === selectedId,
+          }"
           @click="editingId === null && $emit('select', engineer.id)"
           @dblclick="editingId === null && $emit('show-on-map', engineer.id)"
         >
+          <td class="select-cell">
+            <label class="check-box">
+              <input
+                type="checkbox"
+                :checked="selected.has(engineer.id)"
+                :aria-label="`отметить строку №${engineer.id}`"
+                @click.stop="$emit('toggle-row', engineer.id, $event.shiftKey)"
+              />
+            </label>
+          </td>
           <td class="number-cell">{{ engineer.id }}</td>
 
           <EngineerEditCells

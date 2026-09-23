@@ -1,4 +1,5 @@
 from src.schemas.engineers.engineers_schema import (
+    EngineerBulkUpdate,
     EngineerCreate,
     EngineerEquipmentItem,
     EngineerImportReport,
@@ -7,6 +8,7 @@ from src.schemas.engineers.engineers_schema import (
 )
 
 __all__ = [
+    "EngineerBulkUpdate",
     "EngineerCreate",
     "EngineerEquipmentItem",
     "EngineerImportReport",

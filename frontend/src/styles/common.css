@@ -515,6 +515,63 @@ button.link:disabled {
   color: inherit;
 }
 
+/* Колонка отметок (галочки выбора строк). Отступы ячеек в таблицах разные — 10 и 13
+   пикселей, — поэтому у этой колонки их нет вовсе: галочка строки и галочка «отметить все»
+   в строке фильтров встают строго на одну ось. Селекторы длинные намеренно: иначе их
+   перебивает общее правило .data-table.fixed-columns tbody td */
+.data-table th.select-cell,
+.data-table td.select-cell,
+.data-table.fixed-columns thead tr.filter-row th.select-cell,
+.data-table.fixed-columns tbody td.select-cell {
+  padding: 8px 0 4px;
+  text-align: center;
+  vertical-align: top;
+}
+
+/* в строке фильтров у ячейки те же отступы, что у соседних: галочка встаёт по центру полей */
+.data-table.fixed-columns thead tr.filter-row th.select-cell {
+  padding: 4px 0;
+}
+
+/* галочка занимает ячейку целиком: попасть по ней можно, не целясь в сам квадратик.
+   Высота коробки — высота того, с чем галочка равняется: в строке это первая строка
+   текста (16 пикселей), в фильтрах — поле фильтра (24 пикселя) */
+.data-table .check-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  cursor: pointer;
+}
+
+.data-table tr.filter-row .check-box {
+  height: 24px;
+}
+
+/* размер задаём явно и одинаково: иначе браузер тянет галочку по ширине ячейки,
+   а в строке фильтров её растягивает общее правило для полей фильтра */
+.data-table .check-box input[type='checkbox'],
+.filter-controls .check-box input[type='checkbox'] {
+  box-sizing: border-box;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* отмеченная строка: спокойная заливка, как в таблицах с выбором строк.
+   Выбранная строка (клик по ней) важнее — её подсветку не перекрываем */
+.data-table tbody tr.checked td {
+  background: #eff6ff;
+}
+
+.data-table tbody tr.checked.selected td {
+  background: #fef9c3;
+}
+
 .data-table td.number-cell {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -826,6 +883,22 @@ button.link:disabled {
 .map-frame .map {
   width: 100%;
   height: 100%;
+}
+
+/* кольцо в легенде — такое же, как вокруг отмеченных точек на карте */
+.legend-ring {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 2px solid #2563eb;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.checked-note {
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
 .map-legend {

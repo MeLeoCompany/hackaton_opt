@@ -80,10 +80,21 @@ defineEmits(['show-in-table', 'close', 'change-status', 'history', 'open-plan'])
           <dt>Координаты</dt>
           <dd>{{ request.latitude.toFixed(4) }}, {{ request.longitude.toFixed(4) }}</dd>
         </div>
+        <!-- заявка закреплена за утверждённым планом: отсюда же в него и переходим -->
+        <div>
+          <dt>План</dt>
+          <dd>
+            <button v-if="request.approved_plan_id" class="link" @click="$emit('open-plan')">
+              №{{ request.approved_plan_id }} — открыть маршрут →
+            </button>
+            <span v-else class="muted">не в плане</span>
+          </dd>
+        </div>
       </dl>
 
       <div class="details-actions">
         <button class="primary" @click="$emit('show-in-table')">Показать в таблице</button>
+        <button v-if="request.approved_plan_id" @click="$emit('open-plan')">Открыть в плане</button>
       </div>
     </template>
 

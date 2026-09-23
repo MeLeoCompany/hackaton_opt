@@ -70,6 +70,10 @@ function toggleSync(engineerId) {
 const allSelected = computed(
   () => props.plan.routes.length > 0 && props.plan.routes.every((route) => isSyncSelected(route.engineer_id)),
 )
+// отмечена часть маршрутов: галочка «все» показывает это чёрточкой
+const someSelected = computed(
+  () => !allSelected.value && props.plan.routes.some((route) => isSyncSelected(route.engineer_id)),
+)
 
 function toggleAll() {
   setChosen(allSelected.value ? [] : props.plan.routes.map((route) => route.engineer_id))
@@ -429,7 +433,7 @@ watch(() => props.plan.id, () => {
              узкие колонки с числами, всё остальное место — маршруту с адресами -->
         <table class="data-table fixed-columns routes-table">
           <colgroup>
-            <col v-if="syncable" style="width: 36px" />
+            <col v-if="syncable" style="width: 40px" />
             <col style="width: 220px" />
             <!-- «Общественный транспорт» — самое длинное название, помещается в одну строку -->
             <col style="width: 190px" />
@@ -440,16 +444,8 @@ watch(() => props.plan.id, () => {
           </colgroup>
           <thead>
             <tr>
-              <!-- галочки синхронизации с планом (режим демонстрации): «все» — здесь -->
-              <th v-if="syncable" class="sync-cell">
-                <input
-                  type="checkbox"
-                  :checked="allSelected"
-                  title="Выбрать все маршруты"
-                  aria-label="выбрать все маршруты"
-                  @change="toggleAll"
-                />
-              </th>
+              <!-- галочки синхронизации с планом (режим демонстрации) -->
+              <th v-if="syncable" class="select-cell"></th>
               <th>Бригада</th>
               <th>Транспорт</th>
               <th>Заявок</th>
@@ -458,7 +454,19 @@ watch(() => props.plan.id, () => {
               <th>Маршрут</th>
             </tr>
             <tr class="filter-row filter-controls">
-              <th v-if="syncable"></th>
+              <!-- «отметить все» стоит в строке фильтров: это тот же отбор строк -->
+              <th v-if="syncable" class="select-cell">
+                <label class="check-box">
+                  <input
+                    type="checkbox"
+                    :checked="allSelected"
+                    :indeterminate.prop="someSelected"
+                    :title="allSelected ? 'Снять отметки со всех маршрутов' : 'Отметить все маршруты'"
+                    :aria-label="allSelected ? 'снять отметки со всех маршрутов' : 'отметить все маршруты'"
+                    @change="toggleAll"
+                  />
+                </label>
+              </th>
               <th><input v-model="routeFilters.name" placeholder="бригада" aria-label="поиск по бригаде" /></th>
               <th>
                 <select v-model="routeFilters.transportId" aria-label="фильтр по транспорту">
@@ -505,16 +513,21 @@ watch(() => props.plan.id, () => {
             <tr
               v-for="{ route, routeIndex } in visibleRoutes"
               :key="route.engineer_id"
-              :class="{ selected: route.engineer_id === selectedEngineerId }"
+              :class="{
+                checked: syncable && isSyncSelected(route.engineer_id),
+                selected: route.engineer_id === selectedEngineerId,
+              }"
               @click="emit('select-engineer', route.engineer_id)"
             >
-              <td v-if="syncable" class="sync-cell" @click.stop>
-                <input
-                  type="checkbox"
-                  :checked="isSyncSelected(route.engineer_id)"
-                  :aria-label="`синхронизировать маршрут ${route.engineer_name}`"
-                  @change="toggleSync(route.engineer_id)"
-                />
+              <td v-if="syncable" class="select-cell" @click.stop>
+                <label class="check-box">
+                  <input
+                    type="checkbox"
+                    :checked="isSyncSelected(route.engineer_id)"
+                    :aria-label="`синхронизировать маршрут ${route.engineer_name}`"
+                    @change="toggleSync(route.engineer_id)"
+                  />
+                </label>
               </td>
               <td>
                 <i class="legend-dot" :style="{ background: routeColor(routeIndex) }"></i>
@@ -647,23 +660,6 @@ watch(() => props.plan.id, () => {
 </template>
 
 <style scoped>
-/* галочки синхронизации с планом — своя колонка, по центру. Отступы у заголовка и строк
-   разные (10 и 13 пикселей), а колонка узкая — без них галочки встают строго друг под другом */
-.data-table.routes-table th.sync-cell,
-.data-table.routes-table td.sync-cell {
-  padding-right: 0;
-  padding-left: 0;
-  text-align: center;
-}
-
-.sync-cell input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  padding: 0;
-  vertical-align: middle;
-}
-
 .routes-panel {
   display: flex;
   flex-direction: column;

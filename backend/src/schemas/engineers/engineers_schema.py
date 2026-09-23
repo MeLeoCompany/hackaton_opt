@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -54,6 +54,26 @@ class EngineerRead(EngineerWrite):
     id: int
     name: str  # название бригады
     office_id: int  # чья бригада; задаётся офисом того, кто её завёл
+
+
+class EngineerBulkUpdate(BaseModel):
+    """Групповая правка смен: меняются только те поля, которые оператор отметил в окне.
+
+    Поле, которого нет в запросе, не трогается. move_to_day переносит смену на другой день,
+    сохраняя время: «перенести выбранные смены на завтра» без правки каждой по отдельности.
+    """
+
+    engineer_ids: list[int] = Field(min_length=1)
+    move_to_day: date | None = None
+    shift_start: datetime | None = None
+    shift_end: datetime | None = None
+    transport_id: int | None = None
+    skill_ids: list[int] | None = Field(default=None, min_length=1, max_length=3)
+    start_at_office: bool | None = None
+
+    def changes(self) -> dict:
+        """Только то, что оператор действительно отметил, без списка смен."""
+        return self.model_dump(exclude_unset=True, exclude={"engineer_ids", "move_to_day"})
 
 
 class EngineerImportReport(BaseModel):

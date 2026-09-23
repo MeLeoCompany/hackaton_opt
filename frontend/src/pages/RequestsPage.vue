@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
@@ -11,6 +11,10 @@ import RequestsFilters from '../components/RequestsFilters.vue'
 import RequestsMap from '../components/RequestsMap.vue'
 import RequestsPagination from '../components/RequestsPagination.vue'
 import RequestsTable from '../components/RequestsTable.vue'
+import RequestsBulkEditDialog from '../components/RequestsBulkEditDialog.vue'
+import BulkActionsBar from '../components/BulkActionsBar.vue'
+import { deleteRequests, updateRequests } from '../api/requestsApi.js'
+import { useBulkSelection } from '../composables/useBulkSelection.js'
 import { usePlanFocus } from '../composables/usePlanFocus.js'
 import { useDayPlanWarning } from '../composables/useDayPlanWarning.js'
 import { useSelectedDay } from '../composables/useSelectedDay.js'
@@ -71,11 +75,102 @@ watch(lastCreatedId, (requestId) => {
   selectedId.value = requestId
 })
 
+// «Сбросить» в строке фильтров снимает всё, чем сужен список: и фильтры, и отметки
+function resetEverything() {
+  resetFilters()
+  selection.clear()
+}
+
+// галочки в таблице: отмеченные заявки меняют и удаляют группой
+const selection = useBulkSelection(() => pageRequests.value)
+const bulkEditOpen = ref(false)
+
+// заявки перечитали (сменили день, что-то удалили) — отметки на исчезнувших снимаем сами
+watch(requests, () => selection.keepOnly(requests.value.map((request) => request.id)))
+
+function plural(count, one, few, many) {
+  const tens = count % 100
+  const units = count % 10
+  if (tens >= 11 && tens <= 14) return `${count} ${many}`
+  if (units === 1) return `${count} ${one}`
+  if (units >= 2 && units <= 4) return `${count} ${few}`
+  return `${count} ${many}`
+}
+
+const selectedTitle = computed(() =>
+  plural(selection.count.value, 'заявка', 'заявки', 'заявок'),
+)
+
+// групповая смена статуса возможна, когда у всех отмеченных статус один: переходы у
+// разных статусов разные, и одним списком их не покажешь
+const selectedStatusId = computed(() => {
+  const statuses = new Set(
+    requests.value.filter((request) => selection.isSelected(request.id)).map((request) => request.status_id),
+  )
+  return statuses.size === 1 ? [...statuses][0] : null
+})
+
+// групповая правка: сервер меняет либо все отмеченные заявки, либо ни одной
+async function applyBulkEdit(fields) {
+  const ids = selection.selectedIds.value
+  const report = await runBulk(() => updateRequests(ids, fields))
+  if (report === null) return
+  bulkEditOpen.value = false
+  selection.clear()
+  await refreshDay()
+  showNotice(`Изменено: ${plural(report.updated, 'заявка', 'заявки', 'заявок')}`)
+}
+
+// групповое удаление: что можно — удаляем, про остальное показываем причины
+async function removeSelected() {
+  const ids = selection.selectedIds.value
+  if (!window.confirm(`Удалить ${plural(ids.length, 'заявку', 'заявки', 'заявок')}?`)) return
+  const report = await runBulk(() => deleteRequests(ids))
+  if (report === null) return
+  selection.clear()
+  await refreshDay()
+  if (report.problems.length) {
+    errorMessage.value = `Удалено: ${report.deleted}. Не удалось удалить: ${report.problems.length}`
+    errorDetails.value = report.problems.map((problem) => problem.reason)
+    return
+  }
+  showNotice(`Удалено: ${plural(report.deleted, 'заявка', 'заявки', 'заявок')}`)
+}
+
+// общий обвес группового действия: занятость и разбор ошибки сервера
+async function runBulk(action) {
+  bulkSaving.value = true
+  errorMessage.value = ''
+  errorDetails.value = []
+  try {
+    return await action()
+  } catch (error) {
+    errorMessage.value = error.message
+    errorDetails.value = error.details ?? []
+    return null
+  } finally {
+    bulkSaving.value = false
+  }
+}
+
+const bulkSaving = ref(false)
+
 // пришли из маршрута плана — показываем ту самую заявку; обратно — «Открыть в плане»
 const { takeRequestId, openPlan } = usePlanFocus()
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
+// карта короче экрана, а над ней бывают плашки предупреждений: при переходе на карту
+// прокручиваем страницу к ней, иначе отмеченные точки остаются ниже края экрана
+const mapArea = ref(null)
+const bulkBar = ref(null)
+
+watch(viewMode, async (mode) => {
+  if (mode !== 'map') return
+  await nextTick()
+  const target = bulkBar.value?.$el ?? mapArea.value
+  target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+})
 
 // карточка справа от карты занимает ровно три последние колонки таблицы (приоритет,
 // транспорт, кнопки) — двух уже мало под её кнопки. Её левый край
@@ -122,15 +217,6 @@ const { selectedDay, daysWithRequests, selectDay, refreshDaysWithRequests } = us
 // заявки иначе висят незамеченными; по клику — день и только просроченные
 const overdueDays = computed(() => daysWithRequests.value.filter((day) => day.overdue_requests > 0))
 const overdueTotal = computed(() => overdueDays.value.reduce((sum, day) => sum + day.overdue_requests, 0))
-
-function plural(count, one, few, many) {
-  const tens = count % 100
-  const units = count % 10
-  if (tens >= 11 && tens <= 14) return `${count} ${many}`
-  if (units === 1) return `${count} ${one}`
-  if (units >= 2 && units <= 4) return `${count} ${few}`
-  return `${count} ${many}`
-}
 
 // перевели системные часы — просроченными стали другие заявки: перечитываем дни
 const { offsetSeconds } = useSystemTime()
@@ -221,7 +307,7 @@ onMounted(async () => {
 
     <!-- с утверждённым планом дня что-то разошлось: оператор видит это, не заходя в планы -->
     <p v-if="pendingReplan" class="replan-warning">
-      <span>⚠ Пересчёт №{{ pendingReplan.id }} посчитан — утвердите его, бригады ждут маршрут</span>
+      <span>⚠ Пересчёт №{{ pendingReplan.id }} посчитан — он вступит в силу сам, в свой момент</span>
       <button type="button" class="link" @click="openPlan(pendingReplan.id)">
         Открыть пересчёт №{{ pendingReplan.id }} →
       </button>
@@ -277,6 +363,17 @@ onMounted(async () => {
 
       </div>
 
+      <!-- отмечены строки: действия доступны и в таблице, и на карте -->
+      <BulkActionsBar
+        ref="bulkBar"
+        v-if="selection.count.value"
+        :count="selection.count.value"
+        :title="selectedTitle"
+        :busy="bulkSaving || saving"
+        @edit="bulkEditOpen = true"
+        @delete="removeSelected"
+      />
+
       <div v-if="viewMode === 'table'" class="table-view">
         <RequestsTable
           :requests="pageRequests"
@@ -291,6 +388,11 @@ onMounted(async () => {
           :filters="filters"
           :active-filter-count="activeFilterCount"
           :plan-date="selectedDay"
+          :selected-ids="selection.selectedIds.value"
+          :all-selected="selection.allVisibleSelected.value"
+          :some-selected="selection.someVisibleSelected.value"
+          @toggle-row="selection.toggleRow"
+          @toggle-all="selection.toggleVisible"
           @sort="toggleSort"
           @select="selectRequest"
           @change-status="changeStatus"
@@ -302,7 +404,7 @@ onMounted(async () => {
           @remove="remove"
           @duplicate="copySource = $event"
           @work-type-picked="applyWorkTypeNorms"
-          @reset-filters="resetFilters"
+          @reset-filters="resetEverything"
           @show-on-map="showOnMap"
         />
         <RequestsPagination
@@ -314,13 +416,14 @@ onMounted(async () => {
         />
       </div>
 
-      <div v-else class="map-view" :style="{ '--details-width': detailsWidth }">
+      <div v-else ref="mapArea" class="map-view" :style="{ '--details-width': detailsWidth }">
         <RequestsFilters
           @widths="filterWidths = $event"
           :filters="filters"
           :references="references"
           :active-count="activeFilterCount"
-          @reset="resetFilters"
+          :checked-count="selection.count.value"
+          @reset="resetEverything"
         />
 
         <div class="map-area">
@@ -328,6 +431,7 @@ onMounted(async () => {
             :requests="filteredRequests"
             :references="references"
             :selected-id="selectedId"
+            :checked-ids="selection.selectedIds.value"
             @select="selectRequest"
           />
         </div>
@@ -343,6 +447,16 @@ onMounted(async () => {
       </div>
     </template>
 
+    <RequestsBulkEditDialog
+      v-if="bulkEditOpen"
+      :count="selection.count.value"
+      :references="references"
+      :saving="bulkSaving"
+      :plan-date="selectedDay"
+      :status-id="selectedStatusId"
+      @apply="applyBulkEdit"
+      @close="bulkEditOpen = false"
+    />
     <RequestCopyDialog
       v-if="copySource"
       :request="copySource"

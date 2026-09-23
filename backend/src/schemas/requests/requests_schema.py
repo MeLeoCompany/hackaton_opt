@@ -103,6 +103,35 @@ class RequestActivityReport(BaseModel):
     updated: int
 
 
+class RequestBulkUpdate(BaseModel):
+    """Групповая правка: меняются только те поля, которые оператор отметил в окне.
+
+    Поле, которого нет в запросе, не трогается — у каждой заявки остаётся своё значение.
+    move_to_day переносит окно на другой день, сохраняя время суток: «перенести выбранные
+    на завтра» без ручной правки каждой заявки.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    request_ids: list[int] = Field(min_length=1)
+    # статус меняется не правкой полей, а переходом: он есть и у заявок, которые уже в плане
+    status_id: int | None = None
+    move_to_day: date | None = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    duration_minutes: int | None = Field(default=None, gt=0)
+    priority_id: int | None = None
+    skill_id: int | None = None
+    work_type_id: int | None = None
+    transport_id: int | None = None
+
+    def changes(self) -> dict:
+        """Поля заявки, которые оператор отметил: без списка заявок, переноса и статуса."""
+        return self.model_dump(
+            exclude_unset=True, exclude={"request_ids", "move_to_day", "status_id"}
+        )
+
+
 class CancelledTransfer(str, Enum):
     """Что делать с отменёнными заявками при переносе дня копией."""
 

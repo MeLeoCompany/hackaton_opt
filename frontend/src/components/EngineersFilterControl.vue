@@ -8,6 +8,8 @@ defineProps({
   filters: { type: Object, required: true }, // объект из useEngineersView, меняется напрямую
   references: { type: Object, required: true },
   activeFilterCount: { type: Number, required: true },
+  // есть что сбрасывать помимо фильтров: отмеченные галочками строки
+  checkedCount: { type: Number, default: 0 },
 })
 defineEmits(['reset'])
 </script>
@@ -59,7 +61,12 @@ defineEmits(['reset'])
   <button
     v-else-if="column === 'actions'"
     class="link"
-    :disabled="activeFilterCount === 0"
+    :disabled="activeFilterCount === 0 && checkedCount === 0"
+    :title="
+      checkedCount
+        ? 'Сбросить фильтры и снять отметки со строк'
+        : 'Сбросить фильтры'
+    "
     @click="$emit('reset')"
   >
     Сбросить{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}

@@ -29,6 +29,16 @@ export function setRequestsStatus(requestIds, statusId) {
   return apiRequest('PATCH', '/requests/status', { json: { request_ids: requestIds, status_id: statusId } })
 }
 
+// групповая правка: в fields только те поля, которые оператор отметил — все или ни одной
+export function updateRequests(requestIds, fields) {
+  return apiRequest('PATCH', '/requests', { json: { request_ids: requestIds, ...fields } })
+}
+
+// групповое удаление: удаляется всё, что можно, остальное вернётся с причинами
+export function deleteRequests(requestIds) {
+  return apiRequest('DELETE', '/requests', { json: { ids: requestIds } })
+}
+
 // история смен статуса заявки по порядку
 export function getRequestHistory(requestId) {
   return apiRequest('GET', `/requests/${requestId}/history`)

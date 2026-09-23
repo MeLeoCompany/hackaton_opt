@@ -26,6 +26,10 @@ const props = defineProps({
   emptyText: { type: String, default: 'Заявок нет' },
   filters: { type: Object, required: true },
   activeFilterCount: { type: Number, required: true },
+  // отмеченные галочками строки: их меняют и удаляют группой
+  selectedIds: { type: Array, default: () => [] },
+  allSelected: { type: Boolean, default: false },
+  someSelected: { type: Boolean, default: false },
   // открытый день: по нему видно, что заявку перенесли отсюда в другой день
   planDate: { type: String, default: '' },
 })
@@ -46,6 +50,8 @@ defineEmits([
   'work-type-picked',
   'reset-filters',
   'show-on-map',
+  'toggle-row',
+  'toggle-all',
 ])
 
 // точки остальных заявок страницы — ориентир на карте выбора координаты
@@ -54,6 +60,9 @@ const contextPoints = computed(() =>
     .filter((request) => request.id !== props.editingId)
     .map((request) => ({ latitude: request.latitude, longitude: request.longitude, label: request.address })),
 )
+
+// отмеченные строки приходят списком номеров — в разметке удобнее множество
+const selected = computed(() => new Set(props.selectedIds))
 
 function sortArrow(columnSortKey) {
   if (props.sortKey !== columnSortKey) return '↕'
@@ -106,12 +115,28 @@ onMounted(scrollToSelected)
 
         <!-- отдельная строка фильтров под названиями колонок -->
         <tr class="filter-row filter-controls">
-          <th v-for="column in COLUMNS" :key="column.key" :class="{ 'actions-cell': column.key === 'actions' }">
+          <th
+            v-for="column in COLUMNS"
+            :key="column.key"
+            :class="{ 'actions-cell': column.key === 'actions', 'select-cell': column.key === 'select' }"
+          >
+            <label v-if="column.key === 'select'" class="check-box">
+              <input
+                type="checkbox"
+                :checked="allSelected"
+                :indeterminate.prop="someSelected"
+                :aria-label="allSelected ? 'снять отметки со всех строк' : 'отметить все строки'"
+                :title="allSelected ? 'Снять отметки со всех строк' : 'Отметить все строки'"
+                @click.stop="$emit('toggle-all')"
+              />
+            </label>
             <RequestsFilterControl
+              v-else
               :column="column.key"
               :filters="filters"
               :references="references"
               :active-filter-count="activeFilterCount"
+              :checked-count="selectedIds.length"
               @reset="$emit('reset-filters')"
             />
           </th>
@@ -119,6 +144,7 @@ onMounted(scrollToSelected)
       </thead>
       <tbody>
         <tr v-if="editingId === NEW_REQUEST" class="editing">
+          <td class="select-cell"></td>
           <td>
             <input v-model="form.id" type="number" min="1" class="short-input" placeholder="авто" />
           </td>
@@ -138,6 +164,7 @@ onMounted(scrollToSelected)
           :key="request.id"
           :data-request-id="request.id"
           :class="{
+            checked: selected.has(request.id),
             editing: request.id === editingId,
             selected: request.id === selectedId,
             inactive: !request.is_active,
@@ -146,6 +173,16 @@ onMounted(scrollToSelected)
           @click="editingId === null && $emit('select', request.id)"
           @dblclick="editingId === null && $emit('show-on-map', request.id)"
         >
+          <td class="select-cell">
+            <label class="check-box">
+              <input
+                type="checkbox"
+                :checked="selected.has(request.id)"
+                :aria-label="`отметить строку №${request.id}`"
+                @click.stop="$emit('toggle-row', request.id, $event.shiftKey)"
+              />
+            </label>
+          </td>
           <td class="number-cell">{{ request.id }}</td>
 
           <RequestEditCells
@@ -253,6 +290,7 @@ onMounted(scrollToSelected)
 </template>
 
 <style scoped>
+
 /* заявка ушла в другой день: в этом дне она остаётся видна, но бледной */
 .moved-away td {
   opacity: 0.65;

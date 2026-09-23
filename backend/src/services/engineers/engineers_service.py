@@ -12,7 +12,9 @@ from src.repositories.brigades import brigades_repository
 from src.repositories.engineers import engineers_repository
 from src.repositories.offices import offices_repository
 from src.repositories.references import references_repository
+from src.schemas.bulk import BulkDeleteProblem, BulkDeleteReport, BulkUpdateReport
 from src.schemas.engineers import (
+    EngineerBulkUpdate,
     EngineerCreate,
     EngineerEquipmentItem,
     EngineerImportReport,
@@ -156,6 +158,146 @@ async def delete_engineer(session: AsyncSession, engineer_id: int, office_id: in
 
     await engineers_repository.delete_engineer(session, engineer)
     await session.commit()
+
+
+async def delete_engineers(
+    session: AsyncSession, engineer_ids: list[int], office_id: int
+) -> BulkDeleteReport:
+    """Удаляет выбранные смены: те, что можно, — остальные возвращает с причинами.
+
+    Смена, попавшая в план, остаётся: по ней ездила бригада. Прочие выбранные удаляются —
+    одна занятая смена не должна отменять удаление всех остальных.
+    """
+    problems = []
+    deleted = 0
+    for engineer_id in dict.fromkeys(engineer_ids):
+        try:
+            await delete_engineer(session, engineer_id, office_id)
+            deleted += 1
+        except (EngineerNotFoundError, EngineerInUseError) as error:
+            problems.append(BulkDeleteProblem(id=engineer_id, reason=str(error)))
+    return BulkDeleteReport(deleted=deleted, problems=problems)
+
+
+async def update_engineers(
+    session: AsyncSession, payload: EngineerBulkUpdate, office_id: int
+) -> BulkUpdateReport:
+    """Групповая правка смен: меняет только отмеченные оператором поля.
+
+    Либо меняются все смены, либо ни одна: сначала проверяем справочники, длину смены и то,
+    что бригада не окажется в двух сменах сразу.
+    """
+    unique_ids = list(dict.fromkeys(payload.engineer_ids))
+    engineers = [await find_engineer(session, engineer_id, office_id) for engineer_id in unique_ids]
+    changes = payload.changes()
+
+    skills = None
+    if changes.get("skill_ids") is not None:
+        skills = await check_bulk_references(session, changes)
+    elif changes.get("transport_id") is not None:
+        await check_bulk_references(session, changes)
+
+    shifts = {engineer.id: new_shift(engineer, changes, payload.move_to_day) for engineer in engineers}
+    problems = [
+        f"смена №{engineer.id}: конец смены должен быть позже начала "
+        f"({format_local_shift(shifts[engineer.id])})"
+        for engineer in engineers
+        if shifts[engineer.id]["shift_end"] <= shifts[engineer.id]["shift_start"]
+    ]
+    problems += await busy_brigades(session, engineers, shifts)
+    if problems:
+        raise EngineerDataError(problems)
+
+    fields = {name: value for name, value in changes.items() if name != "skill_ids"}
+    for engineer in engineers:
+        engineer_fields = await with_office_start(
+            session, {**fields, **shifts[engineer.id], "office_id": office_id}
+        )
+        engineer_fields.pop("office_id")
+        engineers_repository.apply_changes(
+            engineer, engineer_fields, skills if skills is not None else list(engineer.skills)
+        )
+    await session.commit()
+    return BulkUpdateReport(updated=len(engineers))
+
+
+def new_shift(engineer: Engineer, changes: dict, move_to_day: date | None) -> dict:
+    """Смена после правки: что задали явно, что перенесли на другой день, что было."""
+    timezone = local_timezone()
+    shift = {
+        "shift_start": changes.get("shift_start") or engineer.shift_start,
+        "shift_end": changes.get("shift_end") or engineer.shift_end,
+    }
+    if move_to_day is not None:
+        # день другой, время то же: ночная смена так и остаётся ночной
+        moved = {
+            name: moment.astimezone(timezone).replace(
+                year=move_to_day.year, month=move_to_day.month, day=move_to_day.day
+            )
+            for name, moment in shift.items()
+        }
+        if moved["shift_end"] <= moved["shift_start"]:
+            moved["shift_end"] += timedelta(days=1)
+        shift = moved
+    return shift
+
+
+async def busy_brigades(
+    session: AsyncSession, engineers: list[Engineer], shifts: dict[int, dict]
+) -> list[str]:
+    """Одна бригада — одна смена за раз: и среди чужих смен, и среди правленных вместе."""
+    changed = {engineer.id for engineer in engineers}
+    problems = []
+    for engineer in engineers:
+        shift = shifts[engineer.id]
+        others = [
+            other
+            for other in await engineers_repository.list_brigade_shifts(
+                session, engineer.brigade_id, shift["shift_start"], shift["shift_end"]
+            )
+            if other.id not in changed
+        ]
+        together = [
+            other
+            for other in engineers
+            if other.id != engineer.id
+            and other.brigade_id == engineer.brigade_id
+            and shifts[other.id]["shift_start"] < shift["shift_end"]
+            and shifts[other.id]["shift_end"] > shift["shift_start"]
+        ]
+        if others or together:
+            problems.append(
+                f"у бригады «{engineer.name}» после правки две смены сразу "
+                f"({format_local_shift(shift)}) — так нельзя"
+            )
+    return problems
+
+
+def format_local_shift(shift: dict) -> str:
+    timezone = local_timezone()
+    start = shift["shift_start"].astimezone(timezone)
+    end = shift["shift_end"].astimezone(timezone)
+    return f"{start:%d.%m %H:%M}–{end:%d.%m %H:%M}"
+
+
+async def check_bulk_references(session: AsyncSession, changes: dict) -> list[Skill] | None:
+    """Проверяет только заданные поля: транспорт и навыки. Возвращает навыки, если их меняют."""
+    problems = []
+    if changes.get("transport_id") is not None:
+        transports = await references_repository.list_transports(session)
+        if changes["transport_id"] not in {transport.id for transport in transports}:
+            problems.append(f"транспорта №{changes['transport_id']} нет в справочнике")
+
+    skills = None
+    if changes.get("skill_ids") is not None:
+        skills = await engineers_repository.get_skills_by_ids(session, changes["skill_ids"])
+        missing = sorted(set(changes["skill_ids"]) - {skill.id for skill in skills})
+        if missing:
+            listed = ", ".join(f"№{skill_id}" for skill_id in missing)
+            problems.append(f"навыков {listed} нет в справочнике")
+    if problems:
+        raise EngineerDataError(problems)
+    return skills
 
 
 async def brigade_name(

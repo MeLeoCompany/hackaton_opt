@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
@@ -7,6 +7,11 @@ import EngineerDetailsCard from '../components/EngineerDetailsCard.vue'
 import EngineersFilters from '../components/EngineersFilters.vue'
 import EngineersMap from '../components/EngineersMap.vue'
 import EngineersTable from '../components/EngineersTable.vue'
+import EngineersBulkEditDialog from '../components/EngineersBulkEditDialog.vue'
+import BulkActionsBar from '../components/BulkActionsBar.vue'
+import { deleteEngineers, updateEngineers } from '../api/engineersApi.js'
+import { useBulkSelection } from '../composables/useBulkSelection.js'
+import { useSelectedDay } from '../composables/useSelectedDay.js'
 import { useEngineersTable } from '../composables/useEngineersTable.js'
 import { ENGINEER_COLUMNS, useEngineersView } from '../composables/useEngineersView.js'
 
@@ -19,6 +24,7 @@ const {
   errorMessage,
   errorDetails,
   noticeMessage,
+  showNotice,
   editingId,
   form,
   load,
@@ -52,6 +58,17 @@ watch(lastCreatedId, (engineerId) => {
 
 // что показываем под фильтрами: 'table' или 'map'
 const viewMode = ref('table')
+// карта короче экрана, а над ней бывают плашки предупреждений: при переходе на карту
+// прокручиваем страницу к ней, иначе отмеченные точки остаются ниже края экрана
+const mapArea = ref(null)
+const bulkBar = ref(null)
+
+watch(viewMode, async (mode) => {
+  if (mode !== 'map') return
+  await nextTick()
+  const target = bulkBar.value?.$el ?? mapArea.value
+  target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+})
 
 // карточка справа от карты занимает ровно три последние колонки таблицы (смена, старт,
 // действия): её левый край совпадает с линией колонки в шапке фильтров, а карта
@@ -67,6 +84,74 @@ const detailsWidth = computed(() => {
 const selectedEngineer = computed(
   () => filteredEngineers.value.find((engineer) => engineer.id === selectedId.value) ?? null,
 )
+
+// «Сбросить» в строке фильтров снимает всё, чем сужен список: и фильтры, и отметки
+function resetEverything() {
+  resetFilters()
+  selection.clear()
+}
+
+// галочки в таблице: отмеченные смены меняют и удаляют группой
+const selection = useBulkSelection(() => sortedEngineers.value)
+const bulkEditOpen = ref(false)
+const bulkSaving = ref(false)
+const { selectedDay } = useSelectedDay()
+
+// смены перечитали — отметки на исчезнувших снимаем сами
+watch(engineers, () => selection.keepOnly(engineers.value.map((engineer) => engineer.id)))
+
+function plural(count, one, few, many) {
+  const tens = count % 100
+  const units = count % 10
+  if (tens >= 11 && tens <= 14) return `${count} ${many}`
+  if (units === 1) return `${count} ${one}`
+  if (units >= 2 && units <= 4) return `${count} ${few}`
+  return `${count} ${many}`
+}
+
+const selectedTitle = computed(() => plural(selection.count.value, 'смена', 'смены', 'смен'))
+
+// общий обвес группового действия: занятость и разбор ошибки сервера
+async function runBulk(action) {
+  bulkSaving.value = true
+  errorMessage.value = ''
+  errorDetails.value = []
+  try {
+    return await action()
+  } catch (error) {
+    errorMessage.value = error.message
+    errorDetails.value = error.details ?? []
+    return null
+  } finally {
+    bulkSaving.value = false
+  }
+}
+
+// групповая правка: сервер меняет либо все отмеченные смены, либо ни одной
+async function applyBulkEdit(fields) {
+  const report = await runBulk(() => updateEngineers(selection.selectedIds.value, fields))
+  if (report === null) return
+  bulkEditOpen.value = false
+  selection.clear()
+  await load()
+  showNotice(`Изменено: ${plural(report.updated, 'смена', 'смены', 'смен')}`)
+}
+
+// групповое удаление: что можно — удаляем, про остальное показываем причины
+async function removeSelected() {
+  const ids = selection.selectedIds.value
+  if (!window.confirm(`Удалить ${plural(ids.length, 'смену', 'смены', 'смен')}?`)) return
+  const report = await runBulk(() => deleteEngineers(ids))
+  if (report === null) return
+  selection.clear()
+  await load()
+  if (report.problems.length) {
+    errorMessage.value = `Удалено: ${report.deleted}. Не удалось удалить: ${report.problems.length}`
+    errorDetails.value = report.problems.map((problem) => problem.reason)
+    return
+  }
+  showNotice(`Удалено: ${plural(report.deleted, 'смена', 'смены', 'смен')}`)
+}
 
 function addEngineer() {
   viewMode.value = 'table'
@@ -140,6 +225,17 @@ onMounted(load)
         </div>
       </div>
 
+      <!-- отмечены строки: действия доступны и в таблице, и на карте -->
+      <BulkActionsBar
+        ref="bulkBar"
+        v-if="selection.count.value"
+        :count="selection.count.value"
+        :title="selectedTitle"
+        :busy="bulkSaving || saving"
+        @edit="bulkEditOpen = true"
+        @delete="removeSelected"
+      />
+
       <div v-if="viewMode === 'table'" class="table-view">
         <EngineersTable
           :engineers="sortedEngineers"
@@ -153,24 +249,30 @@ onMounted(load)
           :empty-text="engineers.length ? 'По фильтрам никого не найдено' : 'Исполнителей нет'"
           :filters="filters"
           :active-filter-count="activeFilterCount"
+          :selected-ids="selection.selectedIds.value"
+          :all-selected="selection.allVisibleSelected.value"
+          :some-selected="selection.someVisibleSelected.value"
+          @toggle-row="selection.toggleRow"
+          @toggle-all="selection.toggleVisible"
           @sort="toggleSort"
           @select="selectEngineer"
           @edit="startEdit"
           @cancel="cancelEdit"
           @save="saveForm"
           @remove="remove"
-          @reset-filters="resetFilters"
+          @reset-filters="resetEverything"
           @show-on-map="showOnMap"
         />
       </div>
 
-      <div v-else class="map-view" :style="{ '--details-width': detailsWidth }">
+      <div v-else ref="mapArea" class="map-view" :style="{ '--details-width': detailsWidth }">
         <EngineersFilters
           @widths="filterWidths = $event"
           :filters="filters"
           :references="references"
           :active-count="activeFilterCount"
-          @reset="resetFilters"
+          :checked-count="selection.count.value"
+          @reset="resetEverything"
         />
 
         <div class="map-area">
@@ -178,6 +280,7 @@ onMounted(load)
             :engineers="filteredEngineers"
             :references="references"
             :selected-id="selectedId"
+            :checked-ids="selection.selectedIds.value"
             @select="selectEngineer"
           />
         </div>
@@ -189,6 +292,16 @@ onMounted(load)
         />
       </div>
     </template>
+
+    <EngineersBulkEditDialog
+      v-if="bulkEditOpen"
+      :count="selection.count.value"
+      :references="references"
+      :saving="bulkSaving"
+      :plan-date="selectedDay"
+      @apply="applyBulkEdit"
+      @close="bulkEditOpen = false"
+    />
 
     <Transition name="toast">
       <div v-if="noticeMessage" class="toast" role="status">{{ noticeMessage }}</div>
