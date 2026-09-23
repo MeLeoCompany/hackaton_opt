@@ -119,7 +119,7 @@ function seconds(value) {
   font-variant-numeric: tabular-nums;
 }
 
-/* чья это строка: planner, cuopt, r5, valhalla */
+/* чья это строка: planner, cuopt, or-tools, r5, valhalla, кеш */
 .source {
   flex: none;
   width: 54px;

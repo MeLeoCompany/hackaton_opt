@@ -40,16 +40,34 @@ MAX_EVENTS_PER_STEP = 60
 CANCEL_POLL_SECONDS = 0.5
 # чьи логи забираем в журнал: наши службы и сам решатель
 CAPTURED_LOGGERS = ("src.", "cuopt")
-# по имени логгера понятно, чья это строка
+# по имени логгера понятно, чья это строка. Имя короткое: в журнале под него узкая колонка,
+# и «ortools_solver» в неё не влезает
 LOG_SOURCES = {
     "src.services.planner.cuopt_solver": "cuopt",
     "cuopt": "cuopt",
+    "src.services.planner.ortools_solver": "or-tools",
+    "src.services.planner.baseline_solver": "базовый",
     "src.services.travel.r5_provider": "r5",
     "src.services.planner.transit_schedule": "r5",
     "src.services.travel.r5_access": "r5",
+    "src.services.travel.transit_provider": "r5",
     "src.services.travel.valhalla_provider": "valhalla",
     "src.services.travel.travel_service": "travel",
+    "src.services.travel.haversine_provider": "travel",
+    "src.services.travel.travel_cache": "кеш",
 }
+# остальные наши модули подписываем по службе, а не по файлу
+LOG_GROUPS = (("src.services.planner.", "planner"), ("src.services.travel.", "travel"))
+
+
+def log_source(name: str) -> str:
+    """Короткая подпись строки журнала по имени логгера."""
+    if name in LOG_SOURCES:
+        return LOG_SOURCES[name]
+    for prefix, source in LOG_GROUPS:
+        if name.startswith(prefix):
+            return source
+    return name.split(".")[-1]
 LOG_LEVELS = {logging.WARNING: "warning", logging.ERROR: "error", logging.CRITICAL: "error"}
 
 
@@ -357,7 +375,7 @@ class _QueueHandler(logging.Handler):
         item = (
             record.getMessage(),
             LOG_LEVELS.get(record.levelno, "info"),
-            LOG_SOURCES.get(record.name, record.name.split(".")[-1]),
+            log_source(record.name),
         )
         try:
             self.loop.call_soon_threadsafe(self.queue.put_nowait, item)
