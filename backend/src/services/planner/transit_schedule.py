@@ -4,6 +4,7 @@ import copy
 import logging
 import math
 from collections import Counter
+from collections.abc import Awaitable, Callable
 
 import httpx
 import numpy as np
@@ -18,6 +19,8 @@ from src.services.planner.planner_problem import ProblemInstance
 from src.services.travel import build_route, travel_cache
 
 TRANSIT_ID = TransportKind.PUBLIC_TRANSPORT.value
+# чем решать задачу дня: cuOpt на видеокарте или OR-Tools на процессоре — вызов одинаковый
+Solver = Callable[..., Awaitable[cuopt_solver.DaySolution]]
 logger = logging.getLogger(__name__)
 
 # Вставка одного визита меняет время выезда на всех следующих плечах. Проверяем
@@ -397,11 +400,15 @@ async def solve_day(
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None = None,
     params: SolverParams | None = None,
+    solve: Solver | None = None,
 ) -> cuopt_solver.DaySolution:
     """Уточнять только использованные плечи, не пересчитывая полную матрицу R5."""
     params = params or SolverParams()
+    # по умолчанию cuOpt; берём его здесь, а не в значении аргумента, чтобы тесты и вызов
+    # с другим решателем видели одну и ту же точку подмены
+    solve = solve or cuopt_solver.solve_day
     if TRANSIT_ID not in loaded.instance.travel_min:
-        return await cuopt_solver.solve_day(
+        return await solve(
             loaded.instance, objective_order=objective_order, ranks=ranks, params=params
         )
 
@@ -417,7 +424,7 @@ async def solve_day(
             f"Попытка {attempt + 1} из {params.transit_attempts}: решаю и сверяю с расписанием",
             fraction=attempt / params.transit_attempts,
         )
-        solution = await cuopt_solver.solve_day(
+        solution = await solve(
             instance, objective_order=objective_order, ranks=ranks, params=params
         )
         last_attempt = attempt + 1 == params.transit_attempts

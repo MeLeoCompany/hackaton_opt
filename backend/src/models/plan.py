@@ -11,6 +11,7 @@ from src.db.base import Base
 
 class PlanRunType(str, enum.Enum):
     BASELINE = "baseline"
+    ORTOOLS = "ortools"
     OPTIMIZED = "optimized"
     REPLANNED = "replanned"
 

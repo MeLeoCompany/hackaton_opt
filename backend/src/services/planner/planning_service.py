@@ -44,6 +44,7 @@ from src.services.planner import (
     baseline_solver,
     cuopt_solver,
     departure_gate,
+    ortools_solver,
     planner_loader,
     run_log,
     transit_schedule,
@@ -60,8 +61,16 @@ from src.services.requests import request_status_service
 from src.services.travel import build_route, travel_cache
 
 SOLVER_NAME = "cuopt"
+# как шаг называется в журнале расчёта
+SOLVER_STEPS = {
+    SolverName.CUOPT: "Решаю задачу маршрутизации (cuOpt)",
+    SolverName.ORTOOLS: "Решаю задачу маршрутизации (OR-Tools)",
+    SolverName.BASELINE: "Базовый расчёт: первый подходящий исполнитель",
+}
+
 RUN_TYPE_BY_SOLVER = {
     SolverName.CUOPT: PlanRunType.OPTIMIZED,
+    SolverName.ORTOOLS: PlanRunType.ORTOOLS,
     SolverName.BASELINE: PlanRunType.BASELINE,
 }
 AssignmentView = Assignment | SimpleNamespace
@@ -187,7 +196,7 @@ async def build_inside_run(
             run_type=RUN_TYPE_BY_SOLVER[solver],
             solver=solver.value,
             solve_duration_ms=duration_ms,
-            objective_order=policy if solver is SolverName.CUOPT else None,
+            objective_order=policy if solver is not SolverName.BASELINE else None,
         )
     # маршруты строятся один раз здесь и ложатся в кеш: открытие плана возьмёт готовые
     async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
@@ -203,21 +212,23 @@ async def solve_with(
     ranks: dict[int, int] | None = None,
     params: SolverParams | None = None,
 ) -> cuopt_solver.DaySolution:
-    """cuOpt считает на видеокарте в отдельном потоке, базовый алгоритм — прямо здесь.
+    """cuOpt считает на видеокарте, OR-Tools — на процессоре, базовый алгоритм — прямо здесь.
 
     ranks — ярусы заявок для целевой функции; нужны второму расчёту при синхронизации
     (docs/algoV2.md). Базовый алгоритм ярусы не использует.
     """
-    async with run_log.step(
-        "Базовый расчёт: первый подходящий исполнитель"
-        if solver is SolverName.BASELINE
-        else "Решаю задачу маршрутизации (cuOpt)",
-        45,
-        80,
-    ):
+    async with run_log.step(SOLVER_STEPS[solver], 45, 80):
         if solver is SolverName.BASELINE:
             return baseline_solver.solve_day(loaded.instance)
-        return await transit_schedule.solve_day(loaded, objective_order, ranks, params)
+        # у обоих решателей один вход и один выход, поэтому проверка расписания общая
+        solve = (
+            ortools_solver.solve_day
+            if solver is SolverName.ORTOOLS
+            else cuopt_solver.solve_day
+        )
+        return await transit_schedule.solve_day(
+            loaded, objective_order, ranks, params, solve=solve
+        )
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,8 @@ class SolverName(str, Enum):
     """Чем считать план. Список расширяется по мере появления решателей."""
 
     CUOPT = "cuopt"
+    # тот же поиск маршрутов, но на процессоре: работает без видеокарты (ortools_solver)
+    ORTOOLS = "ortools"
     BASELINE = "baseline"
 
 

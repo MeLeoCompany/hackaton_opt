@@ -252,8 +252,8 @@ onMounted(() => {
               <tr class="group-row" @click="toggleGroup('cuopt')">
                 <td>
                   <span class="twist">{{ openGroups.has('cuopt') ? '▾' : '▸' }}</span>
-                  <strong>Решатель cuOpt</strong>
-                  <InfoHint text="Эти значения подставляет диалог расчёта; поменять их на один расчёт можно прямо в нём" />
+                  <strong>Решатель маршрутов</strong>
+                  <InfoHint text="Общие параметры поиска для cuOpt и OR-Tools: их подставляет диалог расчёта, поменять на один расчёт можно прямо в нём" />
                 </td>
                 <td class="summary">{{ solverSummary }}</td>
                 <td></td>

@@ -37,6 +37,11 @@ const SOLVERS = [
     hint: 'Считает на видеокарте NVIDIA: максимум аварийных заявок, затем высокого приоритета, затем всех заявок, меньше исполнителей и пробега',
   },
   {
+    value: 'ortools',
+    label: 'OR-Tools — та же оптимизация на процессоре',
+    hint: 'Та же постановка задачи, что у cuOpt: те же приоритеты, ярусы и цена бригады. Считает на процессоре, видеокарта не нужна',
+  },
+  {
     value: 'baseline',
     label: 'Базовый — первый подходящий исполнитель',
     hint: 'Контрольный алгоритм ТЗ: заявки по порядку поступления, без перестановок. Считается мгновенно',
@@ -83,11 +88,16 @@ function solverHint() {
   return SOLVERS.find((solver) => solver.value === params.solver)?.hint ?? ''
 }
 
+// как назвать выбранный решатель в заголовке параметров поиска
+function solverTitle() {
+  return params.solver === 'ortools' ? 'OR-Tools' : 'cuOpt'
+}
+
 function basePayload() {
   const payload = { solver: params.solver }
   // момент пересчёта бэкенд берёт сам — текущее системное время
   if (props.replanOf) payload.free_at = freeAtPayload()
-  if (params.solver === 'cuopt') {
+  if (params.solver !== 'baseline') {
     payload.objective_order = objectiveOrder(params.nextGoal)
     // системные параметры шлём только когда их поменяли: иначе сервер возьмёт свои
     if (paramsChanged.value) payload.solver_params = numericParams(solverParams.value)
@@ -211,7 +221,7 @@ async function submit() {
       </label>
       <p class="hint">{{ solverHint() }}</p>
 
-      <fieldset v-if="params.solver === 'cuopt'" class="priority-settings" :disabled="building">
+      <fieldset v-if="params.solver !== 'baseline'" class="priority-settings" :disabled="building">
         <legend>Порядок целей</legend>
         <label class="field">
           <span>
@@ -232,11 +242,11 @@ async function submit() {
         </p>
       </fieldset>
 
-      <!-- параметры cuOpt: только при выбранном cuOpt — базовому алгоритму их не передать;
-           подставлены системные, можно поменять на этот расчёт -->
-      <section v-if="params.solver === 'cuopt' && solverParams" class="solver-block">
+      <!-- параметры поиска: базовому алгоритму их не передать; подставлены системные,
+           можно поменять на этот расчёт -->
+      <section v-if="params.solver !== 'baseline' && solverParams" class="solver-block">
         <button type="button" class="link solver-toggle" @click="paramsOpen = !paramsOpen">
-          {{ paramsOpen ? '▾' : '▸' }} Параметры cuOpt
+          {{ paramsOpen ? '▾' : '▸' }} Параметры {{ solverTitle() }}
           <span class="muted">
             · время поиска {{ solverParams.time_limit_seconds }}–{{ solverParams.max_time_limit_seconds }} c<template
               v-if="paramsChanged"

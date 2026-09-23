@@ -35,6 +35,18 @@ from src.services.planner.objective_policy import DEFAULT_OBJECTIVE_ORDER
 from src.services.planner.planning_service import PlanDataError, PlanInUseError
 
 
+def solver_of(draft: Plan, *, keep_baseline: bool = False) -> SolverName:
+    """Чем считать: тем же, чем посчитан черновик. Ярусы базовый алгоритм не умеет,
+    поэтому второй расчёт с раскрытыми окнами за него делает cuOpt."""
+    try:
+        solver = SolverName(draft.solver)
+    except ValueError:
+        return SolverName.CUOPT
+    if solver is SolverName.BASELINE and not keep_baseline:
+        return SolverName.CUOPT
+    return solver
+
+
 async def reviewable_draft(session: AsyncSession, plan_id: int, *, office_id: int) -> Plan:
     """Черновик расчёта дня, который ещё можно утвердить."""
     plan = await planning_service.find_plan(session, plan_id, office_id=office_id)
@@ -64,7 +76,7 @@ async def preview_approval(
 ) -> ReplanPreview:
     """Что предложить клиентам невлезших заявок: второй расчёт с раскрытыми окнами.
 
-    Считает cuOpt даже для черновика базового алгоритма: базовый не умеет ярусы, а без них
+    Для черновика базового алгоритма считает cuOpt: базовый не умеет ярусы, а без них
     раскрытые заявки вытеснят те, что уже влезли.
     """
     draft = await reviewable_draft(session, plan_id, office_id=office_id)
@@ -72,7 +84,7 @@ async def preview_approval(
         "approval_preview",
         office_id=office_id,
         plan_date=draft.plan_date,
-        solver=SolverName.CUOPT.value,
+        solver=solver_of(draft).value,
         user_id=user_id,
         run_id=run_id,
     ):
@@ -89,7 +101,7 @@ async def preview_approval(
                 )
                 suggestions = await window_suggestions.suggest_windows(
                     loaded,
-                    SolverName.CUOPT,
+                    solver_of(draft),
                     tuple(
                         planning_service.objective_order_from_plan(draft) or DEFAULT_OBJECTIVE_ORDER
                     ),
@@ -157,8 +169,7 @@ async def decide_approval(
             ]
         )
 
-    # считаем тем же, чем посчитан черновик
-    solver = SolverName.BASELINE if draft.solver == SolverName.BASELINE.value else SolverName.CUOPT
+    solver = solver_of(draft, keep_baseline=True)
     objective_order = planning_service.objective_order_from_plan(draft) or DEFAULT_OBJECTIVE_ORDER
     async with run_log.track(
         "build",
