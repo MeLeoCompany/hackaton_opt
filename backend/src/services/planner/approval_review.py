@@ -94,6 +94,12 @@ async def preview_approval(
         suggestions = {}
         if unassigned:
             loaded = await planning_service.load_planning_day(session, draft.plan_date, office_id)
+            assignments = await plans_repository.list_plan_assignments(session, draft.id)
+            protected_request_ids = {
+                assignment.request_id
+                for assignment in assignments
+                if assignment.engineer_id is not None
+            }
             async with run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 50, 95):
                 await run_log.note(
                     f"не влезли в черновик №{draft.id}: "
@@ -106,6 +112,7 @@ async def preview_approval(
                         planning_service.objective_order_from_plan(draft) or DEFAULT_OBJECTIVE_ORDER
                     ),
                     {a.request_id for a in unassigned},
+                    protected_request_ids,
                     params=params,
                 )
                 await run_log.note(
@@ -159,6 +166,7 @@ async def decide_approval(
     if not decisions:
         raise PlanDataError(["решений по заявкам нет — утвердите черновик как есть"])
     waiting = {a.request_id for a in await planning_service.waiting_unassigned(session, draft)}
+    decided = {decision.request_id for decision in decisions}
     stray = sorted({d.request_id for d in decisions} - waiting)
     if stray:
         raise PlanDataError(
@@ -202,6 +210,21 @@ async def decide_approval(
         )
         plan.decisions_from_plan_id = draft.id
         plan.decisions_count = len(decisions)
+        # Согласие клиента не должно превращаться в скрытую замену: если после нового
+        # расчёта выпала согласованная или ранее размещённая заявка, результат не сохраняем.
+        allowed_unassigned = waiting - decided
+        final_unassigned = {
+            assignment.request_id
+            for assignment in await planning_service.waiting_unassigned(session, plan)
+        }
+        displaced = final_unassigned - allowed_unassigned
+        if displaced:
+            await session.rollback()
+            numbers = ", ".join(f"№{request_id}" for request_id in sorted(displaced))
+            raise PlanInUseError(
+                f"После согласования окна расчёт не смог сохранить все прежние назначения: "
+                f"не вошли заявки {numbers}. Изменения отменены; подберите окна заново"
+            )
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await planning_service.summarize_plans(session, [plan]))[0]

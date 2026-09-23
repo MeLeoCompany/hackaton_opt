@@ -92,6 +92,7 @@ async def test_preview_offers_time_for_requests_that_did_not_fit():
     # базовый алгоритм ярусов не знает: второй расчёт всегда у cuOpt
     assert suggest.await_args.args[1] is SolverName.CUOPT
     assert suggest.await_args.args[3] == {12}
+    assert suggest.await_args.args[4] == {11}
     assert preview.assigned_count == 1
     [problem] = preview.unassigned
     assert (problem.request_id, problem.suggested_engineer) == (12, "Бригада 1")
@@ -172,6 +173,11 @@ async def test_decisions_rebuild_the_day_as_a_new_draft():
             "summarize_plans",
             AsyncMock(return_value=["сводка"]),
         ),
+        patch.object(
+            approval_review.planning_service,
+            "waiting_unassigned",
+            AsyncMock(side_effect=[[unassigned(12)], []]),
+        ),
     ):
         summary = await approval_review.decide_approval(
             session, 40, decisions, office_id=1, user_id=5
@@ -207,8 +213,47 @@ async def test_baseline_draft_is_rebuilt_by_baseline():
             AsyncMock(return_value=new_plan),
         ) as build,
         patch.object(approval_review.planning_service, "summarize_plans", AsyncMock()),
+        patch.object(
+            approval_review.planning_service,
+            "waiting_unassigned",
+            AsyncMock(side_effect=[[unassigned(12)], []]),
+        ),
     ):
         await approval_review.decide_approval(session, 40, decisions, office_id=1)
 
     assert build.await_args.args[2] is SolverName.BASELINE
     assert tuple(build.await_args.args[3]) == tuple(DEFAULT_OBJECTIVE_ORDER)
+
+
+@pytest.mark.asyncio
+async def test_decision_is_rolled_back_if_it_displaces_another_request():
+    source = draft()
+    new_plan = SimpleNamespace(id=41, decisions_from_plan_id=None, decisions_count=None)
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+    decisions = [
+        ReplanDecision(request_id=12, action="agree", window_start=at(14), window_end=at(14, 30))
+    ]
+    find, approved, listed, counted = patched(source, [assigned(11), unassigned(12)])
+
+    with (
+        find,
+        approved,
+        listed,
+        counted,
+        patch.object(approval_review.replan_service, "apply_decisions", AsyncMock()),
+        patch.object(
+            approval_review.planning_service,
+            "build_inside_run",
+            AsyncMock(return_value=new_plan),
+        ),
+        patch.object(
+            approval_review.planning_service,
+            "waiting_unassigned",
+            AsyncMock(side_effect=[[unassigned(12)], [unassigned(11)]]),
+        ),
+        pytest.raises(PlanInUseError, match="не вошли заявки №11"),
+    ):
+        await approval_review.decide_approval(session, 40, decisions, office_id=1)
+
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
