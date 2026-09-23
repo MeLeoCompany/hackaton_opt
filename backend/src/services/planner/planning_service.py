@@ -1283,11 +1283,17 @@ def route_request(
     return points, transport, departures
 
 
+# версия разбора маршрута на плечи: меняется, когда меняется сам ответ (например, у
+# велосипедных плеч появился свой режим). Старые сохранённые маршруты тогда пересчитываются
+ROUTE_FORMAT_VERSION = 2
+
+
 def route_fingerprint(
     points: list[Point], transport: TransportKind, departures: list[datetime] | None
 ) -> str:
     """Отпечаток маршрута: совпал — готовый маршрут годится, не совпал — строим заново."""
     source = {
+        "version": ROUTE_FORMAT_VERSION,
         "transport": transport.value,
         "points": [[round(point.latitude, 6), round(point.longitude, 6)] for point in points],
         "departures": [moment.isoformat() for moment in departures or []],

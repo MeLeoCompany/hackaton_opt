@@ -6,6 +6,7 @@ import httpx
 
 from src.core.config import settings
 from src.schemas.travel import (
+    LEG_MODES,
     Point,
     TransportKind,
     TravelLeg,
@@ -35,7 +36,9 @@ COSTING_OPTIONS: dict[TransportKind, dict[str, dict[str, float | bool]]] = {
             "exclude_ferries": True,
             "walking_speed": settings.walking_speed_kmh,
         }
-    }
+    },
+    # велосипед по умолчанию у Valhalla готов сесть на паром — городской бригаде это ни к чему
+    TransportKind.BICYCLE: {"bicycle": {"use_ferry": 0.0, "exclude_ferries": True}},
 }
 
 # Valhalla считает автобус машиной по свободной дороге: без остановок, посадки и пересадок.
@@ -164,9 +167,6 @@ async def build_matrix(points: list[Point], transport: TransportKind) -> TravelM
 
 
 # чем человек идёт по участку: у машины это дорога, у пешехода — ходьба (как в ОТ)
-LEG_MODES = {TransportKind.PEDESTRIAN: TravelMode.WALK}
-
-
 async def route_legs(points: list[Point], transport: TransportKind) -> list[TravelLeg]:
     """Маршрут через точки по порядку, разобранный на переезды между соседними точками.
 

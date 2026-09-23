@@ -18,6 +18,7 @@ export const TRAVEL_MODES = {
   ferry: { label: 'Паром', color: '#0284c7' },
   transit: { label: 'Транспорт', color: '#475569' },
   walk: { label: 'Пешком', color: '#059669' },
+  bike: { label: 'На велосипеде', color: '#0d9488' },
 }
 
 // departureTime — когда выезжаем: для общественного транспорта от него зависит расписание

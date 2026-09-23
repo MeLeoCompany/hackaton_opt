@@ -21,7 +21,16 @@ const FERRY = '<path d="M3 17c2 2 4 2 6 0s4-2 6 0 4 2 6 0M5 14l1-5h12l1 5M9 9V5h
 export const TRANSPORT_ICONS = { 1: VAN, 2: WALKER, 3: BICYCLE, 4: BUS }
 
 // значок участка пути — по способу передвижения (mode из маршрутизатора)
-export const MODE_ICONS = { walk: WALKER, bus: BUS, tram: TRAM, rail: TRAM, metro: METRO, ferry: FERRY, transit: BUS }
+export const MODE_ICONS = {
+  walk: WALKER,
+  bike: BICYCLE,
+  bus: BUS,
+  tram: TRAM,
+  rail: TRAM,
+  metro: METRO,
+  ferry: FERRY,
+  transit: BUS,
+}
 
 export function transportSvg(transportId, size) {
   return svg(TRANSPORT_ICONS[transportId] ?? VAN, size)

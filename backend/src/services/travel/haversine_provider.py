@@ -9,11 +9,13 @@ import math
 from dataclasses import dataclass
 
 from src.schemas.travel import (
+    LEG_MODES,
     Point,
     TransportKind,
     TravelEstimate,
     TravelLeg,
     TravelMatrix,
+    TravelMode,
     TravelProvider,
     TravelRoute,
 )
@@ -96,9 +98,16 @@ def build_matrix(points: list[Point], transport: TransportKind) -> TravelMatrix:
 
 
 def route_legs(points: list[Point], transport: TransportKind) -> list[TravelLeg]:
-    """Маршрут по порядку точек, разобранный на переезды. Геометрии нет."""
+    """Маршрут по порядку точек, разобранный на переезды. Геометрии нет.
+
+    Режим плеча ставим тот же, что и Valhalla: даже без маршрутизатора велосипедный и пеший
+    участок на карте не должны выглядеть поездкой на машине.
+    """
     return [
-        TravelLeg(**estimate(points[leg], points[leg + 1], transport).model_dump())
+        TravelLeg(
+            **estimate(points[leg], points[leg + 1], transport).model_dump(),
+            mode=LEG_MODES.get(transport, TravelMode.ROAD),
+        )
         for leg in range(len(points) - 1)
     ]
 

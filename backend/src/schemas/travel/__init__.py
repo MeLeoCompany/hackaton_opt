@@ -1,4 +1,5 @@
 from src.schemas.travel.travel_schema import (
+    LEG_MODES,
     Point,
     TransportKind,
     TravelEstimate,
@@ -12,6 +13,7 @@ from src.schemas.travel.travel_schema import (
 )
 
 __all__ = [
+    "LEG_MODES",
     "Point",
     "TransportKind",
     "TravelEstimate",

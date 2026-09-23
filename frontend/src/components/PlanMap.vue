@@ -54,15 +54,22 @@ const ONSITE_COLOR = '#0284c7' // «В работе»: бригада на ме�
 const PLANNED_COLOR = '#7c3aed' // «В плане»: впереди
 
 // значки в легенде выбранного маршрута
-const LEGEND_MODES = ['walk', 'bus', 'metro', 'tram']
+const LEGEND_MODES = ['walk', 'bike', 'bus', 'metro', 'tram']
+
+// своим ходом участок рисуем пунктиром: пешком мелким, на велосипеде крупнее — так
+// велосипедная бригада на карте не выглядит едущей на машине
+function selfPoweredDash(details) {
+  if (details?.mode === 'walk') return '2 8'
+  if (details?.mode === 'bike') return '10 6'
+  return undefined
+}
 
 // участок к визиту на выбранном маршруте — цветом статуса: пройден (доехали — значит, пройден
 // и участок к заявке «на месте»), едут сейчас, берут следующим, впереди или к нему не поедут.
 // Участки одной бригады часто идут по одной улице туда и обратно, поэтому, как на схеме метро,
 // пройденные сдвинуты влево по ходу, будущие — вправо, текущий — посередине и поверх всех.
-// rank — порядок рисования: больше — выше; offset — сдвиг вбок в пикселях
-function legStyle(state, isNext, walk) {
-  const dash = walk ? '2 8' : undefined
+// rank — порядок рисования: больше — выше; offset — сдвиг вбок в пикселях; dash — пунктир
+function legStyle(state, isNext, dash) {
   if (state === 'moving') return { rank: 4, offset: 0, style: { color: MOVING_COLOR, weight: 7, opacity: 1, dashArray: dash } }
   // следующая по плану, бригада ещё не выехала — фиолетовый, но ярче и толще остальных впереди
   if (isNext && state === 'planned') {
@@ -508,7 +515,7 @@ function drawBrigades(marks) {
 function drawRouteOverview(route, color, select) {
   const legs = routeLegs(route)
   for (const piece of legs.flat()) {
-    const dashArray = piece.straight ? '8 8' : piece.details?.mode === 'walk' ? '2 8' : undefined
+    const dashArray = piece.straight ? '8 8' : selfPoweredDash(piece.details)
     L.polyline(piece.latlngs, { color, weight: 4, opacity: 0.85, dashArray, bubblingMouseEvents: false })
       .bindTooltip(escapeHtml(route.engineer_name))
       .on('click', select)
@@ -551,12 +558,18 @@ function drawRouteProgress(route, select) {
     if (chosen && !chosen.has(index)) return
     for (const { latlngs, details, straight } of pieces) {
       const walk = details?.mode === 'walk'
+      const bike = details?.mode === 'bike'
       const look = props.approved
-        ? legStyle(states[index], index === activeIndex, walk)
+        ? legStyle(states[index], index === activeIndex, selfPoweredDash(details))
         : {
             rank: 0,
             offset: 0,
-            style: { color: PLANNED_COLOR, weight: 5, opacity: 0.8, dashArray: straight ? '8 8' : walk ? '2 8' : undefined },
+            style: {
+              color: PLANNED_COLOR,
+              weight: 5,
+              opacity: 0.8,
+              dashArray: straight ? '8 8' : selfPoweredDash(details),
+            },
           }
       const mode = details?.mode && details.mode !== 'road' ? TRAVEL_MODES[details.mode] : null
       const label = mode
@@ -572,12 +585,13 @@ function drawRouteProgress(route, select) {
       })
       // способ передвижения на участке: значок чуть отступя от начала поездки (чтобы не закрыть
       // точку заявки), пешком — посередине; под точками заявок, над стрелками
-      if (mode && details.mode !== 'walk' && latlngs.length > 1) {
+      if (mode && !walk && !bike && latlngs.length > 1) {
         L.marker(pointOnLine(latlngs, 0.2), { icon: modeIcon(details.mode, details.route_short_name || details.route_id), zIndexOffset: -500 })
           .bindTooltip(label)
           .addTo(planLayer)
-      } else if (walk && (details.distance_km ?? 0) >= 0.15 && latlngs.length > 1) {
-        L.marker(pointOnLine(latlngs, 0.5), { icon: modeIcon('walk'), zIndexOffset: -500 })
+      } else if ((walk || bike) && (details.distance_km ?? 0) >= 0.15 && latlngs.length > 1) {
+        // своим ходом: значок посередине участка, как у пешего подхода к остановке
+        L.marker(pointOnLine(latlngs, 0.5), { icon: modeIcon(details.mode), zIndexOffset: -500 })
           .bindTooltip(`${label} · ${Math.round(details.duration_min)} мин`)
           .addTo(planLayer)
       }

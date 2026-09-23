@@ -59,7 +59,8 @@ function drawRoute() {
         weight: 5,
         opacity: 0.8,
         // пеший кусок пунктиром: это не поездка
-        dashArray: mode === 'walk' ? '6 6' : undefined,
+        // своим ходом — пунктиром: пешком мелким, на велосипеде крупнее
+        dashArray: mode === 'walk' ? '6 6' : mode === 'bike' ? '10 6' : undefined,
       })
         .bindTooltip(
           style

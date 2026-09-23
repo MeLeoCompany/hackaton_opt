@@ -23,7 +23,11 @@ class TravelProvider(str, enum.Enum):
 
 
 class TravelMode(str, enum.Enum):
-    """Чем человек преодолевает участок: важно для общественного транспорта."""
+    """Чем человек преодолевает участок: важно для общественного транспорта.
+
+    ROAD — по дороге на машине; WALK и BIKE — своим ходом: на карте они рисуются иначе,
+    чтобы пеший и велосипедный участок не выглядели поездкой на машине.
+    """
 
     ROAD = "road"
     METRO = "metro"
@@ -33,6 +37,15 @@ class TravelMode(str, enum.Enum):
     FERRY = "ferry"
     TRANSIT = "transit"
     WALK = "walk"
+    BIKE = "bike"
+
+
+# чем помечать плечо маршрута: своим ходом — пешком или на велосипеде, остальное — дорога.
+# По этой пометке интерфейс рисует участок: сплошной линией едут, пунктиром идут и катят
+LEG_MODES: dict[TransportKind, TravelMode] = {
+    TransportKind.PEDESTRIAN: TravelMode.WALK,
+    TransportKind.BICYCLE: TravelMode.BIKE,
+}
 
 
 class Point(BaseModel):
