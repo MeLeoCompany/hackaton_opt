@@ -8,6 +8,9 @@ import 'leaflet/dist/leaflet.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { formatMoscowWindow } from '../utils/moscowTime.js'
+import { useCoverage } from '../composables/useCoverage.js'
+import { createCoverageLayer } from '../utils/coverageLayer.js'
+import CoverageToggle from './CoverageToggle.vue'
 import { referenceName } from '../utils/referenceNames.js'
 import { transportColor } from '../utils/transportColors.js'
 
@@ -24,6 +27,22 @@ const emit = defineEmits(['select'])
 const checked = computed(() => new Set(props.checkedIds))
 // сколько отмеченных смен реально видно на карте: часть могла уйти под фильтры
 const checkedOnMap = computed(() => props.engineers.filter((engineer) => checked.value.has(engineer.id)).length)
+
+// зона покрытия: слой включается ползунком в углу карты
+const { shown: coverageShown } = useCoverage()
+let coverageLayer = null
+
+function syncCoverage() {
+  if (!map) return
+  if (coverageShown.value && !coverageLayer) {
+    coverageLayer = createCoverageLayer().addTo(map)
+    // зона — подложка: маршруты и точки остаются поверх неё
+    coverageLayer.eachLayer((shape) => shape.bringToBack())
+  } else if (!coverageShown.value && coverageLayer) {
+    map.removeLayer(coverageLayer)
+    coverageLayer = null
+  }
+}
 
 const container = ref(null)
 let map = null
@@ -156,10 +175,13 @@ onMounted(async () => {
   drawOffices()
   drawMarkers()
   drawHalos()
+  syncCoverage()
   highlightSelected()
 })
 
 onBeforeUnmount(() => map?.remove())
+
+watch(coverageShown, syncCoverage)
 
 watch(() => props.engineers, () => {
   drawMarkers()
@@ -179,6 +201,7 @@ watch(() => props.checkedIds, redrawChecked)
 <template>
   <div class="map-frame">
     <div ref="container" class="map"></div>
+    <CoverageToggle />
     <div class="map-legend">
       <span v-for="transport in references.transports" :key="transport.id">
         <i class="legend-dot" :style="{ background: transportColor(transport.id) }"></i>{{ transport.name }}
