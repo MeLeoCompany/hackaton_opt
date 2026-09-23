@@ -197,6 +197,15 @@ async def test_journal_explains_why_the_plan_goes_back_to_the_solver():
     assert any("Уточняю матрицу" in line for line in written)
     assert any("Решаю заново с уточнёнными временами" == line for line in written)
     assert any("Расписание сходится" in line for line in written)
+    # Это отвергнутый промежуточный вариант, поэтому он не должен выглядеть как проблема
+    # готового плана. Жёлтым помечается только снятие визита на последней попытке.
+    mismatch = [
+        call
+        for call in note.await_args_list
+        if "Промежуточный вариант нужно уточнить" in call.args[0] or "№11" in call.args[0]
+    ]
+    assert mismatch
+    assert all(call.kwargs.get("level", "info") == "info" for call in mismatch)
 
 
 @pytest.mark.asyncio
