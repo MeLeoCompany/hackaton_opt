@@ -18,6 +18,7 @@ import { useSystemTime } from '../composables/useSystemTime.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { planChain } from '../utils/planChain.js'
+import { approvalWindow } from '../utils/planWindow.js'
 
 const {
   selectedDay,
@@ -123,7 +124,9 @@ const planOpened = computed(() => selectedPlanId.value !== null)
 // сводка открытого плана — та же строка, что в списке: чтобы было видно, что за план
 const openedSummary = computed(() => plans.value.find((summary) => summary.id === selectedPlanId.value) ?? null)
 // режим демонстрации: у действующего утверждённого плана маршруты можно привести к плану
-const { demoMode } = useSystemTime()
+const { demoMode, now } = useSystemTime()
+// открыт неутверждённый пересчёт: когда он вступит в силу и сколько осталось на утверждение
+const effectWindow = computed(() => approvalWindow(openedSummary.value, now.value))
 const syncable = computed(
   () => demoMode.value && Boolean(openedSummary.value?.approved_at) && !openedSummary.value?.superseded_at,
 )
@@ -282,6 +285,14 @@ onMounted(async () => {
               №{{ openedSummary.parent_plan_id }}
             </button>
             на {{ moscowTimeOf(openedSummary.replanned_at) }}
+          </span>
+          <!-- пересчёт ещё не утверждён: когда он вступит в силу и сколько осталось -->
+          <span
+            v-if="effectWindow"
+            :class="['badge', 'takes-effect', effectWindow.state]"
+            :title="effectWindow.title"
+          >
+            {{ effectWindow.text }}
           </span>
           <span v-if="openedSummary?.replaced_by_plan_id" class="replan-title">
             заменён пересчётом
@@ -511,6 +522,23 @@ onMounted(async () => {
 .badge.superseded {
   background: #f1f5f9;
   color: #64748b;
+}
+
+/* неутверждённый пересчёт: когда он вступит в силу и сколько осталось на утверждение */
+.badge.takes-effect {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.badge.takes-effect.now {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.takes-effect.voided,
+.badge.takes-effect.expired {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .replan-title {

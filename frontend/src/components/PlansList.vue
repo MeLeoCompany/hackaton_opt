@@ -5,6 +5,8 @@ import { computed } from 'vue'
 
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveGoalLabel } from '../utils/planningPriorities.js'
+import { approvalWindow } from '../utils/planWindow.js'
+import { useSystemTime } from '../composables/useSystemTime.js'
 import ReplanMark from './ReplanMark.vue'
 import { isApproximate, providerTitle } from '../utils/routeProvider.js'
 
@@ -32,6 +34,13 @@ const heldWarning = computed(() => {
     'чтобы одну заявку не выполнили дважды.'
   )
 })
+
+// часы сервера идут сами: по ним считается, сколько осталось до вступления пересчёта в силу
+const { now } = useSystemTime()
+
+function effectWindow(summary) {
+  return approvalWindow(summary, now.value)
+}
 
 // действующий план дня: пока он есть, другой план дня утвердить нельзя — только пересчитать его
 const workingPlan = computed(() => props.plans.find((plan) => plan.approved_at && !plan.superseded_at) ?? null)
@@ -116,6 +125,10 @@ function solveDuration(summary) {
               </button>
               на {{ moscowTimeOf(summary.replanned_at) }}
             </span>
+            <!-- пересчёт ещё не утверждён: до какого момента он вступит в силу и сколько осталось -->
+            <span v-if="effectWindow(summary)" :class="['badge', 'takes-effect', effectWindow(summary).state]" :title="effectWindow(summary).title">
+              {{ effectWindow(summary).text }}
+            </span>
             <!-- черновик пересчитан после обзвона клиентов невлезших заявок другого черновика -->
             <span
               v-if="summary.decisions_from_plan_id"
@@ -154,13 +167,21 @@ function solveDuration(summary) {
               черновик · неактуален
             </span>
             <span v-else class="muted">черновик</span>
-            <!-- пересчёт посчитан, но не утверждён: пока он есть, бригады не выезжают -->
+            <!-- пересчёт посчитан и вот-вот вступит в силу: часть бригад пока стоит -->
             <span v-if="summary.pending_replan_id" class="replan-of">
               пересчёт
               <button class="link plan-link" @click.stop="$emit('select', summary.pending_replan_id)">
                 №{{ summary.pending_replan_id }}
               </button>
-              ждёт утверждения
+              вступает в силу
+            </span>
+            <!-- пересчёт не вступил в силу: бригады едут по этому плану, день надо считать заново -->
+            <span
+              v-if="summary.voided_replan_id"
+              class="badge takes-effect expired"
+              :title="summary.voided_replan_reason ?? ''"
+            >
+              пересчёт №{{ summary.voided_replan_id }} не вступил в силу
             </span>
           </td>
           <td>
@@ -284,6 +305,23 @@ function solveDuration(summary) {
 .badge.superseded {
   background: #f1f5f9;
   color: #64748b;
+}
+
+/* пересчёт ждёт утверждения: когда он вступит в силу и сколько на это осталось */
+.badge.takes-effect {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.badge.takes-effect.now {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.takes-effect.voided,
+.badge.takes-effect.expired {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .badge.approved {

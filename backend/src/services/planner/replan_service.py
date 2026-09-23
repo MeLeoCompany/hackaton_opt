@@ -41,7 +41,13 @@ from src.schemas.plans import (
     SolverName,
 )
 from src.schemas.system import SolverParams
-from src.services.planner import planner_loader, planning_service, run_log, window_suggestions
+from src.services.planner import (
+    day_state,
+    planner_loader,
+    planning_service,
+    run_log,
+    window_suggestions,
+)
 from src.services.planner.objective_policy import (
     DEFAULT_OBJECTIVE_ORDER,
     ObjectiveCriterion,
@@ -100,7 +106,7 @@ async def replan(
                 )
         else:
             await apply_decisions(session, parent, [], office_id=office_id, user_id=user_id)
-        built = await build_replan(
+        plan = await build_for_approval(
             session,
             parent,
             solver,
@@ -110,12 +116,6 @@ async def replan(
             free_at=free_at,
             params=params,
         )
-        plan = built.plan
-        # маршруты строятся один раз здесь и ложатся в кеш: открытие пересчёта возьмёт готовые
-        async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
-            await session.flush()
-            routes, _ = await planning_service.plan_routes(session, plan, strict=True)
-            planning_service.set_plan_distance(plan, planning_service.routes_distance(routes))
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await planning_service.summarize_plans(session, [plan]))[0]
@@ -221,6 +221,49 @@ async def preview_inside_run(
     return preview
 
 
+async def build_for_approval(
+    session: AsyncSession,
+    parent: Plan,
+    solver: SolverName,
+    objective_order: list[ObjectiveCriterion] | tuple[ObjectiveCriterion, ...],
+    at: datetime,
+    *,
+    office_id: int,
+    free_at: list[BrigadeFreeAt] | None = None,
+    params: SolverParams | None = None,
+) -> Plan:
+    """Считает пересчёт и запоминает, каким день был, когда расчёт начался.
+
+    Пересчёт рассчитан на выезд в at — начало расчёта плюс запас на обзвон, и на эти минуты он
+    рассчитывает, что бригады едут по действующему плану. Заявку, которая пришла после начала
+    расчёта, он не видел, а бригаду, которая застряла уже после него, считал едущей: утверждение
+    такой пересчёт не примет (planning_service.approve_replan).
+    """
+    state = await day_state.of_plan(session, parent)
+    stuck = await planning_service.stuck_brigades(session, parent)
+    built = await build_replan(
+        session,
+        parent,
+        solver,
+        objective_order,
+        at,
+        office_id=office_id,
+        free_at=free_at,
+        params=params,
+    )
+    # маршруты строятся один раз здесь и ложатся в кеш: открытие пересчёта возьмёт готовые
+    async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
+        await session.flush()
+        routes, _ = await planning_service.plan_routes(session, built.plan, strict=True)
+        planning_service.set_plan_distance(built.plan, planning_service.routes_distance(routes))
+    built.plan.input_snapshot = {
+        **(built.plan.input_snapshot or {}),
+        "day_requests": state,
+        "stuck_brigades": sorted(stuck),
+    }
+    return built.plan
+
+
 async def replannable(
     session: AsyncSession, plan_id: int, at: datetime | None, *, office_id: int
 ) -> tuple[Plan, datetime]:
@@ -230,7 +273,9 @@ async def replannable(
         raise PlanInUseError(
             f"Пересчитать можно только действующий утверждённый план, а план №{plan_id} — нет"
         )
-    at = at or clock.now()
+    # считаем не «прямо сейчас», а с запасом: пока идёт расчёт и оператор обзванивает клиентов,
+    # время уходит. Без запаса к утверждению маршруты начинались бы в прошлом
+    at = at or clock.now() + timedelta(minutes=settings.replan_lead_minutes)
     day = planner_loader.planning_day(parent.plan_date)
     if at >= day.day_end:
         raise PlanDataError(

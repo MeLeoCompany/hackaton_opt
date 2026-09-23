@@ -98,9 +98,17 @@ def test_urgent_assignments_are_counted_from_frozen_snapshot():
         }
     }
 
-    assert count_urgent_assignments(snapshot, {10, 20}) == 1
-    assert count_urgent_assignments(snapshot, {10, 30}) == 2
+    assert count_urgent_assignments(snapshot, {10, 20}, set()) == 1
+    assert count_urgent_assignments(snapshot, {10, 30}, set()) == 2
+    # снимок расчёта важнее справочника: заявка могла стать аварийной уже после плана
+    assert count_urgent_assignments(snapshot, {20}, {20}) == 0
 
 
-def test_old_snapshot_without_urgency_returns_unknown_count():
-    assert count_urgent_assignments({"requests": {"10": {}}}, {10}) is None
+def test_request_outside_the_snapshot_is_counted_by_the_reference():
+    """Пересчёт забирает выполненные и начатые заявки из прежнего плана: их в снимке нет."""
+    snapshot = {"requests": {"10": {"is_urgent": False}}}
+
+    assert count_urgent_assignments(snapshot, {10, 99}, {99}) == 1
+    assert count_urgent_assignments(snapshot, {10, 99}, set()) == 0
+    # старый снимок без признака срочности — тоже считаем по справочнику
+    assert count_urgent_assignments({"requests": {"10": {}}}, {10}, {10}) == 1

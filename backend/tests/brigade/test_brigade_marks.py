@@ -61,7 +61,7 @@ async def mark(stored, action, reason="", *, in_route=True, fact=None):
             brigade_service.planning_service, "plan_route_delays", AsyncMock(return_value={})
         ),
         patch.object(
-            brigade_service.plans_repository, "has_unapproved_replan", AsyncMock(return_value=False)
+            brigade_service.planning_service, "replan_next_visits", AsyncMock(return_value=None)
         ),
         patch.object(brigade_service, "get_route", AsyncMock(return_value="маршрут")),
     ):

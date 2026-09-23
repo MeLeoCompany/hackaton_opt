@@ -19,6 +19,7 @@ from src.core.errors import (
     NotFoundError,
 )
 from src.db.session import async_session_maker
+from src.services.planner import replan_autoapply
 from src.services.system import system_service
 from src.services.travel import travel_cache
 
@@ -57,10 +58,13 @@ async def lifespan(_: FastAPI):
     await load_offset_when_db_ready()
     # кеш R5: раз в сутки удаляем старое и сверяем расписание GTFS (docs/algoCachV1.md)
     maintenance = asyncio.create_task(travel_cache.maintenance_loop())
+    # пересчёты вступают в силу сами — в момент, на который посчитаны (docs/algoV2.md, шаг 6)
+    replans = asyncio.create_task(replan_autoapply.loop())
     try:
         yield
     finally:
         maintenance.cancel()
+        replans.cancel()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

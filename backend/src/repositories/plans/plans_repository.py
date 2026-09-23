@@ -271,30 +271,65 @@ async def approved_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict
 
 
 async def pending_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[int, int]:
-    """Посчитанный, но не утверждённый пересчёт каждого плана: id родителя -> id пересчёта.
+    """Посчитанный, но ещё не вступивший в силу пересчёт: id родителя -> id пересчёта.
 
-    Пока он есть, выезд бригад закрыт (departure_gate), поэтому его надо утвердить или удалить,
-    а не считать ещё один. Если пересчётов несколько, берётся последний.
+    Он вступит в силу сам, в момент, на который посчитан; до тех пор выезд закрыт туда, куда он
+    бригаду не ведёт (departure_gate). Недействительный пересчёт сюда не попадает: он уже
+    никого не держит. Если пересчётов несколько, берётся последний.
     """
     if not plan_ids:
         return {}
     result = await session.execute(
         select(Plan.parent_plan_id, Plan.id)
-        .where(Plan.parent_plan_id.in_(plan_ids), Plan.approved_at.is_(None))
+        .where(
+            Plan.parent_plan_id.in_(plan_ids),
+            Plan.approved_at.is_(None),
+            Plan.voided_at.is_(None),
+        )
         .order_by(Plan.id)
     )
     return {parent_id: plan_id for parent_id, plan_id in result.all()}
 
 
-async def has_unapproved_replan(session: AsyncSession, plan_id: int) -> bool:
-    """Есть ли у плана посчитанный, но не утверждённый пересчёт (docs/algoV2.md, шаг 8)."""
+async def voided_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[int, Plan]:
+    """Пересчёт, который не вступил в силу: id родителя -> сам пересчёт с причиной."""
+    if not plan_ids:
+        return {}
+    result = await session.execute(
+        select(Plan)
+        .where(Plan.parent_plan_id.in_(plan_ids), Plan.voided_at.is_not(None))
+        .order_by(Plan.id)
+    )
+    return {plan.parent_plan_id: plan for plan in result.scalars().all()}
+
+
+async def due_replans(session: AsyncSession, moment: datetime) -> list[Plan]:
+    """Пересчёты, которым пора вступать в силу: их момент выезда уже настал."""
+    result = await session.execute(
+        select(Plan)
+        .where(
+            Plan.parent_plan_id.is_not(None),
+            Plan.approved_at.is_(None),
+            Plan.voided_at.is_(None),
+            Plan.replanned_at.is_not(None),
+            Plan.replanned_at <= moment,
+        )
+        .order_by(Plan.id)
+    )
+    return list(result.scalars().all())
+
+
+async def unapproved_replan_id(session: AsyncSession, plan_id: int) -> int | None:
+    """Посчитанный, но не утверждённый пересчёт плана (docs/algoV2.md, шаг 8)."""
     result = await session.execute(
         select(Plan.id).where(
             Plan.parent_plan_id == plan_id,
             Plan.approved_at.is_(None),
+            Plan.voided_at.is_(None),
         )
     )
-    return result.first() is not None
+    row = result.first()
+    return row[0] if row else None
 
 
 async def list_cached_routes(session: AsyncSession, plan_id: int) -> dict[int, PlanRoute]:

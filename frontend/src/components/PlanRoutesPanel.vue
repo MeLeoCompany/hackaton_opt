@@ -139,7 +139,7 @@ function waitingText(route) {
   const late = lateParts(route)
   const ready = route.waiting_cause === 'replan_pending' && props.pendingReplanId
   const cause = ready
-    ? `пересчёт №${props.pendingReplanId} посчитан — утвердите`
+    ? `пересчёт №${props.pendingReplanId} ведёт её в другое место — ждёт его`
     : WAITING_CAUSES[route.waiting_cause]
   const since = route.waiting_since ? ` с ${moscowTimeOf(route.waiting_since)}` : ''
   const listed = late.some((part) => part.startsWith('не успевает к окну'))

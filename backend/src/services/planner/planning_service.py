@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import clock
+from src.core.config import settings
 from src.core.errors import DataError, ExternalServiceError, InUseError, NotFoundError
 from src.core.local_day import intersected_local_dates, local_timezone
 from src.models import Assignment, Engineer, Plan, PlanRunType, Request, RequestStatusId
@@ -43,6 +44,7 @@ from src.schemas.travel import Point, TransportKind, TravelProvider, TravelRoute
 from src.services.planner import (
     baseline_solver,
     cuopt_solver,
+    day_state,
     departure_gate,
     ortools_solver,
     planner_loader,
@@ -82,6 +84,12 @@ SCHEDULE_REASON = (
 TIME_REASON = (
     "Подходящие исполнители есть, но ни один не успевает приехать от начала смены, "
     "начать работу в окне заявки и закончить её до конца смены"
+)
+# бригада уже занялась заявкой: выехала, работает или закрыла её
+WORKED_STATUSES = (
+    RequestStatusId.EN_ROUTE,
+    RequestStatusId.IN_PROGRESS,
+    RequestStatusId.DONE,
 )
 
 
@@ -353,6 +361,60 @@ async def waiting_unassigned(session: AsyncSession, plan: Plan) -> list[Assignme
     ]
 
 
+def local_clock(moment: datetime) -> str:
+    """Время по Москве часами и минутами: сообщения читают люди."""
+    return moment.astimezone(local_timezone()).strftime("%H:%M")
+
+
+def replan_routes(assigned: list) -> dict[int, list]:
+    """Маршруты пересчёта по бригадам, визиты по порядку."""
+    routes: dict[int, list] = defaultdict(list)
+    for assignment in assigned:
+        routes[assignment.engineer_id].append(assignment)
+    for route in routes.values():
+        route.sort(key=lambda assignment: assignment.visit_order or 0)
+    return routes
+
+
+async def brigades_at_work(session: AsyncSession, parent: Plan) -> dict[int, int]:
+    """Кто сейчас занимается заявкой: бригада из отметки, а без отметки — из плана."""
+    assignments = await plans_repository.list_plan_assignments(session, parent.id)
+    at_work = {
+        assignment.request_id: assignment.engineer_id
+        for assignment in assignments
+        if assignment.engineer_id is not None
+    }
+    facts = await brigade_repository.list_facts(session, list(at_work))
+    at_work.update(
+        {
+            request_id: fact.engineer_id
+            for request_id, fact in facts.items()
+            if fact.engineer_id is not None
+        }
+    )
+    return at_work
+
+
+def started_as_planned(assignment, routes: dict[int, list], engineer_id: int | None, parent: Plan) -> bool:
+    """Бригада уже занялась заявкой — но ровно так, как её ведёт пересчёт.
+
+    Пока идёт расчёт, выезд бригадам не закрыт: они продолжают ехать по действующему плану и
+    могут выехать раньше, чем оператор утвердит пересчёт. Если бригада уехала туда же, куда её
+    ведёт пересчёт, и ничего не перепрыгнула, расхождения нет — пересчёт остаётся верным.
+    """
+    request = assignment.request
+    if request.approved_plan_id != parent.id or request.status_id not in WORKED_STATUSES:
+        return False
+    if engineer_id != assignment.engineer_id:
+        return False  # заявку взяла другая бригада, чем та, которой её отдал пересчёт
+    for visit in routes.get(assignment.engineer_id, []):
+        if visit.request_id == assignment.request_id:
+            return True
+        if visit.request.status_id in (RequestStatusId.NEW, RequestStatusId.PLANNED):
+            return False  # впереди по маршруту есть незакрытая заявка: бригада поехала не туда
+    return False
+
+
 async def approve_replan(
     session: AsyncSession, plan: Plan, *, user_id: int | None = None
 ) -> PlanSummary:
@@ -376,9 +438,50 @@ async def approve_replan(
             "Пересчитайте действующий план заново"
         )
 
+    # пересчёт вступает в силу в свой момент выезда (replan_autoapply). Если этот момент
+    # заметно прошёл — сервер стоял, часы перевели, — маршруты начинаются в прошлом
+    replanned_at = getattr(plan, "replanned_at", None)
+    if replanned_at is not None:
+        late = clock.now() - replanned_at
+        if late > timedelta(minutes=settings.replan_grace_minutes):
+            raise PlanInUseError(
+                f"Пересчёт №{plan.id} не вступил в силу: он рассчитан на выезд с "
+                f"{local_clock(replanned_at)}, а сейчас уже {local_clock(clock.now())} — "
+                "бригады по нему опаздывают, ещё не выехав. Пересчитайте план заново"
+            )
+
+    # заявки дня на момент расчёта: пересчёт раскладывал именно их. Появились новые вводные,
+    # пока считали и обзванивали, — план уже про другой день, нужен новый расчёт
+    before = (plan.input_snapshot or {}).get("day_requests")
+    if before:
+        news = await day_state.new_since(session, parent, before)
+        if news:
+            raise PlanInUseError(
+                f"Пересчёт №{plan.id} не вступил в силу: пока шли расчёт и обзвон, "
+                f"{'; '.join(news)}. Пересчитайте план заново"
+            )
+
     candidates = set((plan.input_snapshot or {}).get("request_order", []))
     assignments = await plans_repository.list_plan_assignments(session, plan.id)
     assigned = [assignment for assignment in assignments if assignment.engineer_id is not None]
+    routes = replan_routes(assigned)
+    at_work = await brigades_at_work(session, parent)
+
+    # пока считали и обзванивали, кто-то мог застрять: пересчёт исходил из того, что бригада
+    # едет по плану, а она стоит. Про тех, кто выбился из плана ещё до расчёта, он уже знал
+    replan_next = {
+        engineer_id: visit.request_id
+        for engineer_id, visit in nearest_open_visits(routes).items()
+    }
+    was_stuck = set((plan.input_snapshot or {}).get("stuck_brigades", []))
+    now_stuck = await stuck_brigades(session, parent, replan_next)
+    fresh_stuck = [name for engineer_id, name in now_stuck.items() if engineer_id not in was_stuck]
+    if fresh_stuck:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} не вступил в силу: пока шли расчёт и обзвон, из плана "
+            f"выбились {', '.join(sorted(fresh_stuck))} — он считал, что они едут. "
+            "Пересчитайте план заново"
+        )
     to_plan, rebind, stale = [], [], []
     for assignment in assigned:
         request = assignment.request
@@ -391,6 +494,8 @@ async def approve_replan(
                 and request.approved_plan_id == parent.id
             ):
                 rebind.append(request)
+            elif started_as_planned(assignment, routes, at_work.get(assignment.request_id), parent):
+                rebind.append(request)  # бригада уехала туда же, куда её ведёт пересчёт
             else:
                 stale.append(request.id)
         elif request.approved_plan_id == parent.id:
@@ -706,8 +811,16 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
     plan_ids = [plan.id for plan in plans]
     counts = await plans_repository.count_assignments_by_plan(session, plan_ids)
     assigned_request_ids = await plans_repository.assigned_request_ids_by_plan(session, plan_ids)
+    # аварийные по справочнику: ими закрываются заявки, которых нет в снимке расчёта
+    urgent_now = await requests_repository.urgent_request_ids(
+        session,
+        {request_id for ids in assigned_request_ids.values() for request_id in ids},
+        TOP_PRIORITY_LEVEL,
+    )
     replaced_by = await plans_repository.approved_replan_of(session, plan_ids)
     pending_replan = await plans_repository.pending_replan_of(session, plan_ids)
+    # пересчёт, который не вступил в силу: у плана горит «!», пока день не пересчитают заново
+    voided_replan = await plans_repository.voided_replan_of(session, plan_ids)
     # действующий утверждённый план каждого дня: по нему видно, какие черновики уже неактуальны
     active_by_day = {
         plan.plan_date: await plans_repository.get_approved_plan(
@@ -731,7 +844,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
         # физически не могли учесть обещание, данное после них
         live = not outdated and getattr(plan, "superseded_at", None) is None
         urgent_assigned_count = count_urgent_assignments(
-            plan.input_snapshot, assigned_request_ids.get(plan.id, set())
+            plan.input_snapshot, assigned_request_ids.get(plan.id, set()), urgent_now
         )
         summaries.append(
             PlanSummary(
@@ -755,11 +868,15 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 objective_order=objective_order_from_plan(plan),
                 parent_plan_id=getattr(plan, "parent_plan_id", None),
                 replanned_at=getattr(plan, "replanned_at", None),
+                voided_at=getattr(plan, "voided_at", None),
+                void_reason=getattr(plan, "void_reason", None),
                 superseded_at=getattr(plan, "superseded_at", None),
                 replaced_by_plan_id=replaced_by.get(plan.id),
                 pending_replan_id=(
                     pending_replan.get(plan.id) if plan.approved_at is not None else None
                 ),
+                voided_replan_id=(voided.id if (voided := voided_replan.get(plan.id)) else None),
+                voided_replan_reason=(voided.void_reason if voided else None),
                 decisions_from_plan_id=getattr(plan, "decisions_from_plan_id", None),
                 decisions_count=getattr(plan, "decisions_count", None),
                 can_cancel_approval=(
@@ -775,7 +892,83 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
     return summaries
 
 
-def set_waiting(route: EngineerRoute, facts: dict, replan_pending: bool) -> None:
+def nearest_open_visits(routes: dict[int, list]) -> dict[int, Assignment]:
+    """Ближайший незакрытый визит каждой бригады по её маршруту: {бригада: визит}."""
+    nearest = {}
+    for engineer_id, route in routes.items():
+        visit = next(
+            (
+                assignment
+                for assignment in route
+                if assignment.request.status_id
+                in (RequestStatusId.NEW, RequestStatusId.PLANNED)
+            ),
+            None,
+        )
+        if visit is not None:
+            nearest[engineer_id] = visit
+    return nearest
+
+
+async def replan_next_visits(session: AsyncSession, plan_id: int) -> dict[int, int] | None:
+    """Куда посчитанный пересчёт ведёт каждую бригаду прямо сейчас: {бригада: заявка}.
+
+    Пересчёт считался на выезд через запас, и до этого момента бригады едут по действующему
+    плану. Выехать можно туда, куда их ведёт и новый план: тогда расхождения не будет, и
+    утверждение такой выезд принимает (approve_replan.started_as_planned). None — пересчёта нет.
+    """
+    replan_id = await plans_repository.unapproved_replan_id(session, plan_id)
+    if replan_id is None:
+        return None
+    assignments = await plans_repository.list_plan_assignments(session, replan_id)
+    routes = replan_routes([a for a in assignments if a.engineer_id is not None])
+    return {
+        engineer_id: visit.request_id
+        for engineer_id, visit in nearest_open_visits(routes).items()
+    }
+
+
+async def stuck_brigades(
+    session: AsyncSession, plan: Plan, replan_next: dict[int, int] | None = None
+) -> dict[int, str]:
+    """Бригады, которые сейчас выбились из плана: {бригада: имя}.
+
+    Выбилась — то же, что закрывает ей выезд (departure_gate): не отметила «Выехали» через
+    departure_grace_minutes после планового начала работ или к окну ближайшей заявки уже не
+    успеть. Бригаду, которую новый план ведёт не туда, куда она собиралась, не считаем: она
+    стоит не сама по себе, а потому что мы закрыли ей выезд на время пересчёта.
+    """
+    assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    assigned = [assignment for assignment in assignments if assignment.engineer_id is not None]
+    facts = await brigade_repository.list_facts(
+        session, [assignment.request_id for assignment in assigned]
+    )
+    delays = await plan_route_delays(session, plan, assigned)
+    stuck = {}
+    for engineer_id, visit in nearest_open_visits(replan_routes(assigned)).items():
+        if sends_elsewhere(replan_next, engineer_id, visit.request_id):
+            continue
+        fact = facts.get(visit.request_id)
+        delay = delays.get(engineer_id)
+        check = departure_gate.check_departure(
+            planned_start=visit.planned_arrival_time,
+            departed_at=fact.departed_at if fact is not None else None,
+            at_risk=delay is not None and visit.request_id in delay.at_risk_request_ids,
+            allowed_at=visit.request.departure_allowed_at,
+            replan_sends_elsewhere=False,
+            now=clock.now(),
+        )
+        if not check.allowed:
+            stuck[engineer_id] = visit.engineer.name if visit.engineer is not None else ""
+    return stuck
+
+
+def sends_elsewhere(replan_next: dict[int, int] | None, engineer_id: int, request_id: int) -> bool:
+    """Пересчёт ждёт утверждения и ведёт эту бригаду не на эту заявку."""
+    return replan_next is not None and replan_next.get(engineer_id) != request_id
+
+
+def set_waiting(route: EngineerRoute, facts: dict, replan_next: dict[int, int] | None) -> None:
     """Бригада ждёт нового плана: выезд на ближайшую незакрытую заявку закрыт."""
     next_visit = next(
         (
@@ -793,7 +986,9 @@ def set_waiting(route: EngineerRoute, facts: dict, replan_pending: bool) -> None
         departed_at=fact.departed_at if fact else None,
         at_risk=next_visit.request_id in route.at_risk_request_ids,
         allowed_at=next_visit.departure_allowed_at,
-        replan_pending=replan_pending,
+        replan_sends_elsewhere=sends_elsewhere(
+            replan_next, route.engineer_id, next_visit.request_id
+        ),
         now=clock.now(),
     )
     if not check.allowed:
@@ -915,15 +1110,25 @@ def objective_order_from_plan(plan: Plan) -> list[ObjectiveCriterion] | None:
         return None
 
 
-def count_urgent_assignments(snapshot: dict | None, assigned_request_ids: set[int]) -> int | None:
-    """Срочные назначения считаются по снимку; старые снимки могли не хранить признак."""
-    if not snapshot or "requests" not in snapshot:
-        return None
-    requests = snapshot["requests"]
-    assigned = [requests.get(str(request_id)) for request_id in assigned_request_ids]
-    if any(request is None or "is_urgent" not in request for request in assigned):
-        return None
-    return sum(bool(request["is_urgent"]) for request in assigned)
+def count_urgent_assignments(
+    snapshot: dict | None, assigned_request_ids: set[int], urgent_now: set[int]
+) -> int:
+    """Сколько аварийных заявок в плане.
+
+    Считаем по снимку расчёта: в нём заявка такая, какой её видел решатель. Заявки, которой
+    в снимке нет, в этом расчёте и не было — так бывает у пересчёта, который забрал
+    выполненные и начатые заявки из прежнего плана. Для них берём признак из справочника
+    (urgent_now), иначе у пересчётов колонка «Авар.» оставалась пустой.
+    """
+    requests = (snapshot or {}).get("requests") or {}
+    urgent = 0
+    for request_id in assigned_request_ids:
+        request = requests.get(str(request_id))
+        if request is not None and "is_urgent" in request:
+            urgent += bool(request["is_urgent"])
+        else:
+            urgent += request_id in urgent_now
+    return urgent
 
 
 async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int) -> PlanDetail:
@@ -954,13 +1159,13 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
     phones = await brigades_repository.phones_by_engineer(
         session, [route.engineer_id for route in routes]
     )
-    replan_pending = await plans_repository.has_unapproved_replan(session, plan.id)
+    replan_next = await replan_next_visits(session, plan.id)
     for route in routes:
         route.phone = phones.get(route.engineer_id)
         if route.engineer_id in delays:
             route.delay_minutes = delays[route.engineer_id].delay_minutes
             route.at_risk_request_ids = delays[route.engineer_id].at_risk_request_ids
-        set_waiting(route, facts, replan_pending)
+        set_waiting(route, facts, replan_next)
         for visit in route.visits:
             fact = facts.get(visit.request_id)
             if fact is not None:

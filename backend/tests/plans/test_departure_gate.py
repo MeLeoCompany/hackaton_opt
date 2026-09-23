@@ -1,4 +1,4 @@
-"""Когда бригаде нельзя выезжать: выбилась из графика или идёт пересчёт."""
+"""Когда бригаде нельзя выезжать: выбилась из графика или пересчёт ведёт её не сюда."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -13,7 +13,7 @@ def gate(**changes):
         "departed_at": None,
         "at_risk": False,
         "allowed_at": None,
-        "replan_pending": False,
+        "replan_sends_elsewhere": False,
         "now": PLANNED,
     }
     return check_departure(**{**values, **changes})
@@ -38,11 +38,16 @@ def test_request_that_cannot_be_served_in_time_blocks_departure():
     assert gate(at_risk=True).allowed is False
 
 
-def test_unapproved_replan_blocks_departure():
-    check = gate(replan_pending=True)
+def test_replan_that_sends_the_brigade_elsewhere_blocks_departure():
+    check = gate(replan_sends_elsewhere=True)
 
     assert check.allowed is False
     assert "пересчитывает" in check.reason
+
+
+def test_replan_that_sends_the_brigade_here_lets_it_go():
+    """Пересчёт ведёт бригаду на ту же заявку: пусть выезжает, утверждению это не помешает."""
+    assert gate(replan_sends_elsewhere=False).allowed is True
 
 
 def test_operator_can_let_the_brigade_go():
@@ -52,4 +57,4 @@ def test_operator_can_let_the_brigade_go():
 
 
 def test_departed_brigade_is_not_blocked_anymore():
-    assert gate(departed_at=PLANNED, at_risk=True, replan_pending=True).allowed is True
+    assert gate(departed_at=PLANNED, at_risk=True, replan_sends_elsewhere=True).allowed is True

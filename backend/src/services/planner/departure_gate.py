@@ -4,8 +4,12 @@
   - не отметила «Выехали» через departure_grace_minutes после планового начала работ;
   - с текущим отставанием к окну следующей заявки уже не успеть.
 Тогда выезд закрыт: бригада ждёт нового плана, а оператор звонит и либо разрешает выезд
-(клиент согласился подождать), либо пересчитывает. Выезд закрыт и пока есть неутверждённый
-пересчёт — иначе бригада закрепит за собой заявку вопреки расчёту.
+(клиент согласился подождать), либо пересчитывает.
+
+Пока посчитанный пересчёт ждёт утверждения, день идёт своим чередом: пересчёт считался на
+выезд через запас (settings.replan_lead_minutes), и эти минуты бригады едут по действующему
+плану. Выезд закрыт только туда, куда новый план бригаду не ведёт, — иначе она закрепила бы
+за собой заявку вопреки расчёту.
 """
 
 from dataclasses import dataclass
@@ -46,13 +50,16 @@ def check_departure(
     departed_at: datetime | None,
     at_risk: bool,
     allowed_at: datetime | None,
-    replan_pending: bool,
+    replan_sends_elsewhere: bool,
     now: datetime,
 ) -> DepartureCheck:
-    """planned_start — плановое начало работ, allowed_at — оператор разрешил выезд."""
+    """planned_start — плановое начало работ, allowed_at — оператор разрешил выезд.
+
+    replan_sends_elsewhere — пересчёт ждёт утверждения и ведёт бригаду не на эту заявку.
+    """
     if departed_at is not None or allowed_at is not None:
         return DepartureCheck(allowed=True)
-    if replan_pending:
+    if replan_sends_elsewhere:
         return DepartureCheck(allowed=False, reason=WAIT_FOR_PLAN)
     if at_risk:
         return DepartureCheck(allowed=False, reason=AT_RISK)

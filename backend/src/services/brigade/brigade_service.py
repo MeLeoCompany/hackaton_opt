@@ -193,7 +193,11 @@ async def departure_state(
         departed_at=departed_at,
         at_risk=at_risk,
         allowed_at=request.departure_allowed_at,
-        replan_pending=await plans_repository.has_unapproved_replan(session, plan.id),
+        replan_sends_elsewhere=planning_service.sends_elsewhere(
+            await planning_service.replan_next_visits(session, plan.id),
+            assignment.engineer_id,
+            request.id,
+        ),
         now=now(),
     )
 

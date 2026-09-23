@@ -5,7 +5,15 @@ from datetime import date, datetime
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Assignment, Event, Plan, Request, RequestEquipment, RequestStatus
+from src.models import (
+    Assignment,
+    Event,
+    Plan,
+    Priority,
+    Request,
+    RequestEquipment,
+    RequestStatus,
+)
 from src.repositories.request_statuses.request_statuses_repository import plannable_status_ids
 
 # Shared by request creation and CSV import; independent from engineer ID allocation.
@@ -48,6 +56,24 @@ async def list_requests_moved_from(
         .order_by(Request.window_start, Request.id)
     )
     return list(result.scalars().all())
+
+
+async def urgent_request_ids(
+    session: AsyncSession, request_ids: set[int], top_priority_level: int
+) -> set[int]:
+    """Какие из этих заявок аварийные — по справочнику приоритетов.
+
+    Нужно планам, которые видели заявку не в своём расчёте: пересчёт берёт выполненные
+    и начатые заявки из прежнего плана, и в его снимке данных их нет.
+    """
+    if not request_ids:
+        return set()
+    result = await session.execute(
+        select(Request.id)
+        .join(Priority, Priority.id == Request.priority_id)
+        .where(Request.id.in_(request_ids), Priority.level == top_priority_level)
+    )
+    return set(result.scalars().all())
 
 
 async def list_active_requests(session: AsyncSession, *, office_id: int) -> list[Request]:
