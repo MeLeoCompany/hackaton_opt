@@ -77,9 +77,7 @@ async def test_only_marked_fields_change():
     """Отметили приоритет — остальное у каждой заявки осталось своим."""
     requests = [stored(1), stored(2, hour=14)]
 
-    report = await bulk_update(
-        requests, RequestBulkUpdate(request_ids=[1, 2], priority_id=1)
-    )
+    report = await bulk_update(requests, RequestBulkUpdate(request_ids=[1, 2], priority_id=1))
 
     assert report.updated == 2
     assert [request.priority_id for request in requests] == [1, 1]
@@ -125,9 +123,7 @@ async def test_request_in_plan_stops_the_whole_group():
 @pytest.mark.asyncio
 async def test_window_that_turns_upside_down_is_refused():
     requests = [stored(1, hour=9)]
-    payload = RequestBulkUpdate(
-        request_ids=[1], window_start=datetime(2026, 8, 17, 18, tzinfo=UTC)
-    )
+    payload = RequestBulkUpdate(request_ids=[1], window_start=datetime(2026, 8, 17, 18, tzinfo=UTC))
 
     with pytest.raises(requests_service.RequestDataError, match="конец окна должен быть позже"):
         await bulk_update(requests, payload)
@@ -137,7 +133,9 @@ async def test_window_that_turns_upside_down_is_refused():
 async def test_delete_removes_what_it_can_and_explains_the_rest():
     async def delete_one(session, request_id, office_id):
         if request_id == 2:
-            raise requests_service.RequestInUseError(f"Заявку №{request_id} нельзя удалить: она в плане")
+            raise requests_service.RequestInUseError(
+                f"Заявку №{request_id} нельзя удалить: она в плане"
+            )
 
     with patch.object(requests_service, "delete_request", AsyncMock(side_effect=delete_one)):
         report = await requests_service.delete_requests(object(), [1, 2, 3, 3], office_id=1)

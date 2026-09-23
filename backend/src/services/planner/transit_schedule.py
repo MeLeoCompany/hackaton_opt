@@ -139,14 +139,22 @@ async def check_schedule(
                 f"R5: маршрут {checked_routes} из {transit_routes} — бригада {engineer.name}"
             )
     if broken and report:
-        # видно, из-за чего план отвергнут: время из матрицы было оптимистичнее расписания
+        # На промежуточных попытках это штатная обратная связь для решателя: матрицу
+        # уточним и пересчитаем план. Предупреждение нужно только на последней попытке,
+        # когда такие визиты действительно снимаются из результата.
+        level = "warning" if skip_infeasible else "info"
         await run_log.note(
-            f"По фактическому расписанию не сходится {run_log.plural(len(broken), 'визит', 'визита', 'визитов')}",
-            level="warning",
+            (
+                "Из последнего варианта придётся снять "
+                if skip_infeasible
+                else "Промежуточный вариант нужно уточнить: не сходится "
+            )
+            + run_log.plural(len(broken), "визит", "визита", "визитов"),
+            level=level,
             details={"broken": broken[:20]},
         )
         for reason in broken[:5]:
-            await run_log.note(reason, level="warning")
+            await run_log.note(reason, level=level)
     if skipped and report:
         logger.warning("R5: %s визитов не вошло в проверенный вариант", skipped)
         await run_log.note(

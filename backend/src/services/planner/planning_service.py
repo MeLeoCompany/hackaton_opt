@@ -229,14 +229,8 @@ async def solve_with(
         if solver is SolverName.BASELINE:
             return baseline_solver.solve_day(loaded.instance)
         # у обоих решателей один вход и один выход, поэтому проверка расписания общая
-        solve = (
-            ortools_solver.solve_day
-            if solver is SolverName.ORTOOLS
-            else cuopt_solver.solve_day
-        )
-        return await transit_schedule.solve_day(
-            loaded, objective_order, ranks, params, solve=solve
-        )
+        solve = ortools_solver.solve_day if solver is SolverName.ORTOOLS else cuopt_solver.solve_day
+        return await transit_schedule.solve_day(loaded, objective_order, ranks, params, solve=solve)
 
 
 @dataclass(frozen=True)
@@ -395,7 +389,9 @@ async def brigades_at_work(session: AsyncSession, parent: Plan) -> dict[int, int
     return at_work
 
 
-def started_as_planned(assignment, routes: dict[int, list], engineer_id: int | None, parent: Plan) -> bool:
+def started_as_planned(
+    assignment, routes: dict[int, list], engineer_id: int | None, parent: Plan
+) -> bool:
     """Бригада уже занялась заявкой — но ровно так, как её ведёт пересчёт.
 
     Пока идёт расчёт, выезд бригадам не закрыт: они продолжают ехать по действующему плану и
@@ -453,7 +449,7 @@ async def approve_replan(
     # заявки дня на момент расчёта: пересчёт раскладывал именно их. Появились новые вводные,
     # пока считали и обзванивали, — план уже про другой день, нужен новый расчёт
     before = (plan.input_snapshot or {}).get("day_requests")
-    if before:
+    if before is not None:
         news = await day_state.new_since(session, parent, before)
         if news:
             raise PlanInUseError(
@@ -470,8 +466,7 @@ async def approve_replan(
     # пока считали и обзванивали, кто-то мог застрять: пересчёт исходил из того, что бригада
     # едет по плану, а она стоит. Про тех, кто выбился из плана ещё до расчёта, он уже знал
     replan_next = {
-        engineer_id: visit.request_id
-        for engineer_id, visit in nearest_open_visits(routes).items()
+        engineer_id: visit.request_id for engineer_id, visit in nearest_open_visits(routes).items()
     }
     was_stuck = set((plan.input_snapshot or {}).get("stuck_brigades", []))
     now_stuck = await stuck_brigades(session, parent, replan_next)
@@ -822,17 +817,17 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
     # пересчёт, который не вступил в силу: у плана горит «!», пока день не пересчитают заново
     voided_replan = await plans_repository.voided_replan_of(session, plan_ids)
     # действующий утверждённый план каждого дня: по нему видно, какие черновики уже неактуальны
-    active_by_day = {
-        plan.plan_date: await plans_repository.get_approved_plan(
-            session, plan.plan_date, office_id=plan.office_id
+    day_scopes = {(plan.office_id, plan.plan_date) for plan in plans if plan.plan_date is not None}
+    active_by_scope = {
+        (office_id, plan_date): await plans_repository.get_approved_plan(
+            session, plan_date, office_id=office_id
         )
-        for plan in plans
-        if plan.plan_date is not None
+        for office_id, plan_date in day_scopes
     }
     summaries = []
     for plan in plans:
         engineers_used, assigned, unassigned = counts.get(plan.id, (0, 0, 0))
-        active = active_by_day.get(plan.plan_date)
+        active = active_by_scope.get((plan.office_id, plan.plan_date))
         # черновик, который уже не утвердить: на его день действует другой план, и это не
         # пересчёт этого плана. Такой расчёт — история, его не с чем сверять
         outdated = (
@@ -900,8 +895,7 @@ def nearest_open_visits(routes: dict[int, list]) -> dict[int, Assignment]:
             (
                 assignment
                 for assignment in route
-                if assignment.request.status_id
-                in (RequestStatusId.NEW, RequestStatusId.PLANNED)
+                if assignment.request.status_id in (RequestStatusId.NEW, RequestStatusId.PLANNED)
             ),
             None,
         )
@@ -923,8 +917,7 @@ async def replan_next_visits(session: AsyncSession, plan_id: int) -> dict[int, i
     assignments = await plans_repository.list_plan_assignments(session, replan_id)
     routes = replan_routes([a for a in assignments if a.engineer_id is not None])
     return {
-        engineer_id: visit.request_id
-        for engineer_id, visit in nearest_open_visits(routes).items()
+        engineer_id: visit.request_id for engineer_id, visit in nearest_open_visits(routes).items()
     }
 
 

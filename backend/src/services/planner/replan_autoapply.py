@@ -29,7 +29,8 @@ async def apply_due() -> list[int]:
     """Вводит в силу все пересчёты, чей момент настал. Возвращает номера вступивших в силу."""
     applied = []
     async with async_session_maker() as session:
-        for plan in await plans_repository.due_replans(session, clock.now()):
+        while due := await plans_repository.due_replans(session, clock.now()):
+            plan = due[0]
             try:
                 await planning_service.approve_replan(session, plan)
                 applied.append(plan.id)

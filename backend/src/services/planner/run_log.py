@@ -68,6 +68,8 @@ def log_source(name: str) -> str:
         if name.startswith(prefix):
             return source
     return name.split(".")[-1]
+
+
 LOG_LEVELS = {logging.WARNING: "warning", logging.ERROR: "error", logging.CRITICAL: "error"}
 
 
@@ -256,9 +258,7 @@ async def _cancel_requested(run_id: uuid.UUID) -> bool:
     asked: list[bool] = []
 
     async def ask(session):
-        result = await session.execute(
-            select(PlanRun.cancel_requested).where(PlanRun.id == run_id)
-        )
+        result = await session.execute(select(PlanRun.cancel_requested).where(PlanRun.id == run_id))
         asked.append(bool(result.scalar_one_or_none()))
 
     await _write(ask)

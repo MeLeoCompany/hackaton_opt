@@ -62,9 +62,7 @@ async def positions(assignments, facts, moment, told=None):
     with patch.object(
         replan_service.brigade_repository, "list_facts", AsyncMock(return_value=facts)
     ):
-        return await replan_service.brigade_positions(
-            object(), PARENT, assignments, moment, told
-        )
+        return await replan_service.brigade_positions(object(), PARENT, assignments, moment, told)
 
 
 @pytest.mark.asyncio
@@ -144,9 +142,7 @@ async def test_replan_is_outdated_if_brigades_marked_something_after_it():
         patch.object(repository, "get_approved_plan", AsyncMock(return_value=parent)),
         patch.object(planning_service, "stuck_brigades", AsyncMock(return_value={})),
         patch.object(repository, "list_plan_assignments", AsyncMock(return_value=[started])),
-        patch.object(
-            planning_service, "brigades_at_work", AsyncMock(return_value={12: 2})
-        ),
+        patch.object(planning_service, "brigades_at_work", AsyncMock(return_value={12: 2})),
         # пересчёт свежий: проверяем именно отметки, а не срок годности
         patch.object(planning_service.clock, "now", return_value=at(12, 1)),
         pytest.raises(planning_service.PlanInUseError, match="после него менялись заявки №12"),
@@ -337,9 +333,7 @@ async def test_replan_starts_with_a_reserve_for_the_calculation():
         id=22, plan_date=date(2026, 8, 17), approved_at=at(9), superseded_at=None, office_id=1
     )
     with (
-        patch.object(
-            replan_service.planning_service, "find_plan", AsyncMock(return_value=parent)
-        ),
+        patch.object(replan_service.planning_service, "find_plan", AsyncMock(return_value=parent)),
         patch.object(replan_service.clock, "now", return_value=at(12)),
     ):
         _, start = await replan_service.replannable(object(), 22, None, office_id=1)
@@ -376,6 +370,33 @@ async def test_new_request_during_the_calculation_is_not_approved():
 
 
 @pytest.mark.asyncio
+async def test_new_request_after_an_empty_day_snapshot_is_not_approved():
+    """Пустой список — тоже снимок дня, а не отсутствие проверки актуальности."""
+    parent = SimpleNamespace(id=22, plan_date=date(2026, 8, 17), office_id=1)
+    plan = SimpleNamespace(
+        id=30,
+        parent_plan_id=22,
+        plan_date=date(2026, 8, 17),
+        office_id=1,
+        replanned_at=at(12),
+        input_snapshot={"request_order": [], "day_requests": []},
+    )
+    repository = planning_service.plans_repository
+    new_since = AsyncMock(return_value=["появились заявки №99"])
+    session = object()
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=parent)),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=parent)),
+        patch.object(planning_service.day_state, "new_since", new_since),
+        patch.object(planning_service.clock, "now", return_value=at(12, 1)),
+        pytest.raises(planning_service.PlanInUseError, match="появились заявки №99"),
+    ):
+        await planning_service.approve_replan(session, plan)
+
+    new_since.assert_awaited_once_with(session, parent, [])
+
+
+@pytest.mark.asyncio
 async def test_brigade_that_left_as_the_replan_plans_does_not_block_approval():
     """Бригада выехала, пока шёл расчёт, — но туда же, куда её ведёт пересчёт: утверждаем."""
     parent = SimpleNamespace(id=22, plan_date=date(2026, 8, 17), office_id=1)
@@ -397,9 +418,7 @@ async def test_brigade_that_left_as_the_replan_plans_does_not_block_approval():
         patch.object(planning_service, "stuck_brigades", AsyncMock(return_value={})),
         patch.object(repository, "list_plan_assignments", AsyncMock(return_value=route)),
         patch.object(repository, "list_bound_requests", AsyncMock(return_value=[])),
-        patch.object(
-            planning_service, "brigades_at_work", AsyncMock(return_value={12: 1})
-        ),
+        patch.object(planning_service, "brigades_at_work", AsyncMock(return_value={12: 1})),
         # заявка, на которую выехали, ушла из «Новых» и «В плане» — это не новая вводная
         patch.object(planning_service.day_state, "new_since", AsyncMock(return_value=[])),
         patch.object(planning_service.clock, "now", return_value=at(12, 1)),
@@ -440,9 +459,7 @@ async def test_brigade_that_jumped_the_queue_blocks_approval():
         patch.object(repository, "get_approved_plan", AsyncMock(return_value=parent)),
         patch.object(planning_service, "stuck_brigades", AsyncMock(return_value={})),
         patch.object(repository, "list_plan_assignments", AsyncMock(return_value=route)),
-        patch.object(
-            planning_service, "brigades_at_work", AsyncMock(return_value={13: 1})
-        ),
+        patch.object(planning_service, "brigades_at_work", AsyncMock(return_value={13: 1})),
         patch.object(planning_service.day_state, "new_since", AsyncMock(return_value=[])),
         patch.object(planning_service.clock, "now", return_value=at(12, 1)),
         pytest.raises(planning_service.PlanInUseError, match="менялись заявки №13"),
@@ -534,7 +551,9 @@ async def test_brigade_stuck_during_the_calculation_blocks_approval():
 @pytest.mark.asyncio
 async def test_brigade_held_by_the_replan_is_not_counted_as_stuck():
     """Бригада стоит, потому что мы сами закрыли ей выезд на время пересчёта: это не «застряла»."""
-    plan = SimpleNamespace(id=22, plan_date=date(2026, 8, 17), approved_at=at(9), superseded_at=None)
+    plan = SimpleNamespace(
+        id=22, plan_date=date(2026, 8, 17), approved_at=at(9), superseded_at=None
+    )
     route = [assignment(1, 12, PLANNED, at(10))]
     with (
         patch.object(
@@ -542,9 +561,7 @@ async def test_brigade_held_by_the_replan_is_not_counted_as_stuck():
             "list_plan_assignments",
             AsyncMock(return_value=route),
         ),
-        patch.object(
-            planning_service.brigade_repository, "list_facts", AsyncMock(return_value={})
-        ),
+        patch.object(planning_service.brigade_repository, "list_facts", AsyncMock(return_value={})),
         patch.object(planning_service, "plan_route_delays", AsyncMock(return_value={})),
         # время выезда давно прошло: без пересчёта бригада считалась бы выбившейся
         patch.object(planning_service.clock, "now", return_value=at(14)),

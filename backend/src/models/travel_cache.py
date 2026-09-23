@@ -35,4 +35,3 @@ class TravelCacheState(Base):
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
     gtfs_fingerprint: Mapped[str | None] = mapped_column(Text)
     cleaned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
