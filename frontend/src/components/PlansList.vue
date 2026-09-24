@@ -271,13 +271,18 @@ function originTitle(summary) {
                 <button
                   v-if="!summary.approved_at"
                   :class="{ 'attention-pulse': summary.id === attentionReplanId }"
-                  :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
+                  :disabled="
+                    busy || Boolean(approveBlockedBy(summary)) || blocked(summary) ||
+                      Boolean(summary.hold_reason)
+                  "
                   :title="
                     blocked(summary)
                       ? planWindow(summary).title
-                      : approveBlockedBy(summary)
-                        ? `На этот день действует план №${approveBlockedBy(summary).id} — его можно пересчитать, а этот расчёт остаётся черновиком`
-                        : approveTitle(summary)
+                      : summary.hold_reason
+                        ? summary.hold_reason
+                        : approveBlockedBy(summary)
+                          ? `На этот день действует план №${approveBlockedBy(summary).id} — его можно пересчитать, а этот расчёт остаётся черновиком`
+                          : approveTitle(summary)
                   "
                   @click.stop="$emit('approve', summary)"
                 >

@@ -339,7 +339,9 @@ async def build_replan(
     kept_request_ids — ярус B: заявки, которые влезли в первый расчёт круга. Третий расчёт,
     после согласия клиентов на окна, не вправе их выкинуть (docs/algoV2.md, шаг 5).
     """
-    fixed, loaded = await day_of_replan(session, parent, at, office_id=office_id, free_at=free_at)
+    fixed, loaded, starts = await day_of_replan(
+        session, parent, at, office_id=office_id, free_at=free_at
+    )
     if widen_request_ids:
         loaded, kept_request_ids = planner_loader.widen_day(loaded, widen_request_ids)
 
@@ -365,6 +367,15 @@ async def build_replan(
     )
     plan.parent_plan_id = parent.id
     plan.replanned_at = at
+    # на что расчёт рассчитывал: когда освободится каждая бригада. Не сошлось к его моменту —
+    # значит день пошёл не по прогнозу, и в силу он не вступает (planning_service.late_brigades)
+    plan.input_snapshot = {
+        **(plan.input_snapshot or {}),
+        "free_from": {
+            str(engineer_id): start.available_from.isoformat()
+            for engineer_id, start in starts.items()
+        },
+    }
     await session.flush()
     return ReplanResult(plan=plan, loaded=loaded, solution=solution)
 
@@ -376,7 +387,7 @@ async def day_of_replan(
     *,
     office_id: int,
     free_at: list[BrigadeFreeAt] | None = None,
-) -> tuple[dict[int, list[Assignment]], planner_loader.LoadedDay]:
+) -> tuple[dict[int, list[Assignment]], planner_loader.LoadedDay, dict[int, EngineerStart]]:
     """День глазами пересчёта: что остаётся за бригадами и откуда каждая продолжает.
 
     Тем же днём считает и подбор окон для невлезших заявок пересчёта: бригады в нём стоят там,
@@ -392,7 +403,7 @@ async def day_of_replan(
     # Это не ошибка — пересчёт выйдет из одних закреплённых визитов, иначе решения откатятся
     if loaded.instance.n_engineers == 0:
         raise PlanDataError(["на этот момент ни у одной бригады не осталось смены"])
-    return fixed, loaded
+    return fixed, loaded, starts
 
 
 async def apply_decisions(

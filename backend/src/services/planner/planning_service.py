@@ -537,6 +537,103 @@ async def stale_reason(
     return await draft_stale_reason(session, plan, current)
 
 
+async def late_brigades(session: AsyncSession, plan: Plan) -> list[str]:
+    """Бригады, которые по расчёту уже освободились бы, а сами всё ещё работают.
+
+    Пересчёт считает день вперёд и исходит из того, что бригада закончит текущую заявку по
+    нормативу (или ко времени, которое оператор узнал по телефону). Не закончила — день пошёл
+    не по прогнозу, и маршруты этого расчёта начинаются не с того (docs/algoV2.md, шаг 6).
+    """
+    promised = (getattr(plan, "input_snapshot", None) or {}).get("free_from") or {}
+    parent_id = getattr(plan, "parent_plan_id", None)
+    if not promised or not parent_id:
+        return []
+    assignments = await plans_repository.list_plan_assignments(session, parent_id)
+    facts = await brigade_repository.list_facts(
+        session, [assignment.request_id for assignment in assignments]
+    )
+    now = clock.now()
+    late = []
+    for assignment in assignments:
+        free_at = promised.get(str(assignment.engineer_id))
+        request = assignment.request
+        if free_at is None or request.status_id != RequestStatusId.IN_PROGRESS:
+            continue
+        fact = facts.get(request.id)
+        if fact is not None and fact.finished_at is not None:
+            continue
+        moment = datetime.fromisoformat(free_at)
+        if now <= moment + timedelta(minutes=settings.replan_grace_minutes):
+            continue
+        name = assignment.engineer.name if assignment.engineer is not None else "бригада"
+        late.append(
+            f"{name} всё ещё на заявке №{request.id}, хотя по расчёту освободилась бы "
+            f"в {local_clock(moment)}"
+        )
+    return late
+
+
+async def overrunning_brigades(session: AsyncSession, parent: Plan) -> list[str]:
+    """Бригады, у которых норматив текущей заявки уже прошёл, а она всё ещё на ней.
+
+    День уже идёт не так, как считает план: сколько она там пробудет, никто не знает. Пересчёт
+    в свой момент это проверит сам (late_brigades), а вот применять его раньше времени не
+    стоит — прогноз на этот момент держится на честном слове (docs/algoV2.md, шаги 6 и 10).
+    """
+    assignments = await plans_repository.list_plan_assignments(session, parent.id)
+    facts = await brigade_repository.list_facts(
+        session, [assignment.request_id for assignment in assignments]
+    )
+    now = clock.now()
+    late = []
+    for assignment in assignments:
+        request = assignment.request
+        if assignment.engineer_id is None or request.status_id != RequestStatusId.IN_PROGRESS:
+            continue
+        fact = facts.get(request.id)
+        if fact is not None and fact.finished_at is not None:
+            continue
+        started = fact.arrived_at if fact and fact.arrived_at else assignment.planned_arrival_time
+        if started is None:
+            continue
+        norm_end = started + timedelta(minutes=request.duration_minutes)
+        told = getattr(fact, "expected_free_at", None) if fact is not None else None
+        expected = told if told is not None and told > norm_end else norm_end
+        if now <= expected + timedelta(minutes=settings.replan_grace_minutes):
+            continue
+        name = assignment.engineer.name if assignment.engineer is not None else "бригада"
+        late.append(
+            f"{name} всё ещё на заявке №{request.id}: работа должна была кончиться "
+            f"в {local_clock(expected)}"
+        )
+    return late
+
+
+async def hold_reason(session: AsyncSession, plan: Plan) -> str | None:
+    """Почему пересчёт не стоит применять прямо сейчас, не дожидаясь его момента.
+
+    Пересчёт считался на выезд в свой момент и до него в силу не вступает. Применить раньше
+    можно — но только пока день идёт по плану: если бригада уже перерабатывает, её выезд
+    держится на честном слове, и лучше дождаться момента, когда это проверится (шаг 6).
+    """
+    moment = getattr(plan, "replanned_at", None)
+    parent_id = getattr(plan, "parent_plan_id", None)
+    if moment is None or parent_id is None or getattr(plan, "approved_at", None) is not None:
+        return None
+    if getattr(plan, "voided_at", None) is not None or clock.now() >= moment:
+        return None
+    parent = await plans_repository.get_plan(session, parent_id)
+    if parent is None:
+        return None
+    late = await overrunning_brigades(session, parent)
+    if not late:
+        return None
+    return (
+        f"Применять раньше {local_clock(moment)} нельзя: {'; '.join(late)}. "
+        "Дождитесь этого момента — пересчёт вступит в силу сам, если день сойдётся с расчётом"
+    )
+
+
 async def replan_stale_reason(
     session: AsyncSession, plan: Plan, current: list[int] | None = None
 ) -> str | None:
@@ -546,14 +643,15 @@ async def replan_stale_reason(
     (approve_replan этого не примет). Бригады, выбившиеся из плана уже после расчёта, здесь не
     ищутся: это дорого для списка планов, и проверка всё равно идёт при утверждении.
     """
+    news = []
     before = (plan.input_snapshot or {}).get("day_requests")
-    if before is None:
-        return None
-    news = await day_state.new_since(session, plan, before, current=current)
+    if before is not None:
+        news += await day_state.new_since(session, plan, before, current=current)
+    news += await late_brigades(session, plan)
     if not news:
         return None
     return (
-        f"Пересчёт №{plan.id} не вступит в силу: пока шли расчёт и обзвон, "
+        f"Пересчёт №{plan.id} не вступит в силу: день пошёл не по расчёту — "
         f"{'; '.join(news)}. Пересчитайте план заново"
     )
 
@@ -745,6 +843,19 @@ async def approve_replan(
             f"выбились {', '.join(sorted(fresh_stuck))} — он считал, что они едут. "
             "Пересчитайте план заново"
         )
+    # применяют руками раньше момента: делать это на разъехавшемся дне не стоит
+    holding = await hold_reason(session, plan)
+    if holding:
+        raise PlanInUseError(f"Пересчёт №{plan.id} не применён. {holding}")
+
+    # расчёт исходил из того, что бригады освободятся к этому моменту: не сошлось — не его день
+    late = await late_brigades(session, plan)
+    if late:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} не вступил в силу: {'; '.join(late)}. "
+            "Пересчитайте план заново"
+        )
+
     to_plan, rebind, stale = [], [], []
     for assignment in assigned:
         request = assignment.request
@@ -1159,6 +1270,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 voided_replan_id=(voided.id if (voided := voided_replan.get(plan.id)) else None),
                 voided_replan_reason=(voided.void_reason if voided else None),
                 pending_offers=len(await undecided_offers(session, plan)),
+                hold_reason=await hold_reason(session, plan),
                 effective_at=getattr(plan, "effective_at", None),
                 stale_reason=await stale_reason(
                     session, plan, day_requests_by_day.get(plan.plan_date)
