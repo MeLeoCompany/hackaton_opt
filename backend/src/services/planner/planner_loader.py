@@ -381,7 +381,12 @@ def replace_unreachable(values: list[list[float | None]], unreachable: float) ->
     return matrix
 
 
-def widen_day(loaded: LoadedDay, request_ids: set[int]) -> tuple[LoadedDay, set[int]]:
+def widen_day(
+    loaded: LoadedDay,
+    request_ids: set[int],
+    *,
+    not_before: datetime | None = None,
+) -> tuple[LoadedDay, set[int]]:
     """День с раскрытым окном названных заявок: [max(t0; T); самый поздний конец смены].
 
     T — момент, с которого считаем: сейчас плюс запас на расчёт и обзвон
@@ -408,13 +413,13 @@ def widen_day(loaded: LoadedDay, request_ids: set[int]) -> tuple[LoadedDay, set[
 
     instance = copy.copy(loaded.instance)
     latest_shift_end = max(engineer.shift_end_min for engineer in instance.engineers)
-    not_before = loaded.day.to_minutes(
-        clock.now() + timedelta(minutes=settings.replan_lead_minutes), round_up=True
+    earliest_start = loaded.day.to_minutes(
+        not_before or clock.now() + timedelta(minutes=settings.replan_lead_minutes), round_up=True
     )
     instance.requests = [
         replace(
             request,
-            window_start_min=max(request.window_start_min, not_before),
+            window_start_min=max(request.window_start_min, earliest_start),
             window_end_min=max(request.window_end_min, latest_shift_end),
         )
         if index in indices

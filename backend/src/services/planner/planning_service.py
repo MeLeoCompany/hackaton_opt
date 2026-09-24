@@ -230,7 +230,9 @@ async def build_inside_run(
     day_requests = await day_state.request_ids(session, plan_date, office_id)
     loaded = await load_planning_day(session, plan_date, office_id, not_before=at)
     if widen_request_ids:
-        loaded, kept_request_ids = planner_loader.widen_day(loaded, widen_request_ids)
+        loaded, kept_request_ids = planner_loader.widen_day(
+            loaded, widen_request_ids, not_before=at
+        )
     fallback_solution = (
         await solution_from_plan(session, loaded, fallback_plan_id)
         if fallback_plan_id is not None

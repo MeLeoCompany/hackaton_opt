@@ -346,7 +346,9 @@ async def build_replan(
         session, parent, at, office_id=office_id, free_at=free_at
     )
     if widen_request_ids:
-        loaded, kept_request_ids = planner_loader.widen_day(loaded, widen_request_ids)
+        loaded, kept_request_ids = planner_loader.widen_day(
+            loaded, widen_request_ids, not_before=at
+        )
     fallback_solution = (
         await planning_service.solution_from_plan(session, loaded, fallback_plan_id)
         if fallback_plan_id is not None
