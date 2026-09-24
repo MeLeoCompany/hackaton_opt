@@ -221,10 +221,14 @@ async def pick_windows(
                 office_id=office_id,
                 params=params,
                 widen_request_ids=widened,
+                at=getattr(source, "effective_at", None),
             )
         else:
             parent, at = await replan_service.replannable(
-                session, source.parent_plan_id, None, office_id=office_id
+                session,
+                source.parent_plan_id,
+                source.replanned_at,
+                office_id=office_id,
             )
             plan = await replan_service.build_for_approval(
                 session,
@@ -235,6 +239,29 @@ async def pick_windows(
                 office_id=office_id,
                 params=params,
                 widen_request_ids=widened,
+            )
+        # Подбор окон может добавить исходно невлезшие заявки, но не вправе создавать новых
+        # пострадавших. Если решатель или проверка R5 нарушили этот инвариант, предложения
+        # клиентам показывать нельзя: оператору оставляем исходный расчёт без ложной надежды.
+        source_assignments = await plans_repository.list_plan_assignments(session, source.id)
+        result_assignments = await plans_repository.list_plan_assignments(session, plan.id)
+        kept = {
+            assignment.request_id
+            for assignment in source_assignments
+            if assignment.engineer_id is not None
+        }
+        result_assigned = {
+            assignment.request_id
+            for assignment in result_assignments
+            if assignment.engineer_id is not None
+        }
+        lost = sorted(kept - result_assigned)
+        if lost:
+            raise PlanDataError(
+                [
+                    "подбор новых окон не смог сохранить ранее назначенные заявки: "
+                    + ", ".join(f"№{request_id}" for request_id in lost)
+                ]
             )
         plan.decisions_from_plan_id = source.id
         await session.commit()

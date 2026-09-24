@@ -235,6 +235,37 @@ async def test_keeps_earlier_verified_plan_when_later_solver_drops_more_requests
     assert any("вариант попытки 1 лучше" in call.args[0] for call in note.await_args_list)
 
 
+@pytest.mark.asyncio
+async def test_unchanged_matrix_keeps_protected_requests_during_repair():
+    """На раннем выходе из итераций доразмещение не должно забывать ярус B."""
+    loaded = loaded_day()
+    solution = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+    kept = {10}
+
+    with (
+        patch.object(transit_schedule, "counted_check", AsyncMock(return_value=(None, {}))),
+        patch.object(
+            transit_schedule,
+            "check_schedule",
+            AsyncMock(return_value=(solution, {})),
+        ),
+        patch.object(
+            transit_schedule,
+            "repair_unassigned",
+            AsyncMock(return_value=solution),
+        ) as repair,
+    ):
+        result = await transit_schedule.solve_day(
+            loaded,
+            DEFAULT_OBJECTIVE_ORDER,
+            solve=AsyncMock(return_value=solution),
+            kept_request_ids=kept,
+        )
+
+    assert result is solution
+    assert repair.await_args.args[-1] == kept
+
+
 def test_checked_plan_comparison_respects_objective_order_and_override_ranks():
     loaded = loaded_day()
     instance = loaded.instance

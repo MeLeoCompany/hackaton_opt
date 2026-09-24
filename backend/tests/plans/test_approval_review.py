@@ -239,6 +239,96 @@ async def test_window_search_saves_its_own_calculation():
 
 
 @pytest.mark.asyncio
+async def test_replan_window_search_keeps_original_calculation_moment():
+    """Подбор окон не сдвигает старт пересчёта вперёд, пока оператор смотрит результат."""
+    source = replan()
+    source.replanned_at = at(12, 15)
+    новый = SimpleNamespace(id=42, decisions_from_plan_id=None, decisions_count=None)
+    parent = SimpleNamespace(id=40, plan_date=DAY, office_id=1)
+    session = SimpleNamespace(commit=AsyncMock(), flush=AsyncMock())
+
+    with (
+        patch.object(
+            approval_review.planning_service, "find_plan", AsyncMock(return_value=source)
+        ),
+        patch.object(
+            approval_review.plans_repository, "get_plan", AsyncMock(return_value=parent)
+        ),
+        patch.object(
+            approval_review.plans_repository, "get_approved_plan", AsyncMock(return_value=parent)
+        ),
+        patch.object(
+            approval_review.planning_service,
+            "waiting_unassigned",
+            AsyncMock(return_value=[unassigned(12)]),
+        ),
+        patch.object(
+            approval_review.plans_repository, "windows_plan_of", AsyncMock(return_value=None)
+        ),
+        patch.object(
+            approval_review.replan_service,
+            "replannable",
+            AsyncMock(return_value=(parent, source.replanned_at)),
+        ) as replannable,
+        patch.object(
+            approval_review.replan_service,
+            "build_for_approval",
+            AsyncMock(return_value=новый),
+        ),
+        patch.object(
+            approval_review.plans_repository,
+            "list_plan_assignments",
+            AsyncMock(return_value=[assigned(11), unassigned(12)]),
+        ),
+        patch.object(
+            approval_review, "preview_approval", AsyncMock(return_value="предложения")
+        ),
+    ):
+        result = await approval_review.pick_windows(session, 41, office_id=1)
+
+    assert result == "предложения"
+    assert replannable.await_args.args[2] == source.replanned_at
+
+
+@pytest.mark.asyncio
+async def test_window_search_rejects_newly_displaced_requests():
+    """Новое окно нельзя предлагать ценой заявки, уже вошедшей в исходный расчёт."""
+    source = draft(solver="cuopt")
+    новый = SimpleNamespace(id=41, decisions_from_plan_id=None, decisions_count=None)
+    session = SimpleNamespace(commit=AsyncMock(), flush=AsyncMock())
+    find, approved, listed, counted = patched(source, [assigned(11), unassigned(12)])
+    assignments = AsyncMock(
+        side_effect=[
+            [assigned(11), unassigned(12)],
+            [assigned(11), unassigned(12)],
+            [unassigned(11), assigned(12)],
+        ]
+    )
+
+    with (
+        find,
+        approved,
+        listed,
+        counted,
+        patch.object(
+            approval_review.planning_service,
+            "build_inside_run",
+            AsyncMock(return_value=новый),
+        ),
+        patch.object(
+            approval_review.plans_repository, "windows_plan_of", AsyncMock(return_value=None)
+        ),
+        patch.object(
+            approval_review.plans_repository, "list_plan_assignments", assignments
+        ),
+        pytest.raises(PlanDataError, match="№11"),
+    ):
+        await approval_review.pick_windows(session, 40, office_id=1)
+
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_window_search_needs_someone_to_call():
     find, approved, listed, counted = patched(draft(), [assigned(11)])
 

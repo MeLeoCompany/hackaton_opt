@@ -512,7 +512,15 @@ async def solve_day(
             await run_log.note(
                 f"Матрица больше не меняется: сохраняю вариант попытки {best_attempt}"
             )
-            return await repair_unassigned(loaded, best, points, cache, objective_order, ranks)
+            return await repair_unassigned(
+                loaded,
+                best,
+                points,
+                cache,
+                objective_order,
+                ranks,
+                kept_request_ids,
+            )
         instance = copy.copy(instance)
         instance.travel_min = {**instance.travel_min, TRANSIT_ID: updated}
     raise AssertionError("цикл проверки расписания завершился без результата")

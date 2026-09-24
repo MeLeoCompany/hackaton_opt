@@ -204,6 +204,7 @@ async def build_inside_run(
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
     widen_request_ids: set[int] | None = None,
+    at: datetime | None = None,
 ) -> Plan:
     """Сам расчёт дня внутри запуска журнала: план записан в сессию, коммит — за вызывающим.
 
@@ -221,7 +222,10 @@ async def build_inside_run(
     params = params or SolverParams()
     # идущий день считаем на выезд через запас, а заявки дня запоминаем такими, какими их
     # увидел расчёт: по ним утверждение поймёт, что за это время день изменился
-    at = departure_moment(plan_date)
+    # Повторный расчёт того же круга (например, подбор окон) обязан использовать момент
+    # исходного расчёта. Иначе за время разговора с оператором старт сдвинется вперёд и из
+    # нового расклада выпадут заявки, которые только что в него входили.
+    at = at if at is not None else departure_moment(plan_date)
     day_requests = await day_state.request_ids(session, plan_date, office_id)
     loaded = await load_planning_day(session, plan_date, office_id, not_before=at)
     if widen_request_ids:
