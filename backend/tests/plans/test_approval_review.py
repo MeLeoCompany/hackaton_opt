@@ -258,6 +258,10 @@ async def test_replan_window_search_keeps_original_calculation_moment():
         patch.object(
             approval_review.plans_repository, "get_approved_plan", AsyncMock(return_value=parent)
         ),
+        patch.object(approval_review.clock, "now", return_value=at(12)),
+        patch.object(
+            approval_review.planning_service, "replan_stale_reason", AsyncMock(return_value=None)
+        ),
         patch.object(
             approval_review.planning_service,
             "waiting_unassigned",
@@ -393,7 +397,7 @@ async def test_moved_and_cancelled_requests_do_not_start_a_recalculation():
     assert plan.input_snapshot["request_order"] == [11]
 
 
-def replan(plan_id=41, parent_id=40, voided_at=None):
+def replan(plan_id=41, parent_id=40, voided_at=None, replanned_at=None):
     return SimpleNamespace(
         id=plan_id,
         plan_date=DAY,
@@ -402,6 +406,7 @@ def replan(plan_id=41, parent_id=40, voided_at=None):
         parent_plan_id=parent_id,
         voided_at=voided_at,
         void_reason=None,
+        replanned_at=replanned_at,
         solver="cuopt",
         objective_policy=None,
         input_snapshot={"request_order": [11, 12]},
@@ -419,8 +424,44 @@ async def test_replan_with_unfit_requests_is_reviewed_like_a_draft():
         patch.object(approval_review.planning_service, "find_plan", AsyncMock(return_value=plan)),
         patch.object(repository, "get_plan", AsyncMock(return_value=parent)),
         patch.object(repository, "get_approved_plan", AsyncMock(return_value=parent)),
+        patch.object(
+            approval_review.planning_service, "replan_stale_reason", AsyncMock(return_value=None)
+        ),
     ):
         assert await approval_review.reviewable_plan(object(), 41, office_id=1) is plan
+
+
+@pytest.mark.asyncio
+async def test_replan_cannot_be_reviewed_after_its_effective_moment():
+    plan = replan(replanned_at=at(12))
+
+    with (
+        patch.object(approval_review.planning_service, "find_plan", AsyncMock(return_value=plan)),
+        patch.object(approval_review.clock, "now", return_value=at(12)),
+        pytest.raises(PlanInUseError, match="уже наступил"),
+    ):
+        await approval_review.reviewable_plan(object(), 41, office_id=1)
+
+
+@pytest.mark.asyncio
+async def test_stale_replan_is_rejected_before_background_tick():
+    plan = replan(replanned_at=at(12))
+    parent = SimpleNamespace(id=40, plan_date=DAY, office_id=1)
+    repository = approval_review.plans_repository
+
+    with (
+        patch.object(approval_review.planning_service, "find_plan", AsyncMock(return_value=plan)),
+        patch.object(repository, "get_plan", AsyncMock(return_value=parent)),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=parent)),
+        patch.object(approval_review.clock, "now", return_value=at(11)),
+        patch.object(
+            approval_review.planning_service,
+            "replan_stale_reason",
+            AsyncMock(return_value="день изменился — появилась заявка №13"),
+        ),
+        pytest.raises(PlanInUseError, match="№13"),
+    ):
+        await approval_review.reviewable_plan(object(), 41, office_id=1)
 
 
 @pytest.mark.asyncio

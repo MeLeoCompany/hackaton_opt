@@ -88,6 +88,12 @@ async def reviewable_replan(session: AsyncSession, plan: Plan) -> Plan:
             f"Пересчёт №{plan.id} не вступил в силу: {plan.void_reason or 'день изменился'}. "
             "Пересчитайте план заново"
         )
+    moment = getattr(plan, "replanned_at", None)
+    if moment is not None and clock.now() >= moment:
+        raise PlanInUseError(
+            f"Момент вступления пересчёта №{plan.id} уже наступил. Обновите список планов: "
+            "он должен вступить в силу автоматически либо получить причину отказа"
+        )
     parent = await plans_repository.get_plan(session, plan.parent_plan_id)
     current = await plans_repository.get_approved_plan(
         session, plan.plan_date, office_id=plan.office_id
@@ -97,6 +103,9 @@ async def reviewable_replan(session: AsyncSession, plan: Plan) -> Plan:
             f"Пересчёт №{plan.id} устарел: действующий план дня уже не №{plan.parent_plan_id}. "
             "Пересчитайте действующий план заново"
         )
+    stale = await planning_service.replan_stale_reason(session, plan)
+    if stale:
+        raise PlanInUseError(stale)
     return plan
 
 
@@ -108,7 +117,6 @@ async def preview_approval(
     user_id: int | None = None,
     run_id: UUID | None = None,
     params: SolverParams | None = None,
-    suggest: bool = True,
 ) -> ReplanPreview:
     """По каким заявкам расчёта нужно решение оператора и что можно предложить клиенту.
 

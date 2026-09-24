@@ -128,16 +128,15 @@ class BrigadeFreeAt(BaseModel):
 
 
 class PlanApprovalReviewRequest(BaseModel):
-    """Перед утверждением черновика: подобрать окна невлезшим заявкам или учесть решения.
+    """Перед утверждением черновика: посмотреть невлезших или учесть решения.
 
-    decisions пусто — список невлезших заявок; с suggest=true к нему идёт второй расчёт
-    с раскрытыми окнами («Подобрать окна»), с suggest=false расчёта нет вовсе — оператор
-    просто переносит или отменяет заявки и утверждает готовый план.
+    Сам подбор выполняет отдельный `/windows`: просмотр не должен неожиданно запускать
+    тяжёлый расчёт. `suggest` оставлен для совместимости со старыми клиентами и не влияет
+    на результат этого запроса.
     """
 
-    decisions: list[ReplanDecision] = []
-    # считать ли второй расчёт: он нужен только для подбора окон
-    suggest: bool = True
+    decisions: list[ReplanDecision] = Field(default_factory=list)
+    suggest: bool = False
     run_id: UUID | None = None
     solver_params: SolverParams | None = None
 
@@ -152,9 +151,9 @@ class PlanReplanRequest(BaseModel):
     # на какой момент пересчитать: бригады свободны не раньше него. Пусто — текущее время
     at: datetime | None = None
     # решения по заявкам, на которые не успеваем (из пробного пересчёта): применяются до расчёта
-    decisions: list[ReplanDecision] = []
+    decisions: list[ReplanDecision] = Field(default_factory=list)
     # когда бригады освободятся — со слов бригады, если она застряла
-    free_at: list[BrigadeFreeAt] = []
+    free_at: list[BrigadeFreeAt] = Field(default_factory=list)
     # номер запуска: по нему интерфейс показывает ход пересчёта
     run_id: UUID | None = None
     # параметры решателя на этот пересчёт; пусто — системные
