@@ -137,14 +137,21 @@ function closeApproval(result) {
 
 // решать не по кому: утверждаем тот расчёт, который смотрели — у подбора окон это новый
 function approveAsIs(planId) {
-  const summary = plans.value.find((item) => item.id === planId) ?? approvalTarget.value
+  const summary = plans.value.find((item) => item.id === planId) ?? {
+    ...approvalTarget.value,
+    id: planId,
+  }
   approvalTarget.value = null
   approve(summary)
 }
 
 async function startDecisions({ planId, decisions }) {
-  // решения принимаются по тому расчёту, который на экране: подбор окон дал новый
-  const summary = plans.value.find((item) => item.id === planId) ?? approvalTarget.value
+  // решения принимаются по тому расчёту, который на экране: подбор окон дал новый. Его может
+  // ещё не быть в списке — тогда берём номер как есть, иначе решения уйдут исходному плану
+  const summary = plans.value.find((item) => item.id === planId) ?? {
+    ...approvalTarget.value,
+    id: planId,
+  }
   // «Утвердить»: решения только убирают работу из дня — план утверждается тем же действием
   const approveAfter = approvalMode.value === 'approve'
   approvalTarget.value = null
@@ -564,6 +571,7 @@ onMounted(async () => {
       :mode="approvalMode"
       @approve="approveAsIs"
       @decide="startDecisions"
+      @searched="loadPlans"
       @close="closeApproval"
     />
     <PlanBuildDialog

@@ -25,7 +25,7 @@ const props = defineProps({
 })
 
 const windowsMode = computed(() => props.mode === 'windows')
-const emit = defineEmits(['approve', 'decide', 'close'])
+const emit = defineEmits(['approve', 'decide', 'close', 'searched'])
 
 const { preview, decisions, problems, tolerance, setPreview, decisionsReady, payload } =
   useUnassignedDecisions(() => props.summary.plan_date)
@@ -63,6 +63,8 @@ async function searchWindows() {
       : await previewApproval(props.summary.id, { run_id: runId })
     decidedPlanId.value = result.plan_id ?? props.summary.id
     setPreview(result, { allowAgree: windowsMode.value })
+    // подбор дал новый расчёт дня: он должен появиться в списке под окном
+    if (decidedPlanId.value !== props.summary.id) emit('searched')
   } catch (error) {
     searchError.value = [error.message, ...(error.details ?? [])].join(': ')
   } finally {
