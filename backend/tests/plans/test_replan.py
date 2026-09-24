@@ -76,7 +76,8 @@ async def test_brigade_at_work_continues_from_there_when_it_finishes():
     ]
     facts = {10: fact(finished=at(11)), 11: fact(arrived=at(12, 20))}
 
-    fixed, starts = await positions(route, facts, at(12, 30))
+    with patch.object(planning_service.clock, "now", return_value=at(12, 25)):
+        fixed, starts = await positions(route, facts, at(12, 30))
 
     assert [item.request_id for item in fixed[1]] == [10, 11]  # закрытая и начатая остаются
     assert (starts[1].latitude, starts[1].available_from) == (55.8, at(13, 20))
@@ -572,15 +573,33 @@ async def test_brigade_that_overran_the_norm_is_not_counted_free_right_away():
     route = [assignment(1, 10, IN_PROGRESS, at(10)), assignment(2, 11, PLANNED, at(14))]
     facts = {10: fact(arrived=at(10))}  # плановые 60 минут кончились в 11:00
 
-    _, starts = await positions(route, facts, at(12, 15))
+    with patch.object(planning_service.clock, "now", return_value=at(12)):
+        _, starts = await positions(route, facts, at(12, 15))
 
     assert starts[1].available_from == at(12, 15) + timedelta(
         minutes=settings.stuck_free_at_minutes
     )
 
 
+@pytest.mark.asyncio
+async def test_brigade_finishing_after_the_replan_moment_is_not_stuck():
+    """Бригада работает по нормативу и закончит к 13:00, а пересчёт считается на 12:30.
+
+    Она не застряла — просто ещё работает. Считать её «застрявшей» и добавлять запас нельзя:
+    так из плана вылетают заявки, к которым бригада на самом деле успевает.
+    """
+    route = [assignment(1, 10, IN_PROGRESS, at(12)), assignment(2, 11, PLANNED, at(13, 10))]
+    facts = {10: fact(arrived=at(12))}  # норматив кончится в 13:00
+
+    with patch.object(planning_service.clock, "now", return_value=at(12, 15)):
+        _, starts = await positions(route, facts, at(12, 30))
+
+    assert starts[1].available_from == at(13)
+
+
 def test_estimate_follows_the_norm_while_it_holds():
-    assert planning_service.free_at_estimate(at(12), 60, at(12, 15)) == at(13)
+    with patch.object(planning_service.clock, "now", return_value=at(12, 15)):
+        assert planning_service.free_at_estimate(at(12), 60, at(12, 15)) == at(13)
 
 
 @pytest.mark.asyncio
