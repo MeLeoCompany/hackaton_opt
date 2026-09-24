@@ -43,7 +43,7 @@ export function planGraph(plans) {
     )
     kids.forEach((kid, index) => {
       const kidRow = index === 0 ? row : rows++
-      walk(kid, col + 1, kidRow, { label: from(kid).link, up: kidRow - row })
+      walk(kid, col + 1, kidRow, { label: from(kid).link, up: kidRow - row, fromId: plan.id })
     })
   }
   roots.forEach((plan) => walk(plan, 0, rows++, null))

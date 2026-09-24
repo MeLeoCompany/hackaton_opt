@@ -254,8 +254,11 @@ export function usePlans() {
     if (
       summary.parent_plan_id &&
       !window.confirm(
-        `Утвердить пересчёт №${summary.id}? Он заменит план №${summary.parent_plan_id}: бригады ` +
-          'увидят новый маршрут, а заявки, которым не нашлось места, вернутся в «Новые».',
+        `Применить пересчёт №${summary.id} прямо сейчас, не дожидаясь ` +
+          `${moscowTimeOf(summary.replanned_at)}? Он заменит план №${summary.parent_plan_id}: ` +
+          'бригады увидят новый маршрут, а заявки, которым не нашлось места, вернутся в «Новые». ' +
+          'Маршруты от этого не сдвинутся — они посчитаны на выезд с ' +
+          `${moscowTimeOf(summary.replanned_at)}.`,
       )
     ) {
       return
@@ -267,7 +270,7 @@ export function usePlans() {
       await refreshDay()
       showNotice(
         summary.parent_plan_id
-          ? `Пересчёт №${summary.id} утверждён и заменил план №${summary.parent_plan_id}`
+          ? `Пересчёт №${summary.id} применён и заменил план №${summary.parent_plan_id}`
           : `План №${summary.id} утверждён: его заявки закреплены за этим днём`,
       )
     } catch (error) {

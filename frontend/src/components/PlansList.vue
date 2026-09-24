@@ -72,6 +72,16 @@ function approveBlockedBy(summary) {
   return !working || summary.parent_plan_id === working.id ? null : working
 }
 
+// пересчёт вступает в силу сам в свой момент; кнопка — применить его раньше, руками
+function approveTitle(summary) {
+  if (!summary.parent_plan_id) return 'Утвердить план: его заявки закрепятся за этим днём'
+  return (
+    `Применить пересчёт сейчас, не дожидаясь ${moscowTimeOf(summary.replanned_at)}: он сразу ` +
+    'заменит действующий план, и бригады увидят новый маршрут. Если не нажимать, он вступит ' +
+    'в силу сам в этот момент'
+  )
+}
+
 // расчёт не удержал обещанное клиенту время — до утверждения это видно (docs/algoV2.md, шаг 5)
 function promiseWarning(summary) {
   if (!summary.broken_promises?.length) return ''
@@ -152,11 +162,11 @@ function originTitle(summary) {
   <div class="plans-table">
     <div class="table-top">
       <!-- из чего что выросло: слева направо по времени, действующий план в первой строке -->
-      <PlanGraph :plans="plans" :selected-plan-id="selectedPlanId" @select="$emit('select', $event)" />
-      <label class="details-toggle" title="Решатель, цели, пробег и время расчёта — нужны при сравнении алгоритмов">
-        <input v-model="detailed" type="checkbox" />
-        Подробности расчёта
-      </label>
+      <PlanGraph
+        :plans="plans"
+        :selected-plan-id="selectedPlanId"
+        @select="$emit('select', $event)"
+      />
     </div>
 
     <div class="table-scroll">
@@ -174,7 +184,12 @@ function originTitle(summary) {
             <th v-if="detailed" title="Общий пробег по дорогам, км">Пробег</th>
             <th v-if="detailed">Расчёт</th>
             <th>Состояние</th>
-            <th></th>
+            <th class="tools-head">
+              <label class="details-toggle" title="Решатель, цели, пробег и время расчёта — нужны при сравнении алгоритмов">
+                <input v-model="detailed" type="checkbox" />
+                Подробности
+              </label>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -262,11 +277,11 @@ function originTitle(summary) {
                       ? planWindow(summary).title
                       : approveBlockedBy(summary)
                         ? `На этот день действует план №${approveBlockedBy(summary).id} — его можно пересчитать, а этот расчёт остаётся черновиком`
-                        : 'Утвердить план: его заявки закрепятся за этим днём'
+                        : approveTitle(summary)
                   "
                   @click.stop="$emit('approve', summary)"
                 >
-                  Утвердить
+                  {{ summary.parent_plan_id ? 'Применить' : 'Утвердить' }}
                 </button>
                 <button
                   v-if="!summary.approved_at"
@@ -305,7 +320,7 @@ function originTitle(summary) {
   min-width: 116px;
 }
 
-/* галочка над таблицей: отладочные колонки нужны не всегда */
+/* отладочные колонки нужны не всегда: показываем по галочке */
 .details-toggle {
   display: inline-flex;
   align-items: center;
@@ -313,6 +328,7 @@ function originTitle(summary) {
   margin: 0;
   color: #64748b;
   font-size: 12px;
+  font-weight: 400;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -321,7 +337,7 @@ function originTitle(summary) {
 .table-top {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px 16px;
   margin-bottom: 6px;
 }
@@ -363,8 +379,10 @@ function originTitle(summary) {
   font-weight: 700;
 }
 
-.details-toggle {
-  margin-left: auto;
+/* галочка живёт в шапке таблицы, над кнопками строк: рядом с графом она путалась с ним */
+.tools-head {
+  text-align: right;
+  font-weight: 400;
 }
 
 .fate {

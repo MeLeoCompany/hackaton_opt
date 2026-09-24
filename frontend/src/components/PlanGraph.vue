@@ -1,27 +1,62 @@
 <script setup>
-// Граф расчётов дня: слева первый расчёт, вправо — во что он превратился.
-// Прямая линия ведёт к действующему плану, ветка вниз — то, что пошло в сторону:
-// пересчёт, не вступивший в силу, или черновик, который не утвердили (docs/algoV2.md, шаг 6).
-import { computed } from 'vue'
+// Как расчёты дня выросли друг из друга. Свёрнуто — хвост цепочки: последние расчёты и их
+// ветки, чтобы строка не разъезжалась. «Развернуть» показывает всю историю дня целиком
+// (docs/algoV2.md, шаг 6).
+import { computed, ref } from 'vue'
 
 import { planGraph } from '../utils/planGraph.js'
 import { planWindowOf } from '../utils/planWindow.js'
 import { moscowTimeOf } from '../utils/moscowTime.js'
 import { useSystemTime } from '../composables/useSystemTime.js'
+import PlanGraphGrid from './PlanGraphGrid.vue'
 
 const props = defineProps({
   plans: { type: Array, required: true },
   selectedPlanId: { type: Number, default: null },
 })
-defineEmits(['select'])
+const emit = defineEmits(['select'])
 
-const ROW_HEIGHT = 30
+// сколько поколений показывать в строке: дальше начинается горизонтальная прокрутка
+const TAIL_COLUMNS = 3
 
 const graph = computed(() => planGraph(props.plans))
 const { now } = useSystemTime()
+// в строке — хвост цепочки, «Развернуть» открывает всю историю дня окном
+const historyOpen = ref(false)
+
+// хвост цепочки: последние поколения и связи между ними. Строки переиндексируем, чтобы
+// свёрнутые ветки не оставляли пустых полос
+const tail = computed(() => {
+  const { nodes, columns } = graph.value
+  const from = Math.max(0, columns - TAIL_COLUMNS)
+  const visible = nodes.filter((node) => node.col >= from)
+  const rows = [...new Set(visible.map((node) => node.row))].sort((a, b) => a - b)
+  const rowOf = (node) => rows.indexOf(node.row)
+  const shownIds = new Set(visible.map((node) => node.plan.id))
+  return {
+    nodes: visible.map((node) => {
+      const source = visible.find((other) => other.plan.id === node.edge?.fromId)
+      return {
+        ...node,
+        col: node.col - from,
+        row: rowOf(node),
+        // связь рисуем, только если виден и тот, из чего расчёт вырос
+        edge: source ? { ...node.edge, up: rowOf(node) - rowOf(source) } : null,
+      }
+    }),
+    rows: rows.length,
+    columns: Math.min(columns, TAIL_COLUMNS),
+    hidden: nodes.length - shownIds.size,
+  }
+})
 
 // чем расчёт кончился или что с ним будет — коротко, подробности в подсказке. Срок берём там
 // же, где его берёт таблица, иначе в графе и в строке было бы написано разное
+function openPlan(planId) {
+  historyOpen.value = false
+  emit('select', planId)
+}
+
 function state(summary) {
   if (summary.superseded_at) return { text: `до ${moscowTimeOf(summary.superseded_at)}`, cls: 'past' }
   if (summary.approved_at) return { text: 'действует', cls: 'live' }
@@ -41,141 +76,128 @@ function state(summary) {
   if (summary.outdated) return { text: 'неактуален', cls: 'past' }
   return { text: 'черновик', cls: 'draft' }
 }
+
+
 </script>
 
 <template>
-  <div
-    v-if="graph.nodes.length > 1"
-    class="plan-graph"
-    :style="{ gridTemplateColumns: `repeat(${graph.columns}, max-content)`, gridAutoRows: `${ROW_HEIGHT}px` }"
-  >
-    <div
-      v-for="node in graph.nodes"
-      :key="node.plan.id"
-      class="node"
-      :style="{ gridColumn: node.col + 1, gridRow: node.row + 1 }"
+  <div v-if="graph.nodes.length > 1" class="graph-line">
+    <div class="graph-scroll">
+      <PlanGraphGrid
+        :graph="tail"
+        :state="state"
+        :selected-plan-id="selectedPlanId"
+        @select="emit('select', $event)"
+      />
+    </div>
+    <button
+      class="link expand"
+      :title="
+        tail.hidden
+          ? `Показать всю историю дня: ещё ${tail.hidden} расчётов и их ветки`
+          : 'Показать всю историю дня отдельным окном'
+      "
+      @click="historyOpen = true"
     >
-      <!-- связь с тем, из чего вырос: прямая по строке или уголок с ветки выше -->
-      <span
-        v-if="node.edge"
-        :class="['edge', { branch: node.edge.up > 0 }]"
-        :style="node.edge.up > 0 ? { '--up': `${node.edge.up * ROW_HEIGHT}px` } : null"
-      >
-        <span class="edge-label">{{ node.edge.label }}</span>
-      </span>
-      <button
-        :class="['chip', state(node.plan).cls, { current: node.plan.id === selectedPlanId }]"
-        :title="state(node.plan).title || `Открыть расчёт №${node.plan.id}`"
-        @click="$emit('select', node.plan.id)"
-      >
-        №{{ node.plan.id }}
-        <span class="chip-state">{{ state(node.plan).text }}</span>
-      </button>
+      Развернуть{{ tail.hidden ? ` · ещё ${tail.hidden}` : '' }}
+    </button>
+
+    <div v-if="historyOpen" class="dialog-backdrop" @click.self="historyOpen = false">
+      <div class="dialog" role="dialog" aria-label="История расчётов дня">
+        <header>
+          <strong>История расчётов дня</strong>
+          <button class="close" title="Закрыть" @click="historyOpen = false">×</button>
+        </header>
+        <p class="hint">
+          Слева первый расчёт, вправо — во что он превратился. Прямая линия ведёт к действующему
+          плану, ветка вниз — то, что пошло в сторону: пересчёт, не вступивший в силу, или
+          черновик, который не утвердили. Номер открывает расчёт.
+        </p>
+        <div class="history-scroll">
+          <PlanGraphGrid
+            :graph="graph"
+            :state="state"
+            :selected-plan-id="selectedPlanId"
+            @select="openPlan"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.plan-graph {
-  display: grid;
-  align-items: center;
+.graph-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
   margin-bottom: 8px;
   font-size: 12px;
 }
 
-.node {
-  display: flex;
-  align-items: center;
-  height: 100%;
+/* на узком экране прокручивается сам граф, а не страница */
+.graph-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
-/* прямая связь: линия с подписью между соседними расчётами */
-.edge {
-  position: relative;
+/* кнопка уходит к правому краю и стоит в одну строку с первым рядом узлов */
+.expand {
+  flex: none;
+  margin-left: auto;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 30px;
+  white-space: nowrap;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 96px;
-  height: 100%;
-  padding: 0 6px;
-  color: #94a3b8;
+  background: rgb(15 23 42 / 45%);
 }
 
-.edge::before {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  left: 0;
-  border-top: 1px solid #cbd5e1;
-  content: '';
-}
-
-/* ветка вниз: уголок от строки, где стоит источник, к строке этого расчёта */
-.edge.branch::before {
-  top: calc(50% - var(--up));
-  left: 6px;
-  height: var(--up);
-  border-bottom: 1px solid #cbd5e1;
-  border-left: 1px solid #cbd5e1;
-  border-top: 0;
-  border-bottom-left-radius: 8px;
-}
-
-.edge-label {
-  position: relative;
-  padding: 0 4px;
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(1400px, 96vw);
+  max-height: 88vh;
+  padding: 14px;
+  border-radius: 10px;
   background: #fff;
-  white-space: nowrap;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 30%);
 }
 
-.chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 2px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
-  background: #fff;
-  color: #1d4ed8;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: nowrap;
-  cursor: pointer;
+.dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.chip:hover {
-  border-color: #93c5fd;
+.close {
+  padding: 0 8px;
+  font-size: 18px;
+  line-height: 26px;
 }
 
-.chip.current {
-  border-color: #2563eb;
-  font-weight: 700;
-}
-
-.chip-state {
+.hint {
+  margin: 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
 }
 
-.chip.live {
-  border-color: #bbf7d0;
-  background: #dcfce7;
-}
-
-.chip.live .chip-state {
-  color: #166534;
-}
-
-.chip.failed {
-  border-color: #fecaca;
-  background: #fee2e2;
-}
-
-.chip.failed .chip-state {
-  color: #991b1b;
-}
-
-.chip.past {
-  background: #f8fafc;
+/* большая развилка может не влезть и в окно: там прокрутка уместна */
+.history-scroll {
+  overflow: auto;
+  padding: 4px 2px;
 }
 </style>
