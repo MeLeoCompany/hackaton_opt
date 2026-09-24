@@ -15,6 +15,10 @@ from src.services.planner.planning_service import PlanDataError, PlanInUseError
 OFFICE = 1
 
 
+def at(hour, minute=0):
+    return datetime(2026, 8, 17, hour, minute, tzinfo=UTC)
+
+
 def plan(plan_id, approved_at=None, plan_date=date(2026, 8, 17)):
     return SimpleNamespace(
         id=plan_id, plan_date=plan_date, approved_at=approved_at, office_id=OFFICE
@@ -255,3 +259,59 @@ async def test_day_check_reports_requests_held_by_another_day():
     assert check.approved_plan_id is None
     [held] = check.held_requests
     assert (held.request_id, held.plan_id, held.plan_date) == (42, 8, date(2026, 8, 16))
+
+
+@pytest.mark.asyncio
+async def test_plan_with_unanswered_offer_is_not_approved(nothing_left_undecided):
+    """Подобранное окно — предложение клиенту: пока ответа нет, утверждать нельзя.
+
+    Иначе бригада приедет в то время, о котором с клиентом никто не договаривался.
+    """
+    target = plan(9)
+    target.input_snapshot = {"widened_requests": [12]}
+    # расчёт поставил заявку далеко за её окно: это предложение, а не согласие
+    offered = SimpleNamespace(
+        request_id=12,
+        engineer_id=1,
+        planned_arrival_time=at(17),
+        request=SimpleNamespace(promised_from=None, window_start=at(10), window_end=at(11)),
+    )
+    nothing_left_undecided.return_value = [offered]
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=target)),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
+        patch.object(repository, "hold_plan_requests", AsyncMock()) as hold,
+        pytest.raises(PlanInUseError, match="№12"),
+    ):
+        await planning_service.approve_plan(object(), 9, office_id=OFFICE)
+
+    hold.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agreed_offer_no_longer_blocks_approval(nothing_left_undecided):
+    """Клиент согласился — отметка «согласовано» стоит, и план утверждается как есть."""
+    target = plan(9)
+    target.input_snapshot = {"widened_requests": [12]}
+    # окно сужено до обещанного, и расчёт ставит заявку ровно в него
+    agreed = SimpleNamespace(
+        request_id=12,
+        engineer_id=1,
+        planned_arrival_time=at(14),
+        request=SimpleNamespace(promised_from=at(14), window_start=at(14), window_end=at(14, 30)),
+    )
+    nothing_left_undecided.return_value = [agreed]
+    session = SimpleNamespace(commit=AsyncMock())
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock(return_value=target)),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=None)),
+        patch.object(repository, "hold_plan_requests", AsyncMock(return_value=(3, 3, []))) as hold,
+        patch.object(planning_service, "summarize_plans", AsyncMock(return_value=[summary(9)])),
+    ):
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
+
+    hold.assert_awaited_once()

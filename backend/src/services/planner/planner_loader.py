@@ -9,15 +9,18 @@
 пешеходных и велосипедных поездок, R5 с данными Valhalla для общественного транспорта.
 """
 
+import copy
 import math
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 
 import httpx
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core import clock
+from src.core.config import settings
 from src.core.errors import ExternalServiceError
 from src.core.local_day import local_timezone
 from src.models import Engineer, Request
@@ -376,3 +379,48 @@ def replace_unreachable(values: list[list[float | None]], unreachable: float) ->
     matrix = np.array(values, dtype=float)
     matrix[~np.isfinite(matrix)] = unreachable
     return matrix
+
+
+def widen_day(loaded: LoadedDay, request_ids: set[int]) -> tuple[LoadedDay, set[int]]:
+    """День с раскрытым окном названных заявок: [max(t0; T); самый поздний конец смены].
+
+    T — момент, с которого считаем: сейчас плюс запас на расчёт и обзвон
+    (settings.replan_lead_minutes, docs/algoV2.md, шаг 2). Раньше него предлагать время
+    нельзя: эти минуты бригады ещё едут по прежнему плану, и обещание клиенту было бы
+    заведомо невыполнимым. Для будущего дня T лежит до начала дня и ничего не меняет.
+    В базе окна не трогаем — раскрытие живёт только внутри расчёта.
+
+    Возвращает день для решателя и заявки, окна которых не трогали: это ярус B — тех,
+    кто влез в первый расчёт, раскрытая заявка вытеснять не вправе.
+    """
+    indices = {
+        index
+        for index, request in enumerate(loaded.instance.requests)
+        if request.request_id in request_ids
+    }
+    kept = {
+        request.request_id
+        for index, request in enumerate(loaded.instance.requests)
+        if index not in indices
+    }
+    if not indices:
+        return loaded, kept
+
+    instance = copy.copy(loaded.instance)
+    latest_shift_end = max(engineer.shift_end_min for engineer in instance.engineers)
+    not_before = loaded.day.to_minutes(
+        clock.now() + timedelta(minutes=settings.replan_lead_minutes), round_up=True
+    )
+    instance.requests = [
+        replace(
+            request,
+            window_start_min=max(request.window_start_min, not_before),
+            window_end_min=max(request.window_end_min, latest_shift_end),
+        )
+        if index in indices
+        else request
+        for index, request in enumerate(instance.requests)
+    ]
+    widened = copy.copy(loaded)
+    widened.instance = instance
+    return widened, kept

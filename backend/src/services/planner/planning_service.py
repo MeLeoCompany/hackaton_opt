@@ -203,15 +203,19 @@ async def build_inside_run(
     office_id: int,
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
+    widen_request_ids: set[int] | None = None,
 ) -> Plan:
     """Сам расчёт дня внутри запуска журнала: план записан в сессию, коммит — за вызывающим.
 
     Так перед расчётом в той же транзакции можно применить решения оператора по заявкам:
     не получился расчёт — не меняется ничего.
 
-    kept_request_ids — ярус B третьего расчёта: заявки, которые влезли в первый расчёт круга.
-    Выкидывать их нельзя, переставлять можно (docs/algoV2.md, шаг 5). Ярусы считаются здесь
-    же по загруженному дню и никуда не сохраняются.
+    kept_request_ids — ярус B: заявки, которые влезли в первый расчёт круга. Выкидывать их
+    нельзя, переставлять можно (docs/algoV2.md, шаг 5). Ярусы считаются здесь же по
+    загруженному дню и никуда не сохраняются.
+
+    widen_request_ids — подбор окон: этим заявкам окно раскрывается до конца самой поздней
+    смены, а ярус B получают все остальные. В базе окна не меняются (docs/algoV2.md, шаг 2).
     """
     # параметры расчёта приходят из запроса; системные подставляет слой API
     params = params or SolverParams()
@@ -220,6 +224,8 @@ async def build_inside_run(
     at = departure_moment(plan_date)
     day_requests = await day_state.request_ids(session, plan_date, office_id)
     loaded = await load_planning_day(session, plan_date, office_id, not_before=at)
+    if widen_request_ids:
+        loaded, kept_request_ids = planner_loader.widen_day(loaded, widen_request_ids)
     policy = validate_objective_order(objective_order)
 
     started = time.perf_counter()
@@ -244,7 +250,11 @@ async def build_inside_run(
         routes, _ = await plan_routes(session, plan, strict=True)
         set_plan_distance(plan, routes_distance(routes))
     plan.effective_at = at
-    plan.input_snapshot = {**(plan.input_snapshot or {}), "day_requests": day_requests}
+    plan.input_snapshot = {
+        **(plan.input_snapshot or {}),
+        "day_requests": day_requests,
+        **({"widened_requests": sorted(widen_request_ids)} if widen_request_ids else {}),
+    }
     if at is not None:
         await run_log.note(
             f"расчёт на выезд с {local_clock(at)}: до этого момента план и утверждают"
@@ -301,8 +311,25 @@ async def delete_plan(session: AsyncSession, plan_id: int, *, office_id: int) ->
             "закреплёнными за несуществующим планом. По плану, который бригады уже видят, "
             "утверждение не снимают — он остаётся в истории дня"
         )
+    await revive_source_of(session, plan)
     await plans_repository.delete_plan(session, plan)
     await session.commit()
+
+
+async def revive_source_of(session: AsyncSession, plan: Plan) -> list[int]:
+    """Удаляем расчёт — возвращаем в игру те, которые он отозвал.
+
+    Новый расчёт отзывает прежний: подбор окон — тот, из которого вырос, пересчёт — прежний
+    пересчёт того же плана. Если новый удалили, отзывать было не за чем, и прежний снова
+    годится. Иначе в дне остаётся недействительный расчёт со ссылкой на несуществующий
+    (docs/algoV2.md, шаги 3 и 6).
+    """
+    revived = []
+    for other in await plans_repository.retired_by(session, plan):
+        other.voided_at = None
+        other.void_reason = None
+        revived.append(other.id)
+    return revived
 
 
 async def find_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> Plan:
@@ -344,6 +371,11 @@ async def approve_plan(
     stale = await draft_stale_reason(session, plan)
     if stale:
         raise PlanInUseError(stale)
+
+    # подобранное окно — это предложение клиенту, а не согласие: без ответа не утверждаем
+    offered = await undecided_offers(session, plan)
+    if offered:
+        raise offers_error(plan_id, offered)
 
     # невлезшие заявки без решения не оставляем: иначе они молча висят «Новыми», пока окно
     # не закроется. Оператор переносит их, согласует время или отменяет (подбор окон при
@@ -444,6 +476,44 @@ def free_at_of(fact, work_start: datetime, duration_minutes: int, at: datetime) 
     if told is not None and told > at:
         return told
     return free_at_estimate(work_start, duration_minutes, at)
+
+
+async def undecided_offers(session: AsyncSession, plan: Plan) -> list[Assignment]:
+    """Заявки, которым расчёт подобрал окно, а ответа клиента ещё нет (docs/algoV2.md, шаг 4).
+
+    Подбор окон ставит такую заявку вне её окна — это предложение, а не факт. Пока клиент не
+    согласился, план утверждать нельзя: бригада приедет не тогда, когда заявке обещано.
+
+    Согласие видно по самому расчёту: у согласованной заявки окно сужено до обещанного, и
+    расчёт ставит её внутрь него. Если следующий подбор окон сдвинул её из обещанного времени,
+    договариваться нужно заново — прежнее «согласен» уже не про это время.
+    """
+    widened = set((getattr(plan, "input_snapshot", None) or {}).get("widened_requests") or [])
+    if not widened:
+        return []
+    assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    return [
+        assignment
+        for assignment in assignments
+        if assignment.request_id in widened
+        and assignment.engineer_id is not None
+        and not within_window(assignment)
+    ]
+
+
+def within_window(assignment: Assignment) -> bool:
+    """Расчёт поставил заявку в её собственное окно: договариваться не о чем."""
+    start = assignment.planned_arrival_time
+    request = assignment.request
+    return start is not None and request.window_start <= start <= request.window_end
+
+
+def offers_error(plan_id: int, offered: list[Assignment]) -> PlanInUseError:
+    numbers = ", ".join(f"№{assignment.request_id}" for assignment in offered)
+    return PlanInUseError(
+        f"В расчёте №{plan_id} заявкам {numbers} подобрано окно, но ответа клиента нет: "
+        "согласуйте время, перенесите на другой день или отмените"
+    )
 
 
 def local_clock(moment: datetime) -> str:
@@ -615,6 +685,9 @@ async def approve_replan(
             f"Пересчёт №{plan.id} уже не вступит в силу. "
             f"{plan.void_reason or 'День изменился с его расчёта'}"
         )
+    offered = await undecided_offers(session, plan)
+    if offered:
+        raise offers_error(plan.id, offered)
     parent = await plans_repository.get_plan(session, plan.parent_plan_id)
     current = await plans_repository.get_approved_plan(
         session, plan.plan_date, office_id=plan.office_id
@@ -1084,6 +1157,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 ),
                 voided_replan_id=(voided.id if (voided := voided_replan.get(plan.id)) else None),
                 voided_replan_reason=(voided.void_reason if voided else None),
+                pending_offers=len(await undecided_offers(session, plan)),
                 effective_at=getattr(plan, "effective_at", None),
                 stale_reason=await stale_reason(
                     session, plan, day_requests_by_day.get(plan.plan_date)

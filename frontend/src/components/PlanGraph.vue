@@ -64,6 +64,9 @@ function state(summary) {
     return { text: 'не вступил в силу', cls: 'failed', title: summary.void_reason ?? '' }
   }
   const window = planWindowOf(summary, now.value)
+  if (window?.state === 'offers') {
+    return { text: `ждёт ответов: ${summary.pending_offers}`, cls: 'draft', title: window.title }
+  }
   if (window?.state === 'expired') {
     return { text: 'не вступит в силу', cls: 'failed', title: window.title }
   }

@@ -257,7 +257,7 @@ function originTitle(summary) {
                      Отдельной кнопкой, потому что это новый расчёт дня, а не утверждение.
                      Одинаково у черновика и у пересчёта: круг и решения в нём одни и те же -->
                 <button
-                  v-if="!summary.approved_at && summary.unassigned_count"
+                  v-if="!summary.approved_at && !summary.pending_offers && summary.unassigned_count"
                   :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
                   :title="
                     blocked(summary)
@@ -451,6 +451,12 @@ function originTitle(summary) {
 .badge.takes-effect {
   background: #eef2ff;
   color: #3730a3;
+}
+
+/* подбор окон ждёт ответов клиентов: это ещё не план */
+.badge.takes-effect.offers {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .badge.takes-effect.now {

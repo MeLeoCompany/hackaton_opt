@@ -198,9 +198,9 @@ export function usePlans() {
         approveAfter
           ? `План №${result.id} утверждён как есть, без пересчёта: ` +
             `${decisionsText(params.decisions)}его заявки закреплены за этим днём`
-          : `Расчёт №${result.id} посчитан с решениями из №${summary.id}: назначено ` +
-            `${result.assigned_count}, не назначено ${result.unassigned_count}. ` +
-            `${decisionsText(params.decisions)}Посмотрите его и утвердите`,
+          : `Решения учтены в расчёте №${result.id}: назначено ${result.assigned_count}, ` +
+            `не назначено ${result.unassigned_count}. ${decisionsText(params.decisions)}` +
+            'Пересчёта не было — посмотрите расчёт и утвердите',
       )
     } catch (error) {
       showError(error)

@@ -191,3 +191,20 @@ async def test_only_the_last_replan_of_a_plan_keeps_waiting():
     assert last.voided_at is None
     # у прежнего день не сверяем: он отозван по более простой причине
     assert stale.await_count == 1
+
+
+def test_window_search_without_answers_is_not_a_plan_yet():
+    """Подбор окон сам в силу не вступает и бригад не держит: сначала ответы клиентов."""
+    from src.repositories.plans import plans_repository
+
+    picked = SimpleNamespace(
+        id=41, input_snapshot={"widened_requests": [12]}, decisions_count=None
+    )
+    decided = SimpleNamespace(
+        id=42, input_snapshot={"widened_requests": [12]}, decisions_count=1
+    )
+    ordinary = SimpleNamespace(id=43, input_snapshot={"request_order": [11]}, decisions_count=None)
+
+    assert plans_repository.awaits_answers(picked) is True
+    assert plans_repository.awaits_answers(decided) is False
+    assert plans_repository.awaits_answers(ordinary) is False

@@ -75,12 +75,32 @@ export function draftWindow(summary, now) {
   }
 }
 
-// расчёт, который утверждать поздно или не с теми вводными: кнопки закрыты
-export function planBlocked(summary, now) {
-  return ['expired', 'voided'].includes(planWindowOf(summary, now)?.state)
+// подобранное окно — предложение клиенту: пока ответа нет, расчёт не утверждают и сам он
+// в силу не вступает
+function offersWindow(summary) {
+  const count = summary.pending_offers
+  return {
+    state: 'offers',
+    text: `ждёт ответов клиентов: ${count}`,
+    title:
+      'Подбор окон поставил эти заявки вне их окон — время с клиентами ещё не согласовано. ' +
+      'Обзвоните их и примите решения: до этого расчёт не утверждается и сам в силу не вступит',
+  }
 }
 
-// плашка срока: у пересчёта своя, у черновика своя — на строку приходится одна
+// расчёт, который утверждать поздно или не с теми вводными: кнопки закрыты
+export function planBlocked(summary, now) {
+  return ['expired', 'voided', 'offers'].includes(planWindowOf(summary, now)?.state)
+}
+
+// плашка срока: на строку приходится одна. Сначала смотрим, годится ли расчёт вообще —
+// день мог измениться или момент выезда пройти. Это важнее ожидания ответов: звонить
+// клиентам по расчёту, который уже не утвердить, незачем
 export function planWindowOf(summary, now) {
-  return approvalWindow(summary, now) ?? draftWindow(summary, now)
+  const window = approvalWindow(summary, now) ?? draftWindow(summary, now)
+  if (window && ['expired', 'voided'].includes(window.state)) return window
+  if (summary?.pending_offers && !summary.approved_at && !summary.superseded_at) {
+    return offersWindow(summary)
+  }
+  return window
 }

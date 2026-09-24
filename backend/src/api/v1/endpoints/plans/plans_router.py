@@ -203,6 +203,49 @@ async def preview_approval(
 
 
 @router.post(
+    "/{plan_id}/windows",
+    response_model=ReplanPreview,
+    status_code=status.HTTP_201_CREATED,
+    summary="Подобрать окна невлезшим заявкам: второй расчёт с раскрытыми окнами",
+)
+async def pick_windows(
+    plan_id: int,
+    payload: PlanApprovalReviewRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    """Получается новый расчёт дня: в нём невлезшие стоят на предложенное клиенту время.
+
+    Клиент согласился — заявка остаётся там же, отказался — её вычёркивают. Пересчитывать
+    день ещё раз не нужно (docs/algoV2.md, шаги 2-5).
+    """
+    return await approval_review.pick_windows(
+        session,
+        plan_id,
+        office_id=office_id,
+        user_id=user.id,
+        run_id=payload.run_id,
+        params=payload.solver_params or await system_service.read_solver_params(session),
+    )
+
+
+@router.delete(
+    "/{plan_id}/windows",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Отказаться от подбора окон: убрать его расчёт и вернуть прежний",
+)
+async def drop_windows(
+    plan_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    """Предложенные времена не годятся: расчёт подбора удаляется, прежний снова в игре."""
+    await approval_review.drop_windows(session, plan_id, office_id=office_id)
+
+
+@router.post(
     "/{plan_id}/approval/decisions",
     response_model=PlanSummary,
     status_code=status.HTTP_201_CREATED,

@@ -128,17 +128,27 @@ function pickWindows(summary) {
   approvalTarget.value = summary
 }
 
-function approveAsIs() {
-  const summary = approvalTarget.value
+// после подбора окон в дне появился новый расчёт: список нужно перечитать, даже если
+// оператор просто закрыл окно, не приняв решений
+function closeApproval(result) {
+  approvalTarget.value = null
+  if (result?.planned) loadPlans()
+}
+
+// решать не по кому: утверждаем тот расчёт, который смотрели — у подбора окон это новый
+function approveAsIs(planId) {
+  const summary = plans.value.find((item) => item.id === planId) ?? approvalTarget.value
   approvalTarget.value = null
   approve(summary)
 }
 
-async function startDecisions(params) {
-  const summary = approvalTarget.value
+async function startDecisions({ planId, decisions }) {
+  // решения принимаются по тому расчёту, который на экране: подбор окон дал новый
+  const summary = plans.value.find((item) => item.id === planId) ?? approvalTarget.value
   // «Утвердить»: решения только убирают работу из дня — план утверждается тем же действием
   const approveAfter = approvalMode.value === 'approve'
   approvalTarget.value = null
+  const params = { decisions }
   await withRunLog(params, () => decideApproval(summary, params, { approveAfter }))
 }
 
@@ -554,7 +564,7 @@ onMounted(async () => {
       :mode="approvalMode"
       @approve="approveAsIs"
       @decide="startDecisions"
-      @close="approvalTarget = null"
+      @close="closeApproval"
     />
     <PlanBuildDialog
       v-if="buildDialogOpen"

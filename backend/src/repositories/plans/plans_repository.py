@@ -282,6 +282,33 @@ async def approved_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict
     return {parent_id: plan_id for parent_id, plan_id in result.all()}
 
 
+async def retired_by(session: AsyncSession, plan: Plan) -> list[Plan]:
+    """Расчёты, которые отозвал этот план: их причина названа его номером.
+
+    Удаляем его — им незачем оставаться недействительными: отзывать было не за чем.
+    """
+    result = await session.execute(
+        select(Plan).where(
+            Plan.office_id == plan.office_id,
+            Plan.plan_date == plan.plan_date,
+            Plan.id != plan.id,
+            Plan.voided_at.is_not(None),
+            Plan.void_reason.like(f"%№{plan.id}:%"),
+        )
+    )
+    return list(result.scalars().all())
+
+
+def awaits_answers(plan: Plan) -> bool:
+    """Подбор окон, по которому оператор ещё не принял решения: это предложение, а не план.
+
+    Такой расчёт ставит заявки вне их окон — время с клиентами не согласовано. Он не вступает
+    в силу сам и не закрывает бригадам выезд: сначала ответы клиентов (docs/algoV2.md, шаг 4).
+    """
+    snapshot = getattr(plan, "input_snapshot", None) or {}
+    return bool(snapshot.get("widened_requests")) and not plan.decisions_count
+
+
 async def pending_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[int, int]:
     """Посчитанный, но ещё не вступивший в силу пересчёт: id родителя -> id пересчёта.
 
@@ -292,7 +319,7 @@ async def pending_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[
     if not plan_ids:
         return {}
     result = await session.execute(
-        select(Plan.parent_plan_id, Plan.id)
+        select(Plan)
         .where(
             Plan.parent_plan_id.in_(plan_ids),
             Plan.approved_at.is_(None),
@@ -300,7 +327,11 @@ async def pending_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[
         )
         .order_by(Plan.id)
     )
-    return {parent_id: plan_id for parent_id, plan_id in result.all()}
+    return {
+        plan.parent_plan_id: plan.id
+        for plan in result.scalars().all()
+        if not awaits_answers(plan)
+    }
 
 
 async def voided_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[int, Plan]:
@@ -327,6 +358,26 @@ async def pending_replans(session: AsyncSession, parent_id: int) -> list[Plan]:
         .order_by(Plan.id)
     )
     return list(result.scalars().all())
+
+
+async def windows_plan_of(session: AsyncSession, source_id: int) -> Plan | None:
+    """Расчёт, который уже получился подбором окон для этого расчёта; None — его нет.
+
+    Пока он жив (не утверждён, не заменён и не отозван), второй раз окна не подбирают:
+    оператор возвращается к тем же предложениям, а не получает новый расклад.
+    """
+    result = await session.execute(
+        select(Plan)
+        .where(
+            Plan.decisions_from_plan_id == source_id,
+            Plan.approved_at.is_(None),
+            Plan.superseded_at.is_(None),
+            Plan.voided_at.is_(None),
+        )
+        .order_by(Plan.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def waiting_replans(session: AsyncSession) -> list[Plan]:
@@ -356,7 +407,8 @@ async def due_replans(session: AsyncSession, moment: datetime) -> list[Plan]:
         )
         .order_by(Plan.id)
     )
-    return list(result.scalars().all())
+    # подбор окон без ответов клиентов сам в силу не вступает: сначала решения оператора
+    return [plan for plan in result.scalars().all() if not awaits_answers(plan)]
 
 
 async def unapproved_replan_id(session: AsyncSession, plan_id: int) -> int | None:

@@ -58,13 +58,23 @@ export function syncPlan(planId, engineerIds) {
   return apiRequest('POST', `/plans/${planId}/sync`, { json: { engineer_ids: engineerIds } })
 }
 
-// перед утверждением черновика: что предложить клиентам заявок, которые в него не влезли.
-// Ответ как у пробного пересчёта; ничего не сохраняется
+// по каким заявкам расчёта нужно решение оператора: невлезшие и те, кому подобрано окно.
+// Ничего не считает и не сохраняет
 export function previewApproval(planId, params = {}) {
   return apiRequest('POST', `/plans/${planId}/approval/preview`, { json: params })
 }
 
-// решения по невлезшим заявкам применяются, день считается заново — новым черновиком
+// второй расчёт круга: невлезшим раскрываются окна, получается новый расчёт дня
+export function pickWindows(planId, params = {}) {
+  return apiRequest('POST', `/plans/${planId}/windows`, { json: params })
+}
+
+// предложенные времена не подошли: расчёт подбора убирается, прежний снова в игре
+export function dropWindows(planId) {
+  return apiRequest('DELETE', `/plans/${planId}/windows`)
+}
+
+// решения оператора применяются к расчёту: согласованные остаются, остальные вычёркиваются
 export function decideApproval(planId, params = {}) {
   return apiRequest('POST', `/plans/${planId}/approval/decisions`, { json: params })
 }

@@ -189,13 +189,14 @@ async def preview_inside_run(
         unassigned = [a for a in assignments if a.engineer_id is None]
         async with run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 80, 95):
             await run_log.note(f"не успеваем по заявкам: {len(unassigned)}")
-            suggestions = await window_suggestions.suggest_windows(
+            search = await window_suggestions.suggest_windows(
                 built.loaded,
                 solver,
                 validate_objective_order(objective_order),
                 {a.request_id for a in unassigned},
                 params=params,
             )
+            suggestions = search.suggestions
         tolerance = timedelta(minutes=settings.promise_tolerance_minutes)
         preview = ReplanPreview(
             assigned_count=sum(1 for a in assignments if a.engineer_id is not None),
@@ -233,6 +234,7 @@ async def build_for_approval(
     free_at: list[BrigadeFreeAt] | None = None,
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
+    widen_request_ids: set[int] | None = None,
 ) -> Plan:
     """Считает пересчёт и запоминает, каким день был, когда расчёт начался.
 
@@ -253,6 +255,7 @@ async def build_for_approval(
         free_at=free_at,
         params=params,
         kept_request_ids=kept_request_ids,
+        widen_request_ids=widen_request_ids,
     )
     # маршруты строятся один раз здесь и ложатся в кеш: открытие пересчёта возьмёт готовые
     async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
@@ -263,6 +266,7 @@ async def build_for_approval(
         **(built.plan.input_snapshot or {}),
         "day_requests": state,
         "stuck_brigades": sorted(stuck),
+        **({"widened_requests": sorted(widen_request_ids)} if widen_request_ids else {}),
     }
     await retire_previous_replans(session, parent, built.plan)
     return built.plan
@@ -327,6 +331,7 @@ async def build_replan(
     free_at: list[BrigadeFreeAt] | None = None,
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
+    widen_request_ids: set[int] | None = None,
 ) -> ReplanResult:
     """Считает пересчёт и записывает его в сессию (без коммита).
 
@@ -335,6 +340,8 @@ async def build_replan(
     после согласия клиентов на окна, не вправе их выкинуть (docs/algoV2.md, шаг 5).
     """
     fixed, loaded = await day_of_replan(session, parent, at, office_id=office_id, free_at=free_at)
+    if widen_request_ids:
+        loaded, kept_request_ids = planner_loader.widen_day(loaded, widen_request_ids)
 
     policy = validate_objective_order(objective_order)
     started = time.perf_counter()
