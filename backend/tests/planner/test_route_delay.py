@@ -73,3 +73,34 @@ def test_cancelled_and_removed_visits_are_skipped():
     ]
     delay = route_delay(route, at(12, 30))
     assert (delay.delay_minutes, delay.at_risk_request_ids) == (30, [3])
+
+
+def test_told_free_at_is_not_counted_as_delay_again():
+    """Оператор узнал, когда бригада освободится, и пересчёт уже поставил хвост от этого времени.
+
+    Пока названное время не прошло, отставание по текущей заявке не растёт — иначе сразу после
+    пересчёта его же ожидание объявили бы срывом следующей заявки.
+    """
+    route = [
+        # норматив кончился в 11:00, но бригада сказала «освобожусь в 15:30»
+        visit(1, at(10), "onsite", arrived_at=at(10), expected_free_at=at(15, 30)),
+        visit(2, at(15, 35), window_end=at(16, 5)),
+    ]
+
+    delay = route_delay(route, at(15))
+
+    assert delay.delay_minutes == 0
+    assert delay.at_risk_request_ids == []
+
+
+def test_delay_returns_when_the_told_time_passes():
+    """Сказали «в 15:30», а в 16:10 бригада всё ещё на месте — это снова отставание."""
+    route = [
+        visit(1, at(10), "onsite", arrived_at=at(10), expected_free_at=at(15, 30)),
+        visit(2, at(15, 35), window_end=at(16, 5)),
+    ]
+
+    delay = route_delay(route, at(16, 10))
+
+    assert delay.delay_minutes == 40
+    assert delay.at_risk_request_ids == [2]

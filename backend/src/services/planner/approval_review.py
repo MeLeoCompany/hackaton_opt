@@ -47,13 +47,19 @@ def solver_of(draft: Plan, *, keep_baseline: bool = False) -> SolverName:
     return solver
 
 
-async def reviewable_draft(session: AsyncSession, plan_id: int, *, office_id: int) -> Plan:
-    """Черновик расчёта дня, который ещё можно утвердить."""
+async def reviewable_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> Plan:
+    """Расчёт, по невлезшим заявкам которого ещё можно принимать решения.
+
+    Это и черновик дня, и пересчёт действующего плана: круг у них один, и решается в нём одно
+    и то же — кому подобрать окно, кого перенести, кого отменить (docs/algoV2.md, шаги 2-5).
+    """
     plan = await planning_service.find_plan(session, plan_id, office_id=office_id)
-    if plan.approved_at is not None or plan.parent_plan_id is not None or plan.plan_date is None:
+    if plan.approved_at is not None or plan.plan_date is None:
         raise PlanInUseError(
-            f"Подобрать окна можно только черновику расчёта дня, а план №{plan_id} — не он"
+            f"Решать по невлезшим заявкам можно у неутверждённого расчёта, а план №{plan_id} — не он"
         )
+    if getattr(plan, "parent_plan_id", None) is not None:
+        return await reviewable_replan(session, plan)
     approved = await plans_repository.get_approved_plan(
         session, plan.plan_date, office_id=office_id
     )
@@ -67,6 +73,30 @@ async def reviewable_draft(session: AsyncSession, plan_id: int, *, office_id: in
     stale = await planning_service.draft_stale_reason(session, plan)
     if stale:
         raise PlanInUseError(stale)
+    return plan
+
+
+async def reviewable_replan(session: AsyncSession, plan: Plan) -> Plan:
+    """Пересчёт, который ещё в игре: не вступил в силу сам и не признан недействительным.
+
+    Пересчёт вступает в силу в свой момент (replan_autoapply), так что решения по невлезшим
+    оператор принимает до него. Не успел — заявки останутся «Новыми», это штатный исход
+    (docs/algoV2.md, шаг 6).
+    """
+    if getattr(plan, "voided_at", None) is not None:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} не вступил в силу: {plan.void_reason or 'день изменился'}. "
+            "Пересчитайте план заново"
+        )
+    parent = await plans_repository.get_plan(session, plan.parent_plan_id)
+    current = await plans_repository.get_approved_plan(
+        session, plan.plan_date, office_id=plan.office_id
+    )
+    if parent is None or current is None or current.id != parent.id:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} устарел: действующий план дня уже не №{plan.parent_plan_id}. "
+            "Пересчитайте действующий план заново"
+        )
     return plan
 
 
@@ -85,7 +115,7 @@ async def preview_approval(
     Для черновика базового алгоритма считает cuOpt: базовый не умеет ярусы, а без них
     раскрытые заявки вытеснят те, что уже влезли.
     """
-    draft = await reviewable_draft(session, plan_id, office_id=office_id)
+    draft = await reviewable_plan(session, plan_id, office_id=office_id)
     async with run_log.track(
         "approval_preview",
         office_id=office_id,
@@ -99,16 +129,10 @@ async def preview_approval(
         _, assigned_count, _ = counts.get(draft.id, (0, 0, 0))
         suggestions = {}
         if unassigned and suggest:
-            # второй расчёт тоже идёт на выезд через запас: бригады свободны не раньше него
-            loaded = await planning_service.load_planning_day(
-                session,
-                draft.plan_date,
-                office_id,
-                not_before=planning_service.departure_moment(draft.plan_date),
-            )
+            loaded = await day_of(session, draft, office_id)
             async with run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 50, 95):
                 await run_log.note(
-                    f"не влезли в черновик №{draft.id}: "
+                    f"не влезли в расчёт №{draft.id}: "
                     f"{run_log.plural(len(unassigned), 'заявка', 'заявки', 'заявок')}"
                 )
                 suggestions = await window_suggestions.suggest_windows(
@@ -132,6 +156,25 @@ async def preview_approval(
                 problem(a, suggestions.get(a.request_id), tolerance, now) for a in unassigned
             ],
         )
+
+
+async def day_of(session: AsyncSession, plan: Plan, office_id: int):
+    """День, по которому подбираются окна: у черновика — весь день, у пересчёта — его остаток.
+
+    Второй расчёт идёт на выезд через запас: бригады свободны не раньше него. У пересчёта они
+    к тому же стоят там, где они сейчас, и заняты начатой работой — иначе предложенное клиенту
+    время было бы не про этот день (docs/algoV2.md, шаг 2).
+    """
+    at = planning_service.departure_moment(plan.plan_date)
+    if getattr(plan, "parent_plan_id", None) is None:
+        return await planning_service.load_planning_day(
+            session, plan.plan_date, office_id, not_before=at
+        )
+    parent = await plans_repository.get_plan(session, plan.parent_plan_id)
+    _, loaded = await replan_service.day_of_replan(
+        session, parent, at or clock.now(), office_id=office_id
+    )
+    return loaded
 
 
 def problem(assignment, suggestion, tolerance_minutes: int, now: datetime) -> ReplanProblem:
@@ -172,15 +215,15 @@ async def decide_approval(
     Решения и расчёт — одна транзакция: не получился расчёт — заявки не меняются.
     Прежний черновик остаётся в списке планов, новый ссылается на него.
     """
-    draft = await reviewable_draft(session, plan_id, office_id=office_id)
+    draft = await reviewable_plan(session, plan_id, office_id=office_id)
     if not decisions:
-        raise PlanDataError(["решений по заявкам нет — утвердите черновик как есть"])
+        raise PlanDataError(["решений по заявкам нет — утвердите расчёт как есть"])
     waiting = {a.request_id for a in await planning_service.waiting_unassigned(session, draft)}
     stray = sorted({d.request_id for d in decisions} - waiting)
     if stray:
         raise PlanDataError(
             [
-                f"заявка №{request_id} не среди невлезших в черновик №{draft.id} — "
+                f"заявка №{request_id} не среди невлезших в расчёт №{draft.id} — "
                 "подберите окна ещё раз"
                 for request_id in stray
             ]
@@ -207,11 +250,16 @@ async def decide_approval(
         async with run_log.step("Применяю решения оператора по заявкам", 2, 6):
             await run_log.note(
                 f"решения по {run_log.plural(len(decisions), 'заявке', 'заявкам', 'заявкам')} "
-                f"из черновика №{draft.id}"
+                f"из расчёта №{draft.id}"
             )
+            # решения проверяются по тому плану, за которым заявка числится: у черновика это
+            # он сам, у пересчёта — пересчитываемый план, с которого заявку и снимают
+            holder = draft
+            if getattr(draft, "parent_plan_id", None) is not None:
+                holder = await plans_repository.get_plan(session, draft.parent_plan_id) or draft
             await replan_service.apply_decisions(
                 session,
-                draft,
+                holder,
                 decisions,
                 office_id=office_id,
                 user_id=user_id,
@@ -220,9 +268,9 @@ async def decide_approval(
         if rebuilding:
             # ярус B третьего расчёта: кто влез в первый (docs/algoV2.md, шаг 5). Переставить
             # их между бригадами и по времени решатель вправе, выкинуть — нет
-            plan = await planning_service.build_inside_run(
+            plan = await rebuild_with_decisions(
                 session,
-                draft.plan_date,
+                draft,
                 solver,
                 objective_order,
                 office_id=office_id,
@@ -236,6 +284,52 @@ async def decide_approval(
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await planning_service.summarize_plans(session, [plan]))[0]
+
+
+async def rebuild_with_decisions(
+    session: AsyncSession,
+    draft: Plan,
+    solver: SolverName,
+    objective_order,
+    *,
+    office_id: int,
+    params: SolverParams | None,
+    kept_request_ids: set[int],
+) -> Plan:
+    """Третий расчёт круга: клиент согласился на время, и работы в дне прибавилось.
+
+    Черновик дня считается заново целиком; пересчёт — снова от действующего плана и снова на
+    выезд через запас. Прежний пересчёт в силу уже не вступит: его место занимает этот, иначе
+    в свой момент сработали бы оба (docs/algoV2.md, шаги 5-6).
+    """
+    if getattr(draft, "parent_plan_id", None) is None:
+        return await planning_service.build_inside_run(
+            session,
+            draft.plan_date,
+            solver,
+            objective_order,
+            office_id=office_id,
+            params=params,
+            kept_request_ids=kept_request_ids,
+        )
+    parent, at = await replan_service.replannable(
+        session, draft.parent_plan_id, None, office_id=office_id
+    )
+    plan = await replan_service.build_for_approval(
+        session,
+        parent,
+        solver,
+        objective_order,
+        at,
+        office_id=office_id,
+        params=params,
+        kept_request_ids=kept_request_ids,
+    )
+    draft.voided_at = clock.now()
+    draft.void_reason = (
+        f"Заменён пересчётом №{plan.id}: в нём учтены решения оператора по невлезшим заявкам"
+    )
+    return plan
 
 
 async def drop_decided(session: AsyncSession, draft: Plan, decisions: list[ReplanDecision]) -> Plan:

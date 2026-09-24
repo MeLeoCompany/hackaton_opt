@@ -315,6 +315,20 @@ async def voided_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[i
     return {plan.parent_plan_id: plan for plan in result.scalars().all()}
 
 
+async def pending_replans(session: AsyncSession, parent_id: int) -> list[Plan]:
+    """Все посчитанные пересчёты плана, которые ещё ждут своего момента."""
+    result = await session.execute(
+        select(Plan)
+        .where(
+            Plan.parent_plan_id == parent_id,
+            Plan.approved_at.is_(None),
+            Plan.voided_at.is_(None),
+        )
+        .order_by(Plan.id)
+    )
+    return list(result.scalars().all())
+
+
 async def due_replans(session: AsyncSession, moment: datetime) -> list[Plan]:
     """Пересчёты, которым пора вступать в силу: их момент выезда уже настал."""
     result = await session.execute(

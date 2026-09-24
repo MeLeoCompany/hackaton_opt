@@ -3,7 +3,9 @@
 Смотрим последнюю точку, где известны и план, и факт:
 - выполненная заявка: закончила позже плана — на столько и отстаёт;
 - заявка, на которой бригада сейчас: прибыла позже планового начала работ — отстаёт на это;
-  если план на сегодня и плановое окончание уже прошло — не меньше, чем на «сейчас − окончание»;
+  если план на сегодня и ожидаемое окончание уже прошло — не меньше, чем на «сейчас − окончание».
+  Ожидаемое окончание — это норматив, а когда бригада застряла и оператор уточнил по телефону,
+  названное им время: план уже построен от него, и считать ожидание ещё раз незачем;
 - заявка, к которой бригада едет или ещё не выехала (первая незакрытая): отставание прошлой
   точки сохраняется, а если план на сегодня и плановое начало уже прошло — не меньше
   «сейчас − начало».
@@ -29,6 +31,8 @@ class VisitFact:
     state: str  # done | cancelled | removed | moving | onsite | planned
     arrived_at: datetime | None = None
     finished_at: datetime | None = None
+    # когда бригада закончит эту работу со слов оператора («освободится в HH:MM»)
+    expected_free_at: datetime | None = None
 
 
 @dataclass
@@ -65,7 +69,10 @@ def route_delay(visits: list[VisitFact], now: datetime | None) -> RouteDelay:
         if visit.state == "onsite" and visit.arrived_at is not None:
             delay = max(timedelta(0), visit.arrived_at - visit.planned_start)
             if now is not None:
-                delay = max(delay, now - planned_end)
+                # оператор узнал по телефону, когда бригада освободится, и расчёт уже поставил
+                # следующую заявку с учётом этого. Пока названное время не прошло, отставание
+                # по этой заявке не растёт — иначе ожидание учтётся дважды
+                delay = max(delay, now - (visit.expected_free_at or planned_end))
         elif now is not None:
             delay = max(delay, now - visit.planned_start)
         break

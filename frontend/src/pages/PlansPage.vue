@@ -19,7 +19,7 @@ import { useSystemTime } from '../composables/useSystemTime.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { planChain } from '../utils/planChain.js'
-import { approvalWindow } from '../utils/planWindow.js'
+import { planWindowOf } from '../utils/planWindow.js'
 
 const {
   selectedDay,
@@ -113,7 +113,9 @@ const approvalTarget = ref(null)
 const approvalMode = ref('approve')
 
 function requestApproval(summary) {
-  if (summary.parent_plan_id || summary.unassigned_count === 0) {
+  // решать не по кому — утверждаем сразу; иначе спрашиваем по каждой невлезшей.
+  // У пересчёта то же самое: он вступит в силу в свой момент, и висящих без решения не оставляем
+  if (summary.unassigned_count === 0) {
     approve(summary)
     return
   }
@@ -165,7 +167,7 @@ const openedSummary = computed(() => plans.value.find((summary) => summary.id ==
 // режим демонстрации: у действующего утверждённого плана маршруты можно привести к плану
 const { demoMode, now } = useSystemTime()
 // открыт неутверждённый пересчёт: когда он вступит в силу и сколько осталось на утверждение
-const effectWindow = computed(() => approvalWindow(openedSummary.value, now.value))
+const effectWindow = computed(() => planWindowOf(openedSummary.value, now.value))
 const syncable = computed(
   () => demoMode.value && Boolean(openedSummary.value?.approved_at) && !openedSummary.value?.superseded_at,
 )
@@ -202,6 +204,9 @@ function backToPlans() {
   closePlan()
   focusedRequestId.value = null
   viewMode.value = 'details'
+  // пока смотрели план, бригады могли отметиться или отстать: список должен показать «!»
+  // сразу, а не после того, как оператор нажмёт «Обновить»
+  loadPlans()
 }
 
 function routeOfRequest(requestId) {

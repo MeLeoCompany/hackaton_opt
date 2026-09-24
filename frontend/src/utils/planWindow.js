@@ -12,6 +12,21 @@ import { moscowTimeOf } from './moscowTime.js'
 
 export function approvalWindow(summary, now) {
   if (!summary?.replanned_at || summary.approved_at || summary.superseded_at) return null
+  // пересчитанный план уже заменён другим пересчётом: этот считался от него и в силу не
+  // вступит. Сервер пометит его сам, но обещать вступление нельзя и до этого
+  if (summary.outdated) {
+    return {
+      state: 'expired',
+      text: 'уже не вступит в силу',
+      title:
+        'На день действует другой план, а этот пересчёт считался от прежнего. ' +
+        'Пересчитайте действующий план заново',
+    }
+  }
+  // за время расчёта день изменился: в свой момент утверждение такой пересчёт не примет
+  if (summary.stale_reason) {
+    return { state: 'expired', text: 'не вступит в силу', title: summary.stale_reason }
+  }
   if (summary.voided_at) {
     return {
       state: 'voided',
@@ -60,7 +75,12 @@ export function draftWindow(summary, now) {
   }
 }
 
-// черновик, который утверждать поздно или не с теми вводными: кнопки закрыты
-export function draftBlocked(summary, now) {
-  return draftWindow(summary, now)?.state === 'expired'
+// расчёт, который утверждать поздно или не с теми вводными: кнопки закрыты
+export function planBlocked(summary, now) {
+  return planWindowOf(summary, now)?.state === 'expired'
+}
+
+// плашка срока: у пересчёта своя, у черновика своя — на строку приходится одна
+export function planWindowOf(summary, now) {
+  return approvalWindow(summary, now) ?? draftWindow(summary, now)
 }

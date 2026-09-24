@@ -87,3 +87,42 @@ async def test_request_the_plan_already_saw_is_not_new():
 @pytest.mark.asyncio
 async def test_plan_that_is_not_approved_has_nothing_to_replan():
     assert await planning_service.replan_reasons(object(), plan(approved=False)) == {}
+
+
+@pytest.mark.asyncio
+async def test_pending_replan_is_marked_stale_as_soon_as_the_day_changes():
+    """Заявка пришла после расчёта — пересчёт в свой момент в силу не вступит, говорим сразу."""
+    plan = SimpleNamespace(
+        id=315,
+        plan_date=date(2026, 8, 17),
+        office_id=1,
+        approved_at=None,
+        voided_at=None,
+        parent_plan_id=313,
+        input_snapshot={"day_requests": [11, 12]},
+    )
+
+    with patch.object(
+        planning_service.day_state,
+        "new_since",
+        AsyncMock(return_value=["появились заявки №13"]),
+    ):
+        reason = await planning_service.stale_reason(object(), plan)
+
+    assert "№13" in reason and "не вступит в силу" in reason
+
+
+@pytest.mark.asyncio
+async def test_pending_replan_on_an_unchanged_day_is_not_marked():
+    plan = SimpleNamespace(
+        id=315,
+        plan_date=date(2026, 8, 17),
+        office_id=1,
+        approved_at=None,
+        voided_at=None,
+        parent_plan_id=313,
+        input_snapshot={"day_requests": [11, 12]},
+    )
+
+    with patch.object(planning_service.day_state, "new_since", AsyncMock(return_value=[])):
+        assert await planning_service.stale_reason(object(), plan) is None

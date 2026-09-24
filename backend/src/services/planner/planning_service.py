@@ -394,18 +394,29 @@ async def approve_plan(
 
 
 async def waiting_unassigned(session: AsyncSession, plan: Plan) -> list[Assignment]:
-    """Не вошедшие в план заявки, которые всё ещё ждут планирования: «Новые», ничьи.
+    """Не вошедшие в расчёт заявки, по которым нужно решение оператора.
 
-    Закреплённые за другим планом, снятые и отменённые сюда не попадают — по ним решать нечего.
+    У черновика дня это «Новые» и ничьи. У пересчёта — ещё и те, что пока числятся за
+    пересчитываемым планом: пересчёт их не взял, и в свой момент он вернёт их в «Новые».
+    Решать по ним нужно сейчас, пока оператор смотрит расчёт (docs/algoV2.md, шаги 4 и 6).
+
+    Закреплённые за чужим планом, начатые, закрытые и отменённые сюда не попадают — по ним
+    решать нечего.
     """
+    parent_id = getattr(plan, "parent_plan_id", None)
     assignments = await plans_repository.list_plan_assignments(session, plan.id)
-    return [
-        a
-        for a in assignments
-        if a.engineer_id is None
-        and a.request.status_id == RequestStatusId.NEW
-        and a.request.approved_plan_id is None
-    ]
+    return [a for a in assignments if a.engineer_id is None and waits_decision(a.request, parent_id)]
+
+
+def waits_decision(request, parent_plan_id: int | None) -> bool:
+    """Заявка ждёт решения: её никто не взял и она ещё в игре."""
+    if request.status_id == RequestStatusId.NEW and request.approved_plan_id is None:
+        return True
+    return (
+        parent_plan_id is not None
+        and request.status_id == RequestStatusId.PLANNED
+        and request.approved_plan_id == parent_plan_id
+    )
 
 
 def free_at_estimate(work_start: datetime, duration_minutes: int, at: datetime) -> datetime:
@@ -422,9 +433,58 @@ def free_at_estimate(work_start: datetime, duration_minutes: int, at: datetime) 
     return at + timedelta(minutes=settings.stuck_free_at_minutes)
 
 
+def free_at_of(fact, work_start: datetime, duration_minutes: int, at: datetime) -> datetime:
+    """Когда освободится бригада: слово оператора, пока оно не прошло, иначе оценка.
+
+    Оператор называет время один раз, и оно живёт на заявке (request_fact.expected_free_at):
+    следующий пересчёт спрашивать не должен. Если названное время уже прошло, а бригада всё
+    ещё на месте, слово устарело — снова считаем оценку и снова просим уточнить.
+    """
+    told = getattr(fact, "expected_free_at", None) if fact is not None else None
+    if told is not None and told > at:
+        return told
+    return free_at_estimate(work_start, duration_minutes, at)
+
+
 def local_clock(moment: datetime) -> str:
     """Время по Москве часами и минутами: сообщения читают люди."""
     return moment.astimezone(local_timezone()).strftime("%H:%M")
+
+
+async def stale_reason(
+    session: AsyncSession, plan: Plan, current: list[int] | None = None
+) -> str | None:
+    """Почему расчёт уже не годится — одной строкой для оператора; None — годится.
+
+    У черновика дня свой срок (draft_stale_reason), у пересчёта — свой: он вступает в силу сам
+    и не вступит, если день с тех пор изменился. Говорим об этом сразу, а не в его момент.
+    """
+    if plan.approved_at is not None or getattr(plan, "voided_at", None) is not None:
+        return None
+    if getattr(plan, "parent_plan_id", None) is not None:
+        return await replan_stale_reason(session, plan, current)
+    return await draft_stale_reason(session, plan, current)
+
+
+async def replan_stale_reason(
+    session: AsyncSession, plan: Plan, current: list[int] | None = None
+) -> str | None:
+    """Пересчёт считал день таким, каким он был в начале расчёта (docs/algoV2.md, шаг 6).
+
+    Появилась или отменилась заявка — он про другой день и в свой момент в силу не вступит
+    (approve_replan этого не примет). Бригады, выбившиеся из плана уже после расчёта, здесь не
+    ищутся: это дорого для списка планов, и проверка всё равно идёт при утверждении.
+    """
+    before = (plan.input_snapshot or {}).get("day_requests")
+    if before is None:
+        return None
+    news = await day_state.new_since(session, plan, before, current=current)
+    if not news:
+        return None
+    return (
+        f"Пересчёт №{plan.id} не вступит в силу: пока шли расчёт и обзвон, "
+        f"{'; '.join(news)}. Пересчитайте план заново"
+    )
 
 
 async def draft_stale_reason(
@@ -513,6 +573,28 @@ def started_as_planned(assignment, routes: dict[int, list], engineer_id: int | N
     return False
 
 
+async def retire_sibling_replans(
+    session: AsyncSession, parent: Plan, approved: Plan, now: datetime
+) -> list[int]:
+    """Соседние пересчёты заменённого плана: они считались от него, а его больше нет.
+
+    В свой момент такой пересчёт всё равно не вступил бы в силу — утверждение его не примет.
+    Помечаем сразу, чтобы оператор не ждал четверть часа и не читал «вступит в силу» о том,
+    что уже не вступит (docs/algoV2.md, шаг 6).
+    """
+    retired = []
+    for other in await plans_repository.pending_replans(session, parent.id):
+        if other.id == approved.id:
+            continue
+        other.voided_at = now
+        other.void_reason = (
+            f"Действующим стал пересчёт №{approved.id}, а этот считался от плана "
+            f"№{parent.id} — пересчитайте действующий план заново"
+        )
+        retired.append(other.id)
+    return retired
+
+
 async def approve_replan(
     session: AsyncSession, plan: Plan, *, user_id: int | None = None
 ) -> PlanSummary:
@@ -549,9 +631,11 @@ async def approve_replan(
             )
 
     # заявки дня на момент расчёта: пересчёт раскладывал именно их. Появились новые вводные,
-    # пока считали и обзванивали, — план уже про другой день, нужен новый расчёт
+    # пока считали и обзванивали, — план уже про другой день, нужен новый расчёт.
+    # Пустой список — это день, в котором нечего было раскладывать, а не «снимка нет»:
+    # пришедшая после расчёта заявка такой пересчёт тоже отменяет
     before = (plan.input_snapshot or {}).get("day_requests")
-    if before:
+    if before is not None:
         news = await day_state.new_since(session, parent, before)
         if news:
             raise PlanInUseError(
@@ -628,6 +712,7 @@ async def approve_replan(
 
     # сначала заменяем прежний план: утверждённым на день может быть только один
     parent.superseded_at = now
+    await retire_sibling_replans(session, parent, plan, now)
     await session.flush()
 
     for request in rebind + to_plan:
@@ -927,11 +1012,22 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
         for plan in plans
         if plan.plan_date is not None
     }
-    # заявки дня читаем один раз на день: по ним сверяются все его черновики с моментом выезда
+    # заявки дня читаем один раз на день: по ним сверяются все неутверждённые расчёты —
+    # и черновики со своим моментом выезда, и пересчёты, ждущие вступления в силу
+    def checks_the_day(plan: Plan) -> bool:
+        if plan.plan_date is None or plan.approved_at is not None:
+            return False
+        if getattr(plan, "voided_at", None) is not None:
+            return False
+        return (
+            getattr(plan, "effective_at", None) is not None
+            or getattr(plan, "parent_plan_id", None) is not None
+        )
+
     day_requests_by_day = {
         plan.plan_date: await day_state.request_ids(session, plan.plan_date, plan.office_id)
         for plan in plans
-        if plan.plan_date is not None and getattr(plan, "effective_at", None) is not None
+        if checks_the_day(plan)
     }
     summaries = []
     for plan in plans:
@@ -982,7 +1078,7 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 voided_replan_id=(voided.id if (voided := voided_replan.get(plan.id)) else None),
                 voided_replan_reason=(voided.void_reason if voided else None),
                 effective_at=getattr(plan, "effective_at", None),
-                stale_reason=await draft_stale_reason(
+                stale_reason=await stale_reason(
                     session, plan, day_requests_by_day.get(plan.plan_date)
                 ),
                 decisions_from_plan_id=getattr(plan, "decisions_from_plan_id", None),
@@ -1110,12 +1206,12 @@ def set_waiting(route: EngineerRoute, facts: dict, replan_next: dict[int, int] |
         route.waiting_cause = departure_gate.REASON_CODE.get(check.reason)
 
 
-def set_free_at_estimate(route: EngineerRoute) -> None:
+def set_free_at_estimate(route: EngineerRoute, facts: dict) -> None:
     """Бригада сейчас на заявке: когда она освободится, если пересчитать день прямо сейчас.
 
-    Диалог пересчёта подставляет это время в «освободится в HH:MM» — оператор уточняет его по
-    телефону и правит. Тот же расчёт идёт и в самой задаче (replan_service.brigade_positions),
-    поэтому оставленное как есть поле ничего не меняет.
+    Диалог пересчёта подставляет это время в «освободится в HH:MM»: названное оператором — как
+    есть, пока оно не прошло, иначе оценку с запасом. Тот же расчёт идёт и в самой задаче
+    (replan_service.brigade_positions), поэтому оставленное как есть поле ничего не меняет.
     """
     on_site = next(
         (visit for visit in route.visits if visit.arrived_at and not visit.finished_at), None
@@ -1123,7 +1219,9 @@ def set_free_at_estimate(route: EngineerRoute) -> None:
     if on_site is None:
         return
     at = clock.now() + timedelta(minutes=settings.replan_lead_minutes)
-    route.free_at_estimate = free_at_estimate(on_site.arrived_at, on_site.duration_minutes, at)
+    route.free_at_estimate = free_at_of(
+        facts.get(on_site.request_id), on_site.arrived_at, on_site.duration_minutes, at
+    )
 
 
 async def allow_departure(
@@ -1296,7 +1394,7 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
                 visit.departed_at = fact.departed_at
                 visit.arrived_at = fact.arrived_at
                 visit.finished_at = fact.finished_at
-        set_free_at_estimate(route)
+        set_free_at_estimate(route, facts)
 
     summary = (await summarize_plans(session, [plan]))[0]
     return PlanDetail(
@@ -1352,6 +1450,7 @@ async def plan_route_delays(
                     ),
                     arrived_at=arrived_at,
                     finished_at=fact.finished_at if fact else None,
+                    expected_free_at=fact.expected_free_at if fact else None,
                 )
             )
         result[engineer_id] = route_delay(visits, now)

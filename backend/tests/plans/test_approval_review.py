@@ -260,3 +260,114 @@ async def test_moved_and_cancelled_requests_do_not_start_a_recalculation():
     assert dropped.await_args.args[2] == {12, 13}
     # перенесённых и отменённых в плане больше нет — даже как невлезших
     assert plan.input_snapshot["request_order"] == [11]
+
+
+def replan(plan_id=41, parent_id=40, voided_at=None):
+    return SimpleNamespace(
+        id=plan_id,
+        plan_date=DAY,
+        office_id=1,
+        approved_at=None,
+        parent_plan_id=parent_id,
+        voided_at=voided_at,
+        void_reason=None,
+        solver="cuopt",
+        objective_policy=None,
+        input_snapshot={"request_order": [11, 12]},
+    )
+
+
+@pytest.mark.asyncio
+async def test_replan_with_unfit_requests_is_reviewed_like_a_draft():
+    """Круг у пересчёта тот же: по невлезшим решают отдельно, а не внутри самого пересчёта."""
+    plan = replan()
+    parent = SimpleNamespace(id=40, plan_date=DAY, office_id=1)
+    repository = approval_review.plans_repository
+
+    with (
+        patch.object(approval_review.planning_service, "find_plan", AsyncMock(return_value=plan)),
+        patch.object(repository, "get_plan", AsyncMock(return_value=parent)),
+        patch.object(repository, "get_approved_plan", AsyncMock(return_value=parent)),
+    ):
+        assert await approval_review.reviewable_plan(object(), 41, office_id=1) is plan
+
+
+@pytest.mark.asyncio
+async def test_replan_that_did_not_take_effect_is_not_reviewed():
+    plan = replan(voided_at=at(12))
+    plan.void_reason = "пока шли расчёт и обзвон, появились заявки №13"
+
+    with (
+        patch.object(approval_review.planning_service, "find_plan", AsyncMock(return_value=plan)),
+        pytest.raises(PlanInUseError, match="№13"),
+    ):
+        await approval_review.reviewable_plan(object(), 41, office_id=1)
+
+
+@pytest.mark.asyncio
+async def test_agreed_window_rebuilds_the_replan_and_retires_the_previous_one():
+    """Третий расчёт круга: пересчёт считается заново, прежний в силу уже не вступит."""
+    plan = replan()
+    parent = SimpleNamespace(id=40, plan_date=DAY, office_id=1)
+    rebuilt = SimpleNamespace(id=42)
+
+    with (
+        patch.object(
+            approval_review.replan_service,
+            "replannable",
+            AsyncMock(return_value=(parent, at(12, 15))),
+        ),
+        patch.object(
+            approval_review.replan_service,
+            "build_for_approval",
+            AsyncMock(return_value=rebuilt),
+        ) as build,
+        patch.object(approval_review.clock, "now", return_value=at(12)),
+    ):
+        result = await approval_review.rebuild_with_decisions(
+            object(),
+            plan,
+            SolverName.CUOPT,
+            DEFAULT_OBJECTIVE_ORDER,
+            office_id=1,
+            params=None,
+            kept_request_ids={11},
+        )
+
+    assert result is rebuilt
+    assert build.await_args.kwargs["kept_request_ids"] == {11}
+    assert plan.voided_at == at(12) and "№42" in plan.void_reason
+
+
+@pytest.mark.asyncio
+async def test_replan_waits_for_decisions_on_requests_the_running_plan_still_holds():
+    """Пересчёт заявку не взял, но она пока «В плане» у действующего: решение всё равно нужно.
+
+    Иначе в окне подбора «звонить некому», а в свой момент пересчёт вернул бы её в «Новые».
+    """
+    from src.models import RequestStatusId
+    from src.services.planner import planning_service
+
+    plan = SimpleNamespace(id=41, parent_plan_id=40)
+    held = SimpleNamespace(
+        request_id=12,
+        engineer_id=None,
+        unassigned_reason="",
+        request=SimpleNamespace(status_id=RequestStatusId.PLANNED, approved_plan_id=40),
+    )
+    # эта закреплена за чужим планом — по ней решать нечего
+    alien = SimpleNamespace(
+        request_id=13,
+        engineer_id=None,
+        unassigned_reason="",
+        request=SimpleNamespace(status_id=RequestStatusId.PLANNED, approved_plan_id=39),
+    )
+
+    with patch.object(
+        planning_service.plans_repository,
+        "list_plan_assignments",
+        AsyncMock(return_value=[assigned(11), held, alien]),
+    ):
+        waiting = await planning_service.waiting_unassigned(object(), plan)
+
+    assert [a.request_id for a in waiting] == [12]

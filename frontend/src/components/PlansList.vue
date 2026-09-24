@@ -1,14 +1,15 @@
 <script setup>
 // Планы выбранного дня: общая информация строкой, клик выбирает план,
 // у каждого — кнопка удаления, чтобы день можно было пересчитать заново.
-// Расчёт после подбора окон показывается вложенным в тот, из которого пришли решения:
-// один круг — одна ветка, её видно целиком и можно свернуть.
+// Над таблицей — цепочка дня: из чего вырос каждый расчёт. В самой таблице связей нет,
+// иначе одно и то же читается дважды.
 import { computed, ref } from 'vue'
 
 import { formatDay, moscowShortDateTimeOf, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveGoalLabel } from '../utils/planningPriorities.js'
-import { approvalWindow, draftBlocked, draftWindow } from '../utils/planWindow.js'
+import { planBlocked, planWindowOf } from '../utils/planWindow.js'
 import { useSystemTime } from '../composables/useSystemTime.js'
+import PlanGraph from './PlanGraph.vue'
 import ReplanMark from './ReplanMark.vue'
 import { isApproximate, providerTitle } from '../utils/routeProvider.js'
 
@@ -49,53 +50,19 @@ const heldWarning = computed(() => {
 // и сколько — до конца жизни черновика
 const { now } = useSystemTime()
 
-function effectWindow(summary) {
-  return approvalWindow(summary, now.value)
-}
-
-// черновик дня посчитан на выезд через запас: до этого момента его и утверждают
-function draftLife(summary) {
-  return draftWindow(summary, now.value)
+// срок расчёта: у пересчёта — когда он вступит в силу, у черновика — до когда его утверждать
+function planWindow(summary) {
+  return planWindowOf(summary, now.value)
 }
 
 function blocked(summary) {
-  return draftBlocked(summary, now.value)
+  return planBlocked(summary, now.value)
 }
 
-// дерево круга: расчёт с решениями по заявкам встаёт под тот, из которого решения пришли
-const collapsed = ref(new Set())
-
-const childrenOf = computed(() => {
-  const known = new Set(props.plans.map((plan) => plan.id))
-  const byParent = new Map()
-  for (const plan of props.plans) {
-    const parentId = plan.decisions_from_plan_id
-    // родителя удалили — расчёт показываем сам по себе, иначе он пропал бы из списка
-    if (!parentId || !known.has(parentId)) continue
-    byParent.set(parentId, [...(byParent.get(parentId) ?? []), plan])
-  }
-  return byParent
-})
-
-const rows = computed(() => {
-  const nested = new Set(
-    [...childrenOf.value.values()].flat().map((plan) => plan.id),
-  )
-  const result = []
-  const add = (plan, depth) => {
-    const children = childrenOf.value.get(plan.id) ?? []
-    result.push({ plan, depth, children: children.length })
-    if (!collapsed.value.has(plan.id)) children.forEach((child) => add(child, depth + 1))
-  }
-  props.plans.filter((plan) => !nested.has(plan.id)).forEach((plan) => add(plan, 0))
-  return result
-})
-
-function toggle(planId) {
-  const next = new Set(collapsed.value)
-  if (!next.delete(planId)) next.add(planId)
-  collapsed.value = next
-}
+// Как расчёты дня выросли друг из друга — строкой над таблицей. Сама таблица плоская:
+// расчёты по времени, новые сверху (docs/algoV2.md, шаг 6)
+// отладочные колонки: решатель, цели, пробег и время расчёта — по галочке над таблицей
+const detailed = ref(false)
 
 // действующий план дня: пока он есть, другой план дня утвердить нельзя — только пересчитать его
 const workingPlan = computed(() => props.plans.find((plan) => plan.approved_at && !plan.superseded_at) ?? null)
@@ -128,210 +95,193 @@ function distanceTitle(summary) {
 function solveDuration(summary) {
   return summary.solve_duration_ms === null ? '—' : `${summary.solve_duration_ms.toFixed(1)} мс`
 }
+
+// что стало с расчётом — ровно одна плашка на строку. Откуда он взялся, видно строкой выше
+// и по ветке; беды его пересчётов — по «!» у номера
+function fate(summary) {
+  if (summary.voided_at) {
+    return {
+      text: `не вступил в силу в ${moscowTimeOf(summary.voided_at)}`,
+      cls: 'takes-effect voided',
+      title: summary.void_reason ?? 'За время расчёта день изменился — посчитайте заново',
+    }
+  }
+  if (summary.superseded_at) {
+    return {
+      text: `заменён в ${moscowTimeOf(summary.superseded_at)}`,
+      cls: 'superseded',
+      title: 'Заменён утверждённым пересчётом: бригады ездят по новому',
+    }
+  }
+  if (summary.approved_at) {
+    return {
+      text: `действует с ${moscowTimeOf(summary.approved_at)}`,
+      cls: 'approved',
+      title: 'Заявки этого плана закреплены за днём',
+    }
+  }
+  const window = planWindow(summary)
+  if (window) return { text: window.text, cls: `takes-effect ${window.state}`, title: window.title }
+  if (summary.outdated) {
+    return {
+      text: 'черновик · неактуален',
+      cls: 'plain',
+      title: 'На этот день действует другой план — этот расчёт уже не утвердить. Он остаётся в истории дня',
+    }
+  }
+  return { text: 'черновик', cls: 'plain', title: 'Расчёт посчитан, но не утверждён' }
+}
+
+// откуда расчёт вырос — подсказкой к строке происхождения
+function originTitle(summary) {
+  const parts = []
+  if (summary.parent_plan_id) {
+    parts.push(`Пересчёт плана №${summary.parent_plan_id} на ${moscowTimeOf(summary.replanned_at)}`)
+  }
+  if (summary.decisions_from_plan_id) {
+    parts.push(
+      `Учтены решения по заявкам, не вошедшим в расчёт №${summary.decisions_from_plan_id}: ` +
+        `${summary.decisions_count ?? ''}`,
+    )
+  }
+  return parts.join('. ') || 'Первый расчёт дня'
+}
 </script>
 
 <template>
-  <div class="table-scroll">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>№</th>
-          <th>Рассчитан</th>
-          <th>Решатель</th>
-          <th>Цели</th>
-          <th>Назначено</th>
-          <th title="Аварийных заявок в плане">Авар.</th>
-          <th title="Заявок, которым не нашлось места">Не назн.</th>
-          <th>Бригад</th>
-          <th>Пробег, км</th>
-          <th>Расчёт</th>
-          <th>Состояние</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="{ plan: summary, depth, children } in rows"
-          :key="summary.id"
-          :class="{ selected: summary.id === selectedPlanId, child: depth > 0 }"
-          @click="$emit('select', summary.id)"
-        >
-          <td class="number-cell nowrap" :style="{ paddingLeft: `${13 + depth * 16}px` }">
-            <!-- свернуть ветку круга: расчёты с решениями по заявкам этого черновика -->
-            <button
-              v-if="children"
-              class="link tree-toggle"
-              :title="
-                collapsed.has(summary.id)
-                  ? `Показать расчёты с решениями по заявкам этого черновика: ${children}`
-                  : 'Свернуть расчёты этого круга'
-              "
-              @click.stop="toggle(summary.id)"
-            >
-              {{ collapsed.has(summary.id) ? '▸' : '▾' }}
-            </button>
-            {{ summary.id }}
-            <span
-              v-if="children && collapsed.has(summary.id)"
-              class="muted"
-              :title="`Скрыто расчётов круга: ${children}`"
-            >
-              +{{ children }}
-            </span>
-            <ReplanMark :summary="summary" @show="$emit('replan-info', summary.id)" />
-            <span v-if="heldWarning" class="held-warning" :title="heldWarning">!</span>
-            <span v-if="promiseWarning(summary)" class="promise-warning" :title="promiseWarning(summary)">☎</span>
-          </td>
-          <td class="nowrap">{{ moscowShortDateTimeOf(summary.created_at) }}</td>
-          <td class="nowrap">{{ summary.solver ?? '—' }}</td>
-          <td class="nowrap">{{ objectiveGoalLabel(summary.objective_order) }}</td>
-          <td class="number-cell">{{ summary.assigned_count }}</td>
-          <td class="number-cell">{{ summary.urgent_assigned_count ?? '—' }}</td>
-          <td class="number-cell">{{ summary.unassigned_count }}</td>
-          <td class="number-cell">{{ summary.engineers_used }}</td>
-          <td class="number-cell" :title="distanceTitle(summary)">{{ distanceLabel(summary) }}</td>
-          <td class="number-cell nowrap">{{ solveDuration(summary) }}</td>
-          <!-- одна колонка про судьбу плана: чей это пересчёт, действует ли он и кем заменён -->
-          <td class="state-cell">
-            <span v-if="summary.parent_plan_id" class="replan-of">
-              пересчёт
-              <button class="link plan-link" @click.stop="$emit('select', summary.parent_plan_id)">
-                №{{ summary.parent_plan_id }}
-              </button>
-              на {{ moscowTimeOf(summary.replanned_at) }}
-            </span>
-            <!-- пересчёт ещё не утверждён: до какого момента он вступит в силу и сколько осталось -->
-            <span v-if="effectWindow(summary)" :class="['badge', 'takes-effect', effectWindow(summary).state]" :title="effectWindow(summary).title">
-              {{ effectWindow(summary).text }}
-            </span>
-            <!-- черновик идущего дня: посчитан на выезд через запас, до этого момента его и утверждают -->
-            <span
-              v-if="draftLife(summary)"
-              :class="['badge', 'takes-effect', draftLife(summary).state]"
-              :title="draftLife(summary).title"
-            >
-              {{ draftLife(summary).text }}
-            </span>
-            <!-- черновик пересчитан после обзвона клиентов невлезших заявок другого черновика -->
-            <span
-              v-if="summary.decisions_from_plan_id"
-              class="replan-of"
-              :title="`Учтены решения по заявкам, не вошедшим в черновик №${summary.decisions_from_plan_id}: ${summary.decisions_count}`"
-            >
-              с решениями из
-              <button class="link plan-link" @click.stop="$emit('select', summary.decisions_from_plan_id)">
-                №{{ summary.decisions_from_plan_id }}
-              </button>
-            </span>
-            <span
-              v-if="summary.superseded_at"
-              class="badge superseded"
-              :title="`Заменён утверждённым пересчётом в ${moscowTimeOf(summary.superseded_at)}: бригады ездят по новому`"
-            >
-              заменён в {{ moscowTimeOf(summary.superseded_at) }}
-            </span>
-            <button
-              v-if="summary.replaced_by_plan_id"
-              class="link plan-link"
-              :title="`Открыть пересчёт №${summary.replaced_by_plan_id}, который его заменил`"
-              @click.stop="$emit('select', summary.replaced_by_plan_id)"
-            >
-              → №{{ summary.replaced_by_plan_id }}
-            </button>
-            <span v-else-if="summary.approved_at" class="badge approved" title="Заявки этого плана закреплены за днём">
-              действует с {{ moscowTimeOf(summary.approved_at) }}
-            </span>
-            <!-- на день уже действует другой план: этот расчёт остаётся историей -->
-            <span
-              v-else-if="summary.outdated"
-              class="muted"
-              title="На этот день действует другой план — этот расчёт уже не утвердить. Он остаётся в истории дня"
-            >
-              черновик · неактуален
-            </span>
-            <span v-else class="muted">черновик</span>
-            <!-- пересчёт посчитан и вот-вот вступит в силу: часть бригад пока стоит -->
-            <span v-if="summary.pending_replan_id" class="replan-of">
-              пересчёт
-              <button class="link plan-link" @click.stop="$emit('select', summary.pending_replan_id)">
-                №{{ summary.pending_replan_id }}
-              </button>
-              вступает в силу
-            </span>
-            <!-- пересчёт не вступил в силу: бригады едут по этому плану, день надо считать заново -->
-            <span
-              v-if="summary.voided_replan_id"
-              class="badge takes-effect expired"
-              :title="summary.voided_replan_reason ?? ''"
-            >
-              пересчёт №{{ summary.voided_replan_id }} не вступил в силу
-            </span>
-          </td>
-          <td>
-            <!-- заменённый план — история: по нему уже не ездят, действий нет -->
-            <div v-if="summary.superseded_at" class="row-actions"></div>
-            <div v-else class="row-actions">
-              <button
-                v-if="summary.approved_at"
-                :class="['primary', { 'attention-pulse': summary.id === attentionPlanId && !summary.pending_replan_id }]"
-                :disabled="busy"
-                title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
-                @click.stop="$emit('replan', summary)"
-              >
-                Пересчитать
-              </button>
-              <!-- по плану, который бригады уже видят в приложении, утверждение не снимают:
-                   маршрут пропал бы у едущей бригады. Менять его можно только пересчётом -->
-              <button
-                v-if="summary.can_cancel_approval"
-                :disabled="busy"
-                title="Снять утверждение: заявки станут доступны другим дням"
-                @click.stop="$emit('cancel-approval', summary)"
-              >
-                Снять
-              </button>
-              <!-- второй расчёт с раскрытыми окнами: пробуем вместить невлезшие сегодня.
-                   Отдельной кнопкой, потому что это пересчёт дня, а не утверждение -->
-              <button
-                v-if="!summary.approved_at && !summary.parent_plan_id && summary.unassigned_count"
-                :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
-                :title="
-                  blocked(summary)
-                    ? draftLife(summary).title
-                    : 'Подобрать время невлезшим заявкам: второй расчёт с раскрытыми окнами — что предложить клиентам'
-                "
-                @click.stop="$emit('pick-windows', summary)"
-              >
-                Подобрать окна
-              </button>
-              <button
-                v-if="!summary.approved_at"
-                :class="{ 'attention-pulse': summary.id === attentionReplanId }"
-                :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
-                :title="
-                  blocked(summary)
-                    ? draftLife(summary).title
-                    : approveBlockedBy(summary)
-                      ? `На этот день действует план №${approveBlockedBy(summary).id} — его можно пересчитать, а этот расчёт остаётся черновиком`
-                      : 'Утвердить план: его заявки закрепятся за этим днём'
-                "
-                @click.stop="$emit('approve', summary)"
-              >
-                Утвердить
-              </button>
-              <button
-                v-if="!summary.approved_at"
-                class="danger"
-                :disabled="busy"
-                @click.stop="$emit('remove', summary)"
-              >
-                Удалить
-              </button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="plans-table">
+    <div class="table-top">
+      <!-- из чего что выросло: слева направо по времени, действующий план в первой строке -->
+      <PlanGraph :plans="plans" :selected-plan-id="selectedPlanId" @select="$emit('select', $event)" />
+      <label class="details-toggle" title="Решатель, цели, пробег и время расчёта — нужны при сравнении алгоритмов">
+        <input v-model="detailed" type="checkbox" />
+        Подробности расчёта
+      </label>
+    </div>
+
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>№</th>
+            <th>Рассчитан</th>
+            <th v-if="detailed">Решатель</th>
+            <th v-if="detailed">Цели</th>
+            <th>Назначено</th>
+            <th title="Аварийных заявок в плане">Авар.</th>
+            <th title="Заявок, которым не нашлось места">Не назн.</th>
+            <th>Бригад</th>
+            <th v-if="detailed" title="Общий пробег по дорогам, км">Пробег</th>
+            <th v-if="detailed">Расчёт</th>
+            <th>Состояние</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="summary in plans"
+            :key="summary.id"
+            :class="{ selected: summary.id === selectedPlanId }"
+            @click="$emit('select', summary.id)"
+          >
+            <td class="number-cell nowrap">
+              {{ summary.id }}
+              <ReplanMark :summary="summary" @show="$emit('replan-info', summary.id)" />
+              <span v-if="heldWarning" class="held-warning" :title="heldWarning">!</span>
+              <span v-if="promiseWarning(summary)" class="promise-warning" :title="promiseWarning(summary)">☎</span>
+            </td>
+            <td class="nowrap">{{ moscowShortDateTimeOf(summary.created_at) }}</td>
+            <td v-if="detailed" class="nowrap">{{ summary.solver ?? '—' }}</td>
+            <td v-if="detailed" class="goal-cell">{{ objectiveGoalLabel(summary.objective_order) }}</td>
+            <td class="number-cell">{{ summary.assigned_count }}</td>
+            <td class="number-cell">{{ summary.urgent_assigned_count ?? '—' }}</td>
+            <td class="number-cell">{{ summary.unassigned_count }}</td>
+            <td class="number-cell">{{ summary.engineers_used }}</td>
+            <td v-if="detailed" class="number-cell" :title="distanceTitle(summary)">{{ distanceLabel(summary) }}</td>
+            <td v-if="detailed" class="number-cell nowrap">{{ solveDuration(summary) }}</td>
+            <!-- что стало с расчётом; из чего он вырос — в цепочке над таблицей -->
+            <td class="state-cell" :title="originTitle(summary)">
+              <span class="fate">
+                <span :class="['badge', fate(summary).cls]" :title="fate(summary).title">
+                  {{ fate(summary).text }}
+                </span>
+                <button
+                  v-if="summary.replaced_by_plan_id"
+                  class="link plan-link"
+                  :title="`Открыть пересчёт №${summary.replaced_by_plan_id}, который его заменил`"
+                  @click.stop="$emit('select', summary.replaced_by_plan_id)"
+                >
+                  → №{{ summary.replaced_by_plan_id }}
+                </button>
+              </span>
+            </td>
+            <td>
+              <!-- заменённый план — история: по нему уже не ездят, действий нет -->
+              <div v-if="summary.superseded_at" class="row-actions"></div>
+              <div v-else class="row-actions">
+                <button
+                  v-if="summary.approved_at"
+                  :class="['primary', { 'attention-pulse': summary.id === attentionPlanId && !summary.pending_replan_id }]"
+                  :disabled="busy"
+                  title="Пересчитать остаток дня с текущего момента: выполненное и начатое остаётся за бригадами"
+                  @click.stop="$emit('replan', summary)"
+                >
+                  Пересчитать
+                </button>
+                <!-- по плану, который бригады уже видят в приложении, утверждение не снимают:
+                     маршрут пропал бы у едущей бригады. Менять его можно только пересчётом -->
+                <button
+                  v-if="summary.can_cancel_approval"
+                  :disabled="busy"
+                  title="Снять утверждение: заявки станут доступны другим дням"
+                  @click.stop="$emit('cancel-approval', summary)"
+                >
+                  Снять
+                </button>
+                <!-- второй расчёт с раскрытыми окнами: пробуем вместить невлезшие сегодня.
+                     Отдельной кнопкой, потому что это новый расчёт дня, а не утверждение.
+                     Одинаково у черновика и у пересчёта: круг и решения в нём одни и те же -->
+                <button
+                  v-if="!summary.approved_at && summary.unassigned_count"
+                  :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
+                  :title="
+                    blocked(summary)
+                      ? planWindow(summary).title
+                      : 'Подобрать время невлезшим заявкам: второй расчёт с раскрытыми окнами — что предложить клиентам'
+                  "
+                  @click.stop="$emit('pick-windows', summary)"
+                >
+                  Подобрать окна
+                </button>
+                <button
+                  v-if="!summary.approved_at"
+                  :class="{ 'attention-pulse': summary.id === attentionReplanId }"
+                  :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
+                  :title="
+                    blocked(summary)
+                      ? planWindow(summary).title
+                      : approveBlockedBy(summary)
+                        ? `На этот день действует план №${approveBlockedBy(summary).id} — его можно пересчитать, а этот расчёт остаётся черновиком`
+                        : 'Утвердить план: его заявки закрепятся за этим днём'
+                  "
+                  @click.stop="$emit('approve', summary)"
+                >
+                  Утвердить
+                </button>
+                <button
+                  v-if="!summary.approved_at"
+                  class="danger"
+                  :disabled="busy"
+                  @click.stop="$emit('remove', summary)"
+                >
+                  Удалить
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
 
@@ -345,16 +295,88 @@ function solveDuration(summary) {
   cursor: help;
 }
 
-/* ветка круга: расчёт с решениями по заявкам стоит под своим черновиком */
-.tree-toggle {
-  margin-right: 2px;
-  color: #64748b;
-  font-size: 11px;
-  line-height: 1;
+/* цель расчёта переносится по словам: колонка иначе растягивает таблицу за экран */
+.goal-cell {
+  max-width: 96px;
 }
 
-.data-table tbody tr.child td:first-child {
-  border-left: 3px solid #c7d2fe;
+/* кнопки строки одного размера: «Пересчитать» длиннее остальных и выбивалась из ряда */
+.row-actions button {
+  min-width: 116px;
+}
+
+/* галочка над таблицей: отладочные колонки нужны не всегда */
+.details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* цепочка дня над таблицей: из чего что выросло */
+.table-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-bottom: 6px;
+}
+
+.chains {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.chain-title {
+  color: #64748b;
+}
+
+.chain-arrow {
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.chain-when {
+  margin-right: 4px;
+  color: #64748b;
+}
+
+.day-chain .plan-link {
+  margin-left: 0;
+  font-size: 12px;
+}
+
+.day-chain .plan-link.current {
+  font-weight: 700;
+}
+
+.details-toggle {
+  margin-left: auto;
+}
+
+.fate {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge.plain {
+  padding: 0;
+  background: none;
+  color: #64748b;
 }
 
 /* ссылки на соседние планы дня: родителя пересчёта и пересчёт, который заменил этот план */
@@ -380,15 +402,11 @@ function solveDuration(summary) {
   background: #fef9c3;
 }
 
-/* судьба плана: пересчёт чего он, действует ли, кем заменён */
+/* судьба плана: откуда он и что с ним стало */
 .state-cell {
-  min-width: 170px;
+  min-width: 150px;
   font-size: 12px;
   line-height: 1.5;
-}
-
-.state-cell .replan-of {
-  display: block;
 }
 
 .held-warning {
@@ -404,13 +422,6 @@ function solveDuration(summary) {
   font-size: 11px;
   font-weight: 700;
   cursor: help;
-}
-
-/* пересчёт с момента: под названием решателя */
-.replan-of {
-  display: block;
-  color: #64748b;
-  font-size: 12px;
 }
 
 .badge.superseded {

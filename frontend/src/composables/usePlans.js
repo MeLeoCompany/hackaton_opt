@@ -198,7 +198,7 @@ export function usePlans() {
         approveAfter
           ? `План №${result.id} утверждён как есть, без пересчёта: ` +
             `${decisionsText(params.decisions)}его заявки закреплены за этим днём`
-          : `Черновик №${result.id} посчитан с решениями из №${summary.id}: назначено ` +
+          : `Расчёт №${result.id} посчитан с решениями из №${summary.id}: назначено ` +
             `${result.assigned_count}, не назначено ${result.unassigned_count}. ` +
             `${decisionsText(params.decisions)}Посмотрите его и утвердите`,
       )

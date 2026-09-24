@@ -397,6 +397,8 @@ async def test_brigade_that_left_as_the_replan_plans_does_not_block_approval():
         patch.object(planning_service, "stuck_brigades", AsyncMock(return_value={})),
         patch.object(repository, "list_plan_assignments", AsyncMock(return_value=route)),
         patch.object(repository, "list_bound_requests", AsyncMock(return_value=[])),
+        # соседних пересчётов у этого плана нет — отзывать нечего
+        patch.object(repository, "pending_replans", AsyncMock(return_value=[])),
         patch.object(
             planning_service, "brigades_at_work", AsyncMock(return_value={12: 1})
         ),
