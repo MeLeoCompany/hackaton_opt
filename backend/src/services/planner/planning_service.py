@@ -408,6 +408,20 @@ async def waiting_unassigned(session: AsyncSession, plan: Plan) -> list[Assignme
     ]
 
 
+def free_at_estimate(work_start: datetime, duration_minutes: int, at: datetime) -> datetime:
+    """Когда освободится бригада, которая сейчас на заявке (docs/algoV2.md, шаг 10).
+
+    Пока норматив не вышел — по нормативу. Если он уже прошёл, бригада застряла, и честного
+    ответа нет: точное время оператор узнаёт по телефону. До тех пор считаем, что раньше чем
+    через запас она не освободится — иначе пересчёт даёт ей выезд «прямо сейчас», она снова
+    не выезжает, и день крутится в пересчётах.
+    """
+    planned = work_start + timedelta(minutes=duration_minutes)
+    if planned > at:
+        return planned
+    return at + timedelta(minutes=settings.stuck_free_at_minutes)
+
+
 def local_clock(moment: datetime) -> str:
     """Время по Москве часами и минутами: сообщения читают люди."""
     return moment.astimezone(local_timezone()).strftime("%H:%M")
@@ -1096,6 +1110,22 @@ def set_waiting(route: EngineerRoute, facts: dict, replan_next: dict[int, int] |
         route.waiting_cause = departure_gate.REASON_CODE.get(check.reason)
 
 
+def set_free_at_estimate(route: EngineerRoute) -> None:
+    """Бригада сейчас на заявке: когда она освободится, если пересчитать день прямо сейчас.
+
+    Диалог пересчёта подставляет это время в «освободится в HH:MM» — оператор уточняет его по
+    телефону и правит. Тот же расчёт идёт и в самой задаче (replan_service.brigade_positions),
+    поэтому оставленное как есть поле ничего не меняет.
+    """
+    on_site = next(
+        (visit for visit in route.visits if visit.arrived_at and not visit.finished_at), None
+    )
+    if on_site is None:
+        return
+    at = clock.now() + timedelta(minutes=settings.replan_lead_minutes)
+    route.free_at_estimate = free_at_estimate(on_site.arrived_at, on_site.duration_minutes, at)
+
+
 async def allow_departure(
     session: AsyncSession, plan_id: int, request_id: int, *, office_id: int, user_id: int | None
 ) -> PlanDetail:
@@ -1266,6 +1296,7 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
                 visit.departed_at = fact.departed_at
                 visit.arrived_at = fact.arrived_at
                 visit.finished_at = fact.finished_at
+        set_free_at_estimate(route)
 
     summary = (await summarize_plans(session, [plan]))[0]
     return PlanDetail(

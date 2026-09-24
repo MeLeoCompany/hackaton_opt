@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     replan_grace_minutes: int = Field(default=1, ge=0, le=120)
     # бригада выбилась из плана, если не выехала через столько минут после планового выезда
     departure_grace_minutes: int = Field(default=10, ge=0, le=120)
+    # застрявшая бригада уже переработала норматив: считаем, что раньше чем через столько
+    # минут она не освободится. Иначе пересчёт ставит ей выезд «прямо сейчас», она снова не
+    # успевает, и день крутится в пересчётах (docs/algoV2.md, шаг 10)
+    stuck_free_at_minutes: int = Field(default=30, ge=5, le=240)
     # минимум времени поиска; для больших задач лимит растёт до cuopt_max_time_limit_seconds
     cuopt_time_limit_seconds: float = Field(default=1.0, gt=0.0, allow_inf_nan=False)
     cuopt_max_time_limit_seconds: float = Field(default=120.0, gt=0.0, allow_inf_nan=False)

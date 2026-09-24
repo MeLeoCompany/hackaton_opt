@@ -503,7 +503,9 @@ async def brigade_positions(
                 if fact and fact.arrived_at
                 else max(at, in_progress.planned_arrival_time)
             )
-            free_at = work_start + timedelta(minutes=request.duration_minutes)
+            free_at = planning_service.free_at_estimate(
+                work_start, request.duration_minutes, at
+            )
             point = (float(request.latitude), float(request.longitude))
         elif done:
             # стоит на последней выполненной

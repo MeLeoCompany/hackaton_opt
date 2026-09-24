@@ -5,7 +5,7 @@
 // остаются за бригадами, бригады стартуют оттуда, где они сейчас, остальное раскладывается заново.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
-import { previewReplan } from '../api/plansApi.js'
+import { getPlan, previewReplan } from '../api/plansApi.js'
 import { fetchSolverParams } from '../api/systemApi.js'
 import { limitHint, numericParams } from '../utils/solverParams.js'
 import { formatDay, fromMoscowInputValue, moscowTimeOf } from '../utils/moscowTime.js'
@@ -140,10 +140,39 @@ function onSiteVisit(route) {
   return route.visits.find((visit) => visit.arrived_at && !visit.finished_at) ?? null
 }
 
+// маршруты нужны, чтобы спросить про застрявшие бригады. Когда пересчёт запускают из списка
+// планов, план не открыт и маршрутов у страницы нет — дочитываем их сами
+const loadedRoutes = ref([])
+const planRoutes = computed(() => (props.routes.length ? props.routes : loadedRoutes.value))
+
+onMounted(async () => {
+  if (!props.replanOf || props.routes.length) return
+  try {
+    loadedRoutes.value = (await getPlan(props.replanOf.id)).routes
+  } catch {
+    // не прочитали — диалог работает как раньше, время бригады можно вписать при пересчёте
+  }
+})
+
 // застряли на заявке: бригада на месте и отстаёт — ей звонят и уточняют, когда освободится.
 // Закончившая или уже выехавшая свободна по своим отметкам — спрашивать нечего
 const waitingRoutes = computed(() =>
-  props.routes.filter((route) => onSiteVisit(route) && (route.waiting_reason || route.delay_minutes > 0)),
+  planRoutes.value.filter((route) => onSiteVisit(route) && (route.waiting_reason || route.delay_minutes > 0)),
+)
+
+// поле «освободится в» заполняем оценкой с сервера: по нормативу, а если он уже прошёл —
+// с запасом от момента пересчёта. Пустое поле означало бы «свободна прямо сейчас», и
+// застрявшая бригада снова не выехала бы — день крутился бы в пересчётах (шаг 10)
+watch(
+  waitingRoutes,
+  (routes) => {
+    routes.forEach((route) => {
+      if (freeAt[route.engineer_id] === undefined && route.free_at_estimate) {
+        freeAt[route.engineer_id] = moscowTimeOf(route.free_at_estimate)
+      }
+    })
+  },
+  { immediate: true },
 )
 
 function stuckText(route) {
@@ -318,8 +347,9 @@ async function submit() {
       <section v-if="replanOf && waitingRoutes.length" class="waiting">
         <h4>Застряли на заявке: {{ waitingRoutes.length }}</h4>
         <p class="hint">
-          Застрявшая бригада не уложится в норматив: укажите время со слов бригады, и пересчёт
-          посчитает её свободной с него, а не с планового конца работы.
+          Застрявшая бригада не уложится в норматив. Время подставлено с запасом — уточните его
+          по телефону и поправьте: пересчёт посчитает бригаду свободной с него, а не с планового
+          конца работы.
         </p>
         <article v-for="route in waitingRoutes" :key="route.engineer_id" class="waiting-row">
           <strong>{{ route.engineer_name }}</strong>

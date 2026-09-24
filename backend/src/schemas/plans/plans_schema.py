@@ -329,6 +329,9 @@ class EngineerRoute(BaseModel):
     # replan_pending — идёт пересчёт, not_departed — не выехала, at_risk — к окну не успеть
     waiting_since: datetime | None = None
     waiting_cause: str | None = None
+    # бригада сейчас на заявке: когда она освободится, если пересчитать день сейчас. Диалог
+    # пересчёта подставляет это время в «освободится в» (docs/algoV2.md, шаг 10)
+    free_at_estimate: datetime | None = None
     shift_start: datetime
     shift_end: datetime
     visits: list[PlanVisit]

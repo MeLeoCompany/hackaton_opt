@@ -554,3 +554,24 @@ async def test_brigade_held_by_the_replan_is_not_counted_as_stuck():
 
     assert list(alone) == [1]
     assert held == {}
+
+
+@pytest.mark.asyncio
+async def test_brigade_that_overran_the_norm_is_not_counted_free_right_away():
+    """Норматив вышел, а бригада всё ещё на заявке: выезд «прямо сейчас» ей не ставим.
+
+    Иначе пересчёт снова считает её едущей, она снова не выезжает — и день крутится в
+    пересчётах (docs/algoV2.md, шаг 10).
+    """
+    route = [assignment(1, 10, IN_PROGRESS, at(10)), assignment(2, 11, PLANNED, at(14))]
+    facts = {10: fact(arrived=at(10))}  # плановые 60 минут кончились в 11:00
+
+    _, starts = await positions(route, facts, at(12, 15))
+
+    assert starts[1].available_from == at(12, 15) + timedelta(
+        minutes=settings.stuck_free_at_minutes
+    )
+
+
+def test_estimate_follows_the_norm_while_it_holds():
+    assert planning_service.free_at_estimate(at(12), 60, at(12, 15)) == at(13)
