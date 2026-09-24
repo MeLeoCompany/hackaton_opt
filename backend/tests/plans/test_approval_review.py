@@ -29,6 +29,7 @@ def draft(solver="cuopt", objective_policy=None):
         parent_plan_id=None,
         solver=solver,
         objective_policy=objective_policy,
+        input_snapshot={"request_order": [11, 12, 13]},
     )
 
 
@@ -190,9 +191,18 @@ async def test_decisions_rebuild_the_day_as_a_new_draft():
 
 @pytest.mark.asyncio
 async def test_baseline_draft_is_rebuilt_by_baseline():
+    """Согласие на окно добавляет работу — тогда считаем заново, тем же решателем."""
     new_plan = SimpleNamespace(id=41)
     session = SimpleNamespace(commit=AsyncMock())
-    decisions = [ReplanDecision(request_id=12, action="no_answer")]
+    window = datetime(2026, 8, 17, 17, 40, tzinfo=timezone(timedelta(hours=3)))
+    decisions = [
+        ReplanDecision(
+            request_id=12,
+            action="agree",
+            window_start=window,
+            window_end=window + timedelta(minutes=30),
+        )
+    ]
     find, approved, listed, counted = patched(draft(solver="baseline"), [unassigned(12)])
 
     with (
@@ -212,3 +222,41 @@ async def test_baseline_draft_is_rebuilt_by_baseline():
 
     assert build.await_args.args[2] is SolverName.BASELINE
     assert tuple(build.await_args.args[3]) == tuple(DEFAULT_OBJECTIVE_ORDER)
+
+
+@pytest.mark.asyncio
+async def test_moved_and_cancelled_requests_do_not_start_a_recalculation():
+    """Перенос и отмена только убирают работу: маршруты те же, считать нечего."""
+    session = SimpleNamespace(commit=AsyncMock(), flush=AsyncMock())
+    plan = draft(solver="cuopt")
+    decisions = [
+        ReplanDecision(request_id=12, action="no_answer"),
+        ReplanDecision(request_id=13, action="cancel"),
+    ]
+    find, approved, listed, counted = patched(plan, [unassigned(12), unassigned(13)])
+
+    with (
+        find,
+        approved,
+        listed,
+        counted,
+        patch.object(approval_review.replan_service, "apply_decisions", AsyncMock()),
+        patch.object(
+            approval_review.planning_service, "build_inside_run", AsyncMock()
+        ) as build,
+        patch.object(
+            approval_review.plans_repository, "delete_assignments", AsyncMock(return_value=2)
+        ) as dropped,
+        patch.object(
+            approval_review.planning_service,
+            "summarize_plans",
+            AsyncMock(return_value=["итог"]),
+        ),
+    ):
+        summary = await approval_review.decide_approval(session, 40, decisions, office_id=1)
+
+    assert summary == "итог"
+    assert build.await_count == 0  # решателя не звали вовсе
+    assert dropped.await_args.args[2] == {12, 13}
+    # перенесённых и отменённых в плане больше нет — даже как невлезших
+    assert plan.input_snapshot["request_order"] == [11]

@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -175,6 +175,18 @@ async def list_plan_assignments(session: AsyncSession, plan_id: int) -> list[Ass
         .order_by(Assignment.engineer_id, Assignment.visit_order, Assignment.request_id)
     )
     return list(result.scalars().all())
+
+
+async def delete_assignments(session: AsyncSession, plan_id: int, request_ids: set[int]) -> int:
+    """Убрать заявки из плана: перенесённые и отменённые в нём больше не числятся."""
+    if not request_ids:
+        return 0
+    result = await session.execute(
+        delete(Assignment).where(
+            Assignment.plan_id == plan_id, Assignment.request_id.in_(request_ids)
+        )
+    )
+    return result.rowcount or 0
 
 
 async def count_assignments_by_plan(

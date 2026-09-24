@@ -41,6 +41,27 @@ RANK_NORMAL = 6  # P3 — базовый ярус, отдельной ступе
 WIDENED_RANK_SHIFT = 10
 
 
+def round_ranks(requests, kept_request_ids: set[int]) -> dict[int, int]:
+    """Ярусы второго и третьего расчётов круга (docs/algoV2.md, шаги 3 и 5).
+
+    A — аварии, откуда бы ни были: авария вправе подвинуть обычную заявку;
+    B — все, кто влез в первый расчёт;
+    C — раскрытые, то есть те, по кому звонили.
+    Внутри ярусов порядок обычный (обещание, перенос, приоритет), поэтому согласованная
+    заявка идёт первой среди раскрытых. Ярусы считаются на каждый запуск и не сохраняются:
+    следующий круг снова начинается с настоящих приоритетов.
+    """
+    ranks = {}
+    for index, request in enumerate(requests):
+        if request.priority_level == TOP_PRIORITY_LEVEL:
+            ranks[index] = RANK_EMERGENCY
+        elif request.request_id in kept_request_ids:
+            ranks[index] = request.objective_rank
+        else:
+            ranks[index] = request.objective_rank + WIDENED_RANK_SHIFT
+    return ranks
+
+
 @dataclass(frozen=True)
 class RequestSpec:
     request_id: int

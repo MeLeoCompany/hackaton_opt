@@ -125,11 +125,14 @@ class BrigadeFreeAt(BaseModel):
 class PlanApprovalReviewRequest(BaseModel):
     """Перед утверждением черновика: подобрать окна невлезшим заявкам или учесть решения.
 
-    decisions пусто — пробный второй расчёт (что предложить клиентам); иначе решения
-    применяются и день считается заново тем же решателем и с той же целью.
+    decisions пусто — список невлезших заявок; с suggest=true к нему идёт второй расчёт
+    с раскрытыми окнами («Подобрать окна»), с suggest=false расчёта нет вовсе — оператор
+    просто переносит или отменяет заявки и утверждает готовый план.
     """
 
     decisions: list[ReplanDecision] = []
+    # считать ли второй расчёт: он нужен только для подбора окон
+    suggest: bool = True
     run_id: UUID | None = None
     solver_params: SolverParams | None = None
 
@@ -228,6 +231,10 @@ class PlanSummary(BaseModel):
     voided_replan_reason: str | None = None
     # черновик уже не утвердить: на его день действует другой план. Это история расчётов
     outdated: bool = False
+    # черновик идущего дня посчитан на выезд в этот момент («сейчас плюс запас»): до него его
+    # и утверждают. stale_reason — почему уже поздно или что изменилось в дне с расчёта
+    effective_at: datetime | None = None
+    stale_reason: str | None = None
     # черновик посчитан после решений оператора по невлезшим заявкам другого черновика
     decisions_from_plan_id: int | None = None
     decisions_count: int | None = None

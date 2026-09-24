@@ -26,7 +26,7 @@ class PlanRun(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     office_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("office.id", ondelete="CASCADE"))
     plan_date: Mapped[date | None] = mapped_column(Date)
-    kind: Mapped[str] = mapped_column(Text)  # build / replan / preview
+    kind: Mapped[str] = mapped_column(Text)  # build / replan / preview / approval_preview / decisions
     solver: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)  # running / done / failed
     step: Mapped[str] = mapped_column(Text, default="")

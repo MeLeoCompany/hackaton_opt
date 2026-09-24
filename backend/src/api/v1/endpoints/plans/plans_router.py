@@ -187,7 +187,10 @@ async def preview_approval(
     office_id: int = Depends(current_office_id),
     user: AppUser = Depends(current_user),
 ):
-    """Второй расчёт с раскрытыми окнами, ничего не сохраняется (docs/algoV2.md, шаги 2-3)."""
+    """Невлезшие заявки черновика; с suggest — второй расчёт с раскрытыми окнами.
+
+    suggest=false — просто список, кому нужно решение: расчёта нет (docs/algoV2.md, шаги 2-3).
+    """
     return await approval_review.preview_approval(
         session,
         plan_id,
@@ -195,6 +198,7 @@ async def preview_approval(
         user_id=user.id,
         run_id=payload.run_id,
         params=payload.solver_params or await system_service.read_solver_params(session),
+        suggest=payload.suggest,
     )
 
 
@@ -202,7 +206,7 @@ async def preview_approval(
     "/{plan_id}/approval/decisions",
     response_model=PlanSummary,
     status_code=status.HTTP_201_CREATED,
-    summary="Учесть решения по невлезшим заявкам и посчитать день заново",
+    summary="Учесть решения по невлезшим заявкам",
 )
 async def decide_approval(
     plan_id: int,
@@ -211,7 +215,11 @@ async def decide_approval(
     office_id: int = Depends(current_office_id),
     user: AppUser = Depends(current_user),
 ):
-    """Получается новый черновик: его смотрят и утверждают отдельно."""
+    """Перенос и отмена убирают заявки из того же черновика — расчёта нет.
+
+    Согласие на предложенное время добавляет работу: день считается заново, и новый черновик
+    смотрят и утверждают отдельно (docs/algoV2.md, шаг 5).
+    """
     return await approval_review.decide_approval(
         session,
         plan_id,

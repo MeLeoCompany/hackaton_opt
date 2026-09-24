@@ -10,6 +10,8 @@ defineProps({
   decisions: { type: Object, required: true },
   tolerance: { type: Number, required: true },
   disabled: { type: Boolean, default: false },
+  // «согласен на окно» есть только при подборе окон: при утверждении окна не предлагаются
+  withAgree: { type: Boolean, default: true },
 })
 </script>
 
@@ -25,18 +27,20 @@ defineProps({
         <span v-if="problem.expired" class="chip">окно закрылось</span>
       </div>
       <p class="problem-reason">{{ problem.reason }}</p>
-      <p v-if="problem.suggested_start" class="problem-offer">
+      <p v-if="withAgree && problem.suggested_start" class="problem-offer">
         {{ problem.suggested_engineer }} приедет в {{ moscowTimeOf(problem.suggested_start) }} —
         предложите клиенту {{ moscowTimeOf(problem.suggested_start) }}–{{ moscowTimeOf(problem.suggested_end) }}
         (допуск {{ tolerance }} мин)
       </p>
-      <p v-else class="problem-offer muted">Сегодня не успеть ни при каком окне</p>
+      <p v-else-if="withAgree" class="problem-offer muted">Сегодня не успеть ни при каком окне</p>
       <fieldset class="problem-actions" :disabled="disabled">
         <select
           v-model="decisions[problem.request_id].action"
           :aria-label="`что ответил клиент по заявке №${problem.request_id}`"
         >
-          <option value="agree" :disabled="!problem.suggested_start">Согласен на предложенное окно</option>
+          <option v-if="withAgree" value="agree" :disabled="!problem.suggested_start">
+            Согласен на предложенное окно
+          </option>
           <option value="move">Сегодня не может — перенести</option>
           <option value="cancel">Работа не нужна</option>
           <option value="no_answer">Не дозвонились</option>

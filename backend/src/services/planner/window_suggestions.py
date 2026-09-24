@@ -16,18 +16,16 @@
 
 import copy
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from src.core import clock
+from src.core.config import settings
 from src.schemas.plans import SolverName
 from src.schemas.system import SolverParams
 from src.services.planner import planning_service
 from src.services.planner.objective_policy import ObjectiveCriterion
 from src.services.planner.planner_loader import LoadedDay
-from src.services.planner.planner_problem import (
-    RANK_EMERGENCY,
-    TOP_PRIORITY_LEVEL,
-    WIDENED_RANK_SHIFT,
-)
+from src.services.planner.planner_problem import round_ranks
 
 
 @dataclass(frozen=True)
@@ -40,29 +38,30 @@ class WindowSuggestion:
 
 
 def widened_instance(loaded: LoadedDay, widened_indices: set[int]):
-    """Копия задачи, где у невлезших заявок окно раскрыто до конца самой поздней смены."""
+    """Копия задачи с раскрытым окном невлезших: [max(t0; T); самый поздний конец смены].
+
+    T — момент, с которого считаем: сейчас плюс запас на расчёт и обзвон
+    (settings.replan_lead_minutes, docs/algoV2.md, шаг 2). Раньше него предлагать время
+    нельзя: эти минуты бригады ещё едут по прежнему плану, и обещание клиенту было бы
+    заведомо невыполнимым. Для будущего дня T лежит до начала дня и ничего не меняет.
+    В базе окна не трогаем — раскрытие живёт только внутри расчёта.
+    """
     instance = copy.copy(loaded.instance)
     latest_shift_end = max(engineer.shift_end_min for engineer in instance.engineers)
+    not_before = loaded.day.to_minutes(
+        clock.now() + timedelta(minutes=settings.replan_lead_minutes), round_up=True
+    )
     instance.requests = [
-        replace(request, window_end_min=latest_shift_end)
-        if index in widened_indices and request.window_end_min < latest_shift_end
+        replace(
+            request,
+            window_start_min=max(request.window_start_min, not_before),
+            window_end_min=max(request.window_end_min, latest_shift_end),
+        )
+        if index in widened_indices
         else request
         for index, request in enumerate(instance.requests)
     ]
     return instance
-
-
-def widened_ranks(loaded: LoadedDay, widened_indices: set[int]) -> dict[int, int]:
-    """Ярусы второго расчёта: аварии сверху, влезшие выше раскрытых."""
-    ranks = {}
-    for index, request in enumerate(loaded.instance.requests):
-        if request.priority_level == TOP_PRIORITY_LEVEL:
-            ranks[index] = RANK_EMERGENCY
-        elif index in widened_indices:
-            ranks[index] = request.objective_rank + WIDENED_RANK_SHIFT
-        else:
-            ranks[index] = request.objective_rank
-    return ranks
 
 
 async def suggest_windows(
@@ -84,8 +83,20 @@ async def suggest_windows(
     instance = widened_instance(loaded, widened_indices)
     probe = copy.copy(loaded)
     probe.instance = instance
+    # ярус B: кто влез в первый расчёт. Их нельзя выкинуть ради раскрытой заявки —
+    # иначе появится новая жертва и новый звонок (docs/algoV2.md, шаг 3)
+    kept_request_ids = {
+        request.request_id
+        for index, request in enumerate(loaded.instance.requests)
+        if index not in widened_indices
+    }
     solution = await planning_service.solve_with(
-        solver, probe, objective_order, widened_ranks(loaded, widened_indices), params=params
+        solver,
+        probe,
+        objective_order,
+        round_ranks(loaded.instance.requests, kept_request_ids),
+        params=params,
+        kept_request_ids=kept_request_ids,
     )
     return {
         request.request_id: WindowSuggestion(

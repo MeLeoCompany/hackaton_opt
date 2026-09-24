@@ -57,7 +57,7 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_loader import LoadedDay
-from src.services.planner.planner_problem import TOP_PRIORITY_LEVEL
+from src.services.planner.planner_problem import TOP_PRIORITY_LEVEL, round_ranks
 from src.services.planner.route_delay import RouteDelay, VisitFact, route_delay, visit_state
 from src.services.requests import request_status_service
 from src.services.travel import build_route, travel_cache
@@ -127,16 +127,37 @@ async def list_planning_days(session: AsyncSession, *, office_id: int) -> list[P
     ]
 
 
-async def load_planning_day(session: AsyncSession, plan_date: date, office_id: int) -> LoadedDay:
-    """Загружает данные дня офиса и проверяет наличие заявок и исполнителей."""
+async def load_planning_day(
+    session: AsyncSession, plan_date: date, office_id: int, not_before: datetime | None = None
+) -> LoadedDay:
+    """Загружает данные дня офиса и проверяет наличие заявок и исполнителей.
+
+    not_before — момент, раньше которого бригады не свободны: идущий день считается на выезд
+    «сейчас плюс запас» (departure_moment), а не задним числом.
+    """
     day = planner_loader.planning_day(plan_date)
-    loaded = await planner_loader.load_day(session, day, office_id)
+    loaded = await planner_loader.load_day(session, day, office_id, not_before=not_before)
     if loaded.instance.n_requests == 0:
         raise PlanDataError([f"На {plan_date:%d.%m.%Y} нет активных заявок"])
     if loaded.instance.n_engineers == 0:
         raise PlanDataError([f"На {plan_date:%d.%m.%Y} нет исполнителей со сменой"])
 
     return loaded
+
+
+def departure_moment(plan_date: date) -> datetime | None:
+    """На какой момент считается день: «сейчас плюс запас» (docs/algoV2.md, шаг 1).
+
+    Пока идут расчёт и обзвон клиентов, время уходит: без запаса маршруты начинались бы в
+    прошлом. С этого момента бригады и выезжают, до него план не действует, а после него
+    утверждать его уже поздно — день считают заново.
+
+    None — день ещё не идёт (планируем заранее) или уже закончился: торопиться некуда,
+    бригады свободны со своих смен.
+    """
+    day = planner_loader.planning_day(plan_date)
+    at = clock.now() + timedelta(minutes=settings.replan_lead_minutes)
+    return at if day.day_start <= at < day.day_end else None
 
 
 async def build_plan_for_day(
@@ -181,19 +202,31 @@ async def build_inside_run(
     *,
     office_id: int,
     params: SolverParams | None = None,
+    kept_request_ids: set[int] | None = None,
 ) -> Plan:
     """Сам расчёт дня внутри запуска журнала: план записан в сессию, коммит — за вызывающим.
 
     Так перед расчётом в той же транзакции можно применить решения оператора по заявкам:
     не получился расчёт — не меняется ничего.
+
+    kept_request_ids — ярус B третьего расчёта: заявки, которые влезли в первый расчёт круга.
+    Выкидывать их нельзя, переставлять можно (docs/algoV2.md, шаг 5). Ярусы считаются здесь
+    же по загруженному дню и никуда не сохраняются.
     """
     # параметры расчёта приходят из запроса; системные подставляет слой API
     params = params or SolverParams()
-    loaded = await load_planning_day(session, plan_date, office_id)
+    # идущий день считаем на выезд через запас, а заявки дня запоминаем такими, какими их
+    # увидел расчёт: по ним утверждение поймёт, что за это время день изменился
+    at = departure_moment(plan_date)
+    day_requests = await day_state.request_ids(session, plan_date, office_id)
+    loaded = await load_planning_day(session, plan_date, office_id, not_before=at)
     policy = validate_objective_order(objective_order)
 
     started = time.perf_counter()
-    solution = await solve_with(solver, loaded, policy, params=params)
+    ranks = round_ranks(loaded.instance.requests, kept_request_ids) if kept_request_ids else None
+    solution = await solve_with(
+        solver, loaded, policy, ranks, params=params, kept_request_ids=kept_request_ids
+    )
     duration_ms = (time.perf_counter() - started) * 1000
 
     async with run_log.step("Сохраняю план", 80, 92):
@@ -210,6 +243,12 @@ async def build_inside_run(
     async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
         routes, _ = await plan_routes(session, plan, strict=True)
         set_plan_distance(plan, routes_distance(routes))
+    plan.effective_at = at
+    plan.input_snapshot = {**(plan.input_snapshot or {}), "day_requests": day_requests}
+    if at is not None:
+        await run_log.note(
+            f"расчёт на выезд с {local_clock(at)}: до этого момента план и утверждают"
+        )
     return plan
 
 
@@ -219,11 +258,14 @@ async def solve_with(
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
     ranks: dict[int, int] | None = None,
     params: SolverParams | None = None,
+    kept_request_ids: set[int] | None = None,
 ) -> cuopt_solver.DaySolution:
     """cuOpt считает на видеокарте, OR-Tools — на процессоре, базовый алгоритм — прямо здесь.
 
-    ranks — ярусы заявок для целевой функции; нужны второму расчёту при синхронизации
-    (docs/algoV2.md). Базовый алгоритм ярусы не использует.
+    ranks — ярусы заявок для целевой функции; нужны второму и третьему расчётам круга
+    (docs/algoV2.md, шаги 3 и 5). Базовый алгоритм ярусы не использует.
+    kept_request_ids — ярус B: заявки, которые влезли в первый расчёт. Выкидывать их нельзя,
+    переставлять между бригадами и по времени можно.
     """
     async with run_log.step(SOLVER_STEPS[solver], 45, 80):
         if solver is SolverName.BASELINE:
@@ -235,7 +277,7 @@ async def solve_with(
             else cuopt_solver.solve_day
         )
         return await transit_schedule.solve_day(
-            loaded, objective_order, ranks, params, solve=solve
+            loaded, objective_order, ranks, params, solve=solve, kept_request_ids=kept_request_ids
         )
 
 
@@ -297,6 +339,11 @@ async def approve_plan(
             "не работают, утверждение можно снять; если работают — пересчитайте его, "
             "и утверждённый пересчёт его заменит"
         )
+
+    # черновик идущего дня живёт до своего момента выезда и только при тех же вводных
+    stale = await draft_stale_reason(session, plan)
+    if stale:
+        raise PlanInUseError(stale)
 
     # невлезшие заявки без решения не оставляем: иначе они молча висят «Новыми», пока окно
     # не закроется. Оператор переносит их, согласует время или отменяет (подбор окон при
@@ -364,6 +411,43 @@ async def waiting_unassigned(session: AsyncSession, plan: Plan) -> list[Assignme
 def local_clock(moment: datetime) -> str:
     """Время по Москве часами и минутами: сообщения читают люди."""
     return moment.astimezone(local_timezone()).strftime("%H:%M")
+
+
+async def draft_stale_reason(
+    session: AsyncSession, plan: Plan, current: list[int] | None = None
+) -> str | None:
+    """Почему черновик идущего дня уже не утвердить; None — можно (docs/algoV2.md, шаги 1 и 6).
+
+    Черновик посчитан на выезд в effective_at и до этого момента живёт: оператор смотрит
+    маршруты, подбирает окна, обзванивает клиентов. Дальше он не годится дважды:
+
+    - момент выезда прошёл — маршруты начинались бы в прошлом;
+    - за это время пришла или отменилась заявка — расчёт её не видел.
+
+    В обоих случаях день считают заново, с новыми вводными. Черновик будущего дня не
+    протухает: момента выезда у него нет.
+
+    current — заявки дня, уже прочитанные вызывающим: список планов сверяет по ним все
+    черновики дня разом.
+    """
+    effective_at = getattr(plan, "effective_at", None)
+    if effective_at is None or plan.approved_at is not None:
+        return None
+    now = clock.now()
+    if now > effective_at + timedelta(minutes=settings.replan_grace_minutes):
+        return (
+            f"Черновик №{plan.id} посчитан на выезд с {local_clock(effective_at)}, а сейчас уже "
+            f"{local_clock(now)}: бригады по нему опаздывают, ещё не выехав. Посчитайте день заново"
+        )
+    before = (plan.input_snapshot or {}).get("day_requests")
+    if before is not None:
+        news = await day_state.new_since(session, plan, before, current=current)
+        if news:
+            return (
+                f"Черновик №{plan.id} не утвердить: пока шли расчёт и обзвон, "
+                f"{'; '.join(news)}. Посчитайте день заново"
+            )
+    return None
 
 
 def replan_routes(assigned: list) -> dict[int, list]:
@@ -829,6 +913,12 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
         for plan in plans
         if plan.plan_date is not None
     }
+    # заявки дня читаем один раз на день: по ним сверяются все его черновики с моментом выезда
+    day_requests_by_day = {
+        plan.plan_date: await day_state.request_ids(session, plan.plan_date, plan.office_id)
+        for plan in plans
+        if plan.plan_date is not None and getattr(plan, "effective_at", None) is not None
+    }
     summaries = []
     for plan in plans:
         engineers_used, assigned, unassigned = counts.get(plan.id, (0, 0, 0))
@@ -877,6 +967,10 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 ),
                 voided_replan_id=(voided.id if (voided := voided_replan.get(plan.id)) else None),
                 voided_replan_reason=(voided.void_reason if voided else None),
+                effective_at=getattr(plan, "effective_at", None),
+                stale_reason=await draft_stale_reason(
+                    session, plan, day_requests_by_day.get(plan.plan_date)
+                ),
                 decisions_from_plan_id=getattr(plan, "decisions_from_plan_id", None),
                 decisions_count=getattr(plan, "decisions_count", None),
                 can_cancel_approval=(

@@ -58,6 +58,10 @@ class Plan(Base):
     # Такой пересчёт больше никого не держит — бригады едут по прежнему плану
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     void_reason: Mapped[str | None] = mapped_column(Text)
+    # черновик идущего дня посчитан на выезд в этот момент — «сейчас плюс запас» (049).
+    # После него черновик не утверждают: маршруты начинались бы в прошлом. У черновика
+    # будущего дня момента нет
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # черновик, пересчитанный после решений оператора при утверждении (043): из какого черновика
     # пришли решения по невлезшим заявкам и сколько их
     decisions_from_plan_id: Mapped[int | None] = mapped_column(

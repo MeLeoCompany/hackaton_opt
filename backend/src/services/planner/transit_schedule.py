@@ -187,12 +187,20 @@ def checked_solution_score(
     solution: cuopt_solver.DaySolution,
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None,
+    kept_request_ids: set[int] | None = None,
 ) -> tuple[float, ...]:
     """Сравнить проверенные R5 варианты по той же иерархии, что использует cuOpt.
 
     Пробег здесь матричный, как в цели cuOpt; точный пробег по маршрутам измеряется позже.
+    Первой ступенью идут потерянные заявки яруса B (кто влез в первый расчёт): их выкидывать
+    нельзя, поэтому вариант, где такая заявка пропала, проигрывает любому другому
+    (docs/algoV2.md, шаг 3).
     """
     assigned = [visit.request_index for visits in solution.routes.values() for visit in visits]
+    lost_kept = 0
+    if kept_request_ids:
+        placed = {instance.requests[index].request_id for index in assigned}
+        lost_kept = len(kept_request_ids - placed)
     rank_of = {
         index: (ranks or {}).get(index, instance.requests[index].objective_rank)
         for index in cuopt_solver.schedulable_request_indices(instance)
@@ -219,10 +227,13 @@ def checked_solution_score(
         ObjectiveCriterion.ENGINEERS_USED: (-used,),
         ObjectiveCriterion.TRAVEL_DISTANCE: (-distance,),
     }
-    return tuple(
-        value
-        for criterion in (objective_order or DEFAULT_OBJECTIVE_ORDER)
-        for value in metrics[criterion]
+    return (
+        -lost_kept,
+        *(
+            value
+            for criterion in (objective_order or DEFAULT_OBJECTIVE_ORDER)
+            for value in metrics[criterion]
+        ),
     )
 
 
@@ -313,16 +324,23 @@ async def repair_unassigned(
     cache: dict[tuple[int, int, int], int],
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None,
+    kept_request_ids: set[int] | None = None,
 ) -> cuopt_solver.DaySolution:
-    """Довставить заявки без сдвига уже назначенных между бригадами и без нарушения R5."""
+    """Довставить заявки без сдвига уже назначенных между бригадами и без нарушения R5.
+
+    Заявки яруса B (влезли в первый расчёт) возвращаем первыми и не считаем их проверки в
+    общем лимите: выкидывать их нельзя, поэтому на них вставок не жалеем.
+    """
     instance = loaded.instance
     assigned = {visit.request_index for visits in solution.routes.values() for visit in visits}
     pending = set(cuopt_solver.schedulable_request_indices(instance)) - assigned
     if not pending:
         return solution
+    kept = kept_request_ids or set()
     ordered = sorted(
         pending,
         key=lambda index: (
+            instance.requests[index].request_id not in kept,
             (ranks or {}).get(index, instance.requests[index].objective_rank),
             instance.requests[index].window_end_min,
             instance.requests[index].request_id,
@@ -330,14 +348,17 @@ async def repair_unassigned(
     )
     await run_log.note(f"Доразмещаю {len(ordered)} неназначенных заявок через R5")
     current = solution
-    current_score = checked_solution_score(instance, current, objective_order, ranks)
+    current_score = checked_solution_score(
+        instance, current, objective_order, ranks, kept_request_ids
+    )
     checks = 0
     restored = 0
     for request_index in ordered:
+        must_keep = instance.requests[request_index].request_id in kept
         winner = None
         winner_score = current_score
         for engineer_index, position in insertion_positions(instance, current, request_index):
-            if checks >= MAX_INSERTION_CHECKS_PER_PLAN:
+            if checks >= MAX_INSERTION_CHECKS_PER_PLAN and not must_keep:
                 break
             await run_log.check_cancelled()
             checks += 1
@@ -347,7 +368,9 @@ async def repair_unassigned(
             if route is None:
                 continue
             candidate = cuopt_solver.DaySolution({**current.routes, engineer_index: route})
-            score = checked_solution_score(instance, candidate, objective_order, ranks)
+            score = checked_solution_score(
+                instance, candidate, objective_order, ranks, kept_request_ids
+            )
             if score > winner_score:
                 winner, winner_score = candidate, score
         if winner is not None:
@@ -357,7 +380,7 @@ async def repair_unassigned(
                 f"№{instance.requests[request_index].request_id} доразмещена; "
                 f"назначено {sum(len(route) for route in current.routes.values())}"
             )
-        if checks >= MAX_INSERTION_CHECKS_PER_PLAN:
+        if checks >= MAX_INSERTION_CHECKS_PER_PLAN and not must_keep:
             break
     await run_log.note(
         f"Доразмещение: возвращено {restored} из {len(ordered)}, проверено {checks} вставок",
@@ -401,8 +424,14 @@ async def solve_day(
     ranks: dict[int, int] | None = None,
     params: SolverParams | None = None,
     solve: Solver | None = None,
+    kept_request_ids: set[int] | None = None,
 ) -> cuopt_solver.DaySolution:
-    """Уточнять только использованные плечи, не пересчитывая полную матрицу R5."""
+    """Уточнять только использованные плечи, не пересчитывая полную матрицу R5.
+
+    kept_request_ids — ярус B второго и третьего расчётов: заявки, которые влезли в первый
+    расчёт. Вариант, где такая заявка пропала после проверки расписания, проигрывает любому
+    другому, а доразмещение возвращает их первыми (docs/algoV2.md, шаг 3).
+    """
     params = params or SolverParams()
     # по умолчанию cuOpt; берём его здесь, а не в значении аргумента, чтобы тесты и вызов
     # с другим решателем видели одну и ту же точку подмены
@@ -432,20 +461,26 @@ async def solve_day(
             loaded, solution, points, cache, skip_infeasible=last_attempt
         )
         if checked is not None:
-            score = checked_solution_score(loaded.instance, checked, objective_order, ranks)
+            score = checked_solution_score(
+                loaded.instance, checked, objective_order, ranks, kept_request_ids
+            )
             if best_score is not None and best_score > score:
                 assert best is not None
                 await run_log.note(
                     f"Расписание сходится, но вариант попытки {best_attempt} лучше — сохраняю его"
                 )
-                return await repair_unassigned(loaded, best, points, cache, objective_order, ranks)
+                return await repair_unassigned(
+                    loaded, best, points, cache, objective_order, ranks, kept_request_ids
+                )
             if last_attempt and sum(map(len, checked.routes.values())) < sum(
                 map(len, solution.routes.values())
             ):
                 await run_log.note("Сохраняю проверенную часть последнего варианта")
             else:
                 await run_log.note("Расписание сходится: план принят")
-            return await repair_unassigned(loaded, checked, points, cache, objective_order, ranks)
+            return await repair_unassigned(
+                loaded, checked, points, cache, objective_order, ranks, kept_request_ids
+            )
         # Даже если статическая матрица ошиблась, оставшаяся часть маршрута может быть
         # выполнима. Сохраняем её до следующего запуска cuOpt: последний вариант не
         # обязан быть лучше предыдущего.
@@ -453,7 +488,9 @@ async def solve_day(
             loaded, solution, points, cache, skip_infeasible=True, report=False
         )
         assert candidate is not None
-        score = checked_solution_score(loaded.instance, candidate, objective_order, ranks)
+        score = checked_solution_score(
+            loaded.instance, candidate, objective_order, ranks, kept_request_ids
+        )
         assigned = sum(len(visits) for visits in candidate.routes.values())
         if best_score is None or score > best_score:
             best, best_score, best_attempt = candidate, score, attempt + 1

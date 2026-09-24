@@ -1,11 +1,13 @@
 <script setup>
 // Планы выбранного дня: общая информация строкой, клик выбирает план,
 // у каждого — кнопка удаления, чтобы день можно было пересчитать заново.
-import { computed } from 'vue'
+// Расчёт после подбора окон показывается вложенным в тот, из которого пришли решения:
+// один круг — одна ветка, её видно целиком и можно свернуть.
+import { computed, ref } from 'vue'
 
 import { formatDay, moscowShortDateTimeOf, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveGoalLabel } from '../utils/planningPriorities.js'
-import { approvalWindow } from '../utils/planWindow.js'
+import { approvalWindow, draftBlocked, draftWindow } from '../utils/planWindow.js'
 import { useSystemTime } from '../composables/useSystemTime.js'
 import ReplanMark from './ReplanMark.vue'
 import { isApproximate, providerTitle } from '../utils/routeProvider.js'
@@ -21,7 +23,15 @@ const props = defineProps({
   // а если пересчёт уже посчитан — подсвечено «Утвердить» у самого пересчёта
   attentionReplanId: { type: Number, default: null },
 })
-defineEmits(['select', 'remove', 'approve', 'cancel-approval', 'replan-info', 'replan'])
+defineEmits([
+  'select',
+  'remove',
+  'approve',
+  'pick-windows',
+  'cancel-approval',
+  'replan-info',
+  'replan',
+])
 
 // одно и то же предупреждение для всех планов дня: их считали без этих заявок
 const heldWarning = computed(() => {
@@ -36,10 +46,55 @@ const heldWarning = computed(() => {
 })
 
 // часы сервера идут сами: по ним считается, сколько осталось до вступления пересчёта в силу
+// и сколько — до конца жизни черновика
 const { now } = useSystemTime()
 
 function effectWindow(summary) {
   return approvalWindow(summary, now.value)
+}
+
+// черновик дня посчитан на выезд через запас: до этого момента его и утверждают
+function draftLife(summary) {
+  return draftWindow(summary, now.value)
+}
+
+function blocked(summary) {
+  return draftBlocked(summary, now.value)
+}
+
+// дерево круга: расчёт с решениями по заявкам встаёт под тот, из которого решения пришли
+const collapsed = ref(new Set())
+
+const childrenOf = computed(() => {
+  const known = new Set(props.plans.map((plan) => plan.id))
+  const byParent = new Map()
+  for (const plan of props.plans) {
+    const parentId = plan.decisions_from_plan_id
+    // родителя удалили — расчёт показываем сам по себе, иначе он пропал бы из списка
+    if (!parentId || !known.has(parentId)) continue
+    byParent.set(parentId, [...(byParent.get(parentId) ?? []), plan])
+  }
+  return byParent
+})
+
+const rows = computed(() => {
+  const nested = new Set(
+    [...childrenOf.value.values()].flat().map((plan) => plan.id),
+  )
+  const result = []
+  const add = (plan, depth) => {
+    const children = childrenOf.value.get(plan.id) ?? []
+    result.push({ plan, depth, children: children.length })
+    if (!collapsed.value.has(plan.id)) children.forEach((child) => add(child, depth + 1))
+  }
+  props.plans.filter((plan) => !nested.has(plan.id)).forEach((plan) => add(plan, 0))
+  return result
+})
+
+function toggle(planId) {
+  const next = new Set(collapsed.value)
+  if (!next.delete(planId)) next.add(planId)
+  collapsed.value = next
 }
 
 // действующий план дня: пока он есть, другой план дня утвердить нельзя — только пересчитать его
@@ -96,13 +151,33 @@ function solveDuration(summary) {
       </thead>
       <tbody>
         <tr
-          v-for="summary in plans"
+          v-for="{ plan: summary, depth, children } in rows"
           :key="summary.id"
-          :class="{ selected: summary.id === selectedPlanId }"
+          :class="{ selected: summary.id === selectedPlanId, child: depth > 0 }"
           @click="$emit('select', summary.id)"
         >
-          <td class="number-cell nowrap">
+          <td class="number-cell nowrap" :style="{ paddingLeft: `${13 + depth * 16}px` }">
+            <!-- свернуть ветку круга: расчёты с решениями по заявкам этого черновика -->
+            <button
+              v-if="children"
+              class="link tree-toggle"
+              :title="
+                collapsed.has(summary.id)
+                  ? `Показать расчёты с решениями по заявкам этого черновика: ${children}`
+                  : 'Свернуть расчёты этого круга'
+              "
+              @click.stop="toggle(summary.id)"
+            >
+              {{ collapsed.has(summary.id) ? '▸' : '▾' }}
+            </button>
             {{ summary.id }}
+            <span
+              v-if="children && collapsed.has(summary.id)"
+              class="muted"
+              :title="`Скрыто расчётов круга: ${children}`"
+            >
+              +{{ children }}
+            </span>
             <ReplanMark :summary="summary" @show="$emit('replan-info', summary.id)" />
             <span v-if="heldWarning" class="held-warning" :title="heldWarning">!</span>
             <span v-if="promiseWarning(summary)" class="promise-warning" :title="promiseWarning(summary)">☎</span>
@@ -128,6 +203,14 @@ function solveDuration(summary) {
             <!-- пересчёт ещё не утверждён: до какого момента он вступит в силу и сколько осталось -->
             <span v-if="effectWindow(summary)" :class="['badge', 'takes-effect', effectWindow(summary).state]" :title="effectWindow(summary).title">
               {{ effectWindow(summary).text }}
+            </span>
+            <!-- черновик идущего дня: посчитан на выезд через запас, до этого момента его и утверждают -->
+            <span
+              v-if="draftLife(summary)"
+              :class="['badge', 'takes-effect', draftLife(summary).state]"
+              :title="draftLife(summary).title"
+            >
+              {{ draftLife(summary).text }}
             </span>
             <!-- черновик пересчитан после обзвона клиентов невлезших заявок другого черновика -->
             <span
@@ -207,14 +290,30 @@ function solveDuration(summary) {
               >
                 Снять
               </button>
+              <!-- второй расчёт с раскрытыми окнами: пробуем вместить невлезшие сегодня.
+                   Отдельной кнопкой, потому что это пересчёт дня, а не утверждение -->
+              <button
+                v-if="!summary.approved_at && !summary.parent_plan_id && summary.unassigned_count"
+                :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
+                :title="
+                  blocked(summary)
+                    ? draftLife(summary).title
+                    : 'Подобрать время невлезшим заявкам: второй расчёт с раскрытыми окнами — что предложить клиентам'
+                "
+                @click.stop="$emit('pick-windows', summary)"
+              >
+                Подобрать окна
+              </button>
               <button
                 v-if="!summary.approved_at"
                 :class="{ 'attention-pulse': summary.id === attentionReplanId }"
-                :disabled="busy || Boolean(approveBlockedBy(summary))"
+                :disabled="busy || Boolean(approveBlockedBy(summary)) || blocked(summary)"
                 :title="
-                  approveBlockedBy(summary)
-                    ? `На этот день действует план №${approveBlockedBy(summary).id} — его можно пересчитать, а этот расчёт остаётся черновиком`
-                    : 'Утвердить план: его заявки закрепятся за этим днём'
+                  blocked(summary)
+                    ? draftLife(summary).title
+                    : approveBlockedBy(summary)
+                      ? `На этот день действует план №${approveBlockedBy(summary).id} — его можно пересчитать, а этот расчёт остаётся черновиком`
+                      : 'Утвердить план: его заявки закрепятся за этим днём'
                 "
                 @click.stop="$emit('approve', summary)"
               >
@@ -244,6 +343,18 @@ function solveDuration(summary) {
   color: #b91c1c;
   font-size: 13px;
   cursor: help;
+}
+
+/* ветка круга: расчёт с решениями по заявкам стоит под своим черновиком */
+.tree-toggle {
+  margin-right: 2px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.data-table tbody tr.child td:first-child {
+  border-left: 3px solid #c7d2fe;
 }
 
 /* ссылки на соседние планы дня: родителя пересчёта и пересчёт, который заменил этот план */

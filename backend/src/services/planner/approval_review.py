@@ -5,12 +5,12 @@
 иначе заявка молча висит «Новой», пока окно не закроется. Поэтому до утверждения оператор
 обзванивает клиентов:
 
-1. preview_approval — второй расчёт с раскрытыми окнами подбирает, когда бригада сможет
-   приехать к каждой невлезшей заявке. Ничего не сохраняется;
-2. decide_approval — решения оператора (согласованное время, перенос на другой день, отмена)
-   применяются к заявкам, и день считается заново тем же решателем и с той же целью. Получается
-   новый черновик: оператор смотрит его и утверждает сам — утверждается ровно тот расчёт,
-   который он видел.
+1. preview_approval — список невлезших заявок; с suggest второй расчёт с раскрытыми окнами
+   подбирает, когда бригада сможет приехать к каждой. Ничего не сохраняется;
+2. decide_approval — решения оператора применяются к заявкам. Перенос и отмена только убирают
+   работу из дня: маршруты те же, расчёта нет, черновик утверждается как есть. Согласие на
+   предложенное время добавляет работу — тогда день считается заново тем же решателем и с той
+   же целью, и новый черновик оператор смотрит и утверждает сам.
 """
 
 from datetime import datetime, timedelta
@@ -62,6 +62,11 @@ async def reviewable_draft(session: AsyncSession, plan_id: int, *, office_id: in
             f"На {plan.plan_date:%d.%m.%Y} уже утверждён план №{approved.id}: невлезшие заявки "
             "решаются при его пересчёте"
         )
+    # черновик идущего дня живёт до своего момента выезда: после него подбирать окна и
+    # применять решения уже некуда — день считают заново (docs/algoV2.md, шаги 1 и 6)
+    stale = await planning_service.draft_stale_reason(session, plan)
+    if stale:
+        raise PlanInUseError(stale)
     return plan
 
 
@@ -73,6 +78,7 @@ async def preview_approval(
     user_id: int | None = None,
     run_id: UUID | None = None,
     params: SolverParams | None = None,
+    suggest: bool = True,
 ) -> ReplanPreview:
     """Что предложить клиентам невлезших заявок: второй расчёт с раскрытыми окнами.
 
@@ -92,8 +98,14 @@ async def preview_approval(
         counts = await plans_repository.count_assignments_by_plan(session, [draft.id])
         _, assigned_count, _ = counts.get(draft.id, (0, 0, 0))
         suggestions = {}
-        if unassigned:
-            loaded = await planning_service.load_planning_day(session, draft.plan_date, office_id)
+        if unassigned and suggest:
+            # второй расчёт тоже идёт на выезд через запас: бригады свободны не раньше него
+            loaded = await planning_service.load_planning_day(
+                session,
+                draft.plan_date,
+                office_id,
+                not_before=planning_service.departure_moment(draft.plan_date),
+            )
             async with run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 50, 95):
                 await run_log.note(
                     f"не влезли в черновик №{draft.id}: "
@@ -150,7 +162,12 @@ async def decide_approval(
     run_id: UUID | None = None,
     params: SolverParams | None = None,
 ) -> PlanSummary:
-    """Применяет решения по невлезшим заявкам и считает день заново — новым черновиком.
+    """Применяет решения по невлезшим заявкам.
+
+    Перенос, отмена и «не дозвонились» только убирают работу из дня: маршруты от этого не
+    меняются, поэтому день не пересчитываем — тот же черновик утверждается как есть. Согласие
+    на предложенное время добавляет работу, и вот тогда идёт третий расчёт (docs/algoV2.md,
+    шаг 5) с ярусами шага 3: кто влез в первый расчёт, того выкидывать нельзя.
 
     Решения и расчёт — одна транзакция: не получился расчёт — заявки не меняются.
     Прежний черновик остаётся в списке планов, новый ссылается на него.
@@ -171,14 +188,22 @@ async def decide_approval(
 
     solver = solver_of(draft, keep_baseline=True)
     objective_order = planning_service.objective_order_from_plan(draft) or DEFAULT_OBJECTIVE_ORDER
+    # считаем заново только ради согласованного времени: без него в журнале не расчёт, а
+    # применение решений оператора
+    rebuilding = any(decision.action == "agree" for decision in decisions)
     async with run_log.track(
-        "build",
+        "build" if rebuilding else "decisions",
         office_id=office_id,
         plan_date=draft.plan_date,
         solver=solver.value,
         user_id=user_id,
         run_id=run_id,
     ):
+        placed_request_ids = {
+            assignment.request_id
+            for assignment in await plans_repository.list_plan_assignments(session, draft.id)
+            if assignment.engineer_id is not None
+        }
         async with run_log.step("Применяю решения оператора по заявкам", 2, 6):
             await run_log.note(
                 f"решения по {run_log.plural(len(decisions), 'заявке', 'заявкам', 'заявкам')} "
@@ -192,16 +217,44 @@ async def decide_approval(
                 user_id=user_id,
                 occasion="при утверждении",
             )
-        plan = await planning_service.build_inside_run(
-            session,
-            draft.plan_date,
-            solver,
-            objective_order,
-            office_id=office_id,
-            params=params,
-        )
-        plan.decisions_from_plan_id = draft.id
-        plan.decisions_count = len(decisions)
+        if rebuilding:
+            # ярус B третьего расчёта: кто влез в первый (docs/algoV2.md, шаг 5). Переставить
+            # их между бригадами и по времени решатель вправе, выкинуть — нет
+            plan = await planning_service.build_inside_run(
+                session,
+                draft.plan_date,
+                solver,
+                objective_order,
+                office_id=office_id,
+                params=params,
+                kept_request_ids=placed_request_ids,
+            )
+            plan.decisions_from_plan_id = draft.id
+            plan.decisions_count = len(decisions)
+        else:
+            plan = await drop_decided(session, draft, decisions)
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await planning_service.summarize_plans(session, [plan]))[0]
+
+
+async def drop_decided(session: AsyncSession, draft: Plan, decisions: list[ReplanDecision]) -> Plan:
+    """Убирает из черновика заявки, которые перенесли или отменили. Расчёта нет.
+
+    Работы стало меньше, маршруты бригад те же — пересчитывать нечего, и выпасть некому.
+    В плане эти заявки больше не числятся даже как невлезшие: их день уже другой.
+    """
+    decided = {decision.request_id for decision in decisions}
+    await run_log.note(
+        f"Без пересчёта: из дня убрано "
+        f"{run_log.plural(len(decided), 'заявка', 'заявки', 'заявок')}, "
+        "маршруты бригад не меняются"
+    )
+    await plans_repository.delete_assignments(session, draft.id, decided)
+    snapshot = draft.input_snapshot or {}
+    order = [
+        request_id for request_id in snapshot.get("request_order", []) if request_id not in decided
+    ]
+    draft.input_snapshot = {**snapshot, "request_order": order}
+    await session.flush()
+    return draft

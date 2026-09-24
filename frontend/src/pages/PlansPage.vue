@@ -107,12 +107,23 @@ watch(planRun, async (value) => {
   await load()
 })
 
-// утверждение черновика, в который вошли не все заявки: сначала предлагаем подобрать окна
+// черновик с невлезшими заявками: «Утвердить» просит по каждой решение (перенос или отмена)
+// и утверждает план как есть, «Подобрать окна» — второй расчёт с раскрытыми окнами
 const approvalTarget = ref(null)
+const approvalMode = ref('approve')
 
 function requestApproval(summary) {
-  if (!summary.parent_plan_id && summary.unassigned_count > 0) approvalTarget.value = summary
-  else approve(summary)
+  if (summary.parent_plan_id || summary.unassigned_count === 0) {
+    approve(summary)
+    return
+  }
+  approvalMode.value = 'approve'
+  approvalTarget.value = summary
+}
+
+function pickWindows(summary) {
+  approvalMode.value = 'windows'
+  approvalTarget.value = summary
 }
 
 function approveAsIs() {
@@ -123,8 +134,10 @@ function approveAsIs() {
 
 async function startDecisions(params) {
   const summary = approvalTarget.value
+  // «Утвердить»: решения только убирают работу из дня — план утверждается тем же действием
+  const approveAfter = approvalMode.value === 'approve'
   approvalTarget.value = null
-  await withRunLog(params, () => decideApproval(summary, params))
+  await withRunLog(params, () => decideApproval(summary, params, { approveAfter }))
 }
 
 // пришли из сравнения планов: открываем нужный план; из заявки — ещё и её точку на карте
@@ -397,6 +410,7 @@ onMounted(async () => {
           @select="openPlan"
           @remove="removePlan"
           @approve="requestApproval"
+          @pick-windows="pickWindows"
           @cancel-approval="cancelApproval"
           @replan-info="replanPlanId = $event"
           @replan="replanTarget = $event"
@@ -532,6 +546,7 @@ onMounted(async () => {
       v-if="approvalTarget"
       :summary="approvalTarget"
       :building="building"
+      :mode="approvalMode"
       @approve="approveAsIs"
       @decide="startDecisions"
       @close="approvalTarget = null"
