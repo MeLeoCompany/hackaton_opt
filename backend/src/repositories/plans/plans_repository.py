@@ -329,6 +329,20 @@ async def pending_replans(session: AsyncSession, parent_id: int) -> list[Plan]:
     return list(result.scalars().all())
 
 
+async def waiting_replans(session: AsyncSession) -> list[Plan]:
+    """Все посчитанные пересчёты, которые ещё ждут своего момента, по всем офисам."""
+    result = await session.execute(
+        select(Plan)
+        .where(
+            Plan.parent_plan_id.is_not(None),
+            Plan.approved_at.is_(None),
+            Plan.voided_at.is_(None),
+        )
+        .order_by(Plan.id)
+    )
+    return list(result.scalars().all())
+
+
 async def due_replans(session: AsyncSession, moment: datetime) -> list[Plan]:
     """Пересчёты, которым пора вступать в силу: их момент выезда уже настал."""
     result = await session.execute(

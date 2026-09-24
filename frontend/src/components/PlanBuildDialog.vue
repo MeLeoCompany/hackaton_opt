@@ -117,15 +117,20 @@ function onSiteVisit(route) {
   return route.visits.find((visit) => visit.arrived_at && !visit.finished_at) ?? null
 }
 
-// маршруты нужны, чтобы спросить про застрявшие бригады. Когда пересчёт запускают из списка
-// планов, план не открыт и маршрутов у страницы нет — дочитываем их сами
-const loadedRoutes = ref([])
-const planRoutes = computed(() => (props.routes.length ? props.routes : loadedRoutes.value))
+// План перечитываем при открытии диалога: из списка маршрутов у страницы нет, а сводка в
+// списке могла устареть — пересчёт, который она считает ждущим своего момента, к этой минуте
+// мог стать недействительным
+const loadedPlan = ref(null)
+const planRoutes = computed(() => (props.routes.length ? props.routes : loadedPlan.value?.routes ?? []))
+// какой пересчёт этого плана сейчас ждёт своего момента; null — ни одного
+const pendingReplanId = computed(
+  () => (loadedPlan.value ?? props.replanOf)?.pending_replan_id ?? null,
+)
 
 onMounted(async () => {
-  if (!props.replanOf || props.routes.length) return
+  if (!props.replanOf) return
   try {
-    loadedRoutes.value = (await getPlan(props.replanOf.id)).routes
+    loadedPlan.value = await getPlan(props.replanOf.id)
   } catch {
     // не прочитали — диалог работает как раньше, время бригады можно вписать при пересчёте
   }
@@ -267,10 +272,10 @@ function submit() {
       </section>
 
       <!-- один пересчёт уже посчитан и не утверждён: пока он есть, часть бригад стоит -->
-      <p v-if="replanOf?.pending_replan_id" class="warning">
+      <p v-if="pendingReplanId" class="warning">
         <span class="mark">!</span>
         <span>
-          Пересчёт №{{ replanOf.pending_replan_id }} уже посчитан и вступит в силу сам, в момент,
+          Пересчёт №{{ pendingReplanId }} уже посчитан и вступит в силу сам, в момент,
           на который посчитан. Пока этот момент не настал, бригады выезжают только туда, куда
           ведёт и он, а остальные стоят. Лучше закрыть это окно и дождаться его — или удалить,
           если он не нужен. Новый расчёт добавит ещё один пересчёт.

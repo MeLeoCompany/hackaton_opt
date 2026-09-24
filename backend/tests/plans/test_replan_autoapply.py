@@ -133,3 +133,33 @@ async def test_empty_day_snapshot_still_guards_against_new_requests():
         pytest.raises(planning_service.PlanInUseError, match="№13"),
     ):
         await planning_service.approve_replan(object(), plan)
+
+
+@pytest.mark.asyncio
+async def test_stale_replan_is_retired_without_waiting_for_its_moment():
+    """День изменился — ждать момента незачем: пока пересчёт висит, бригадам закрыт выезд."""
+    fresh = SimpleNamespace(id=321, voided_at=None, void_reason=None)
+    stale = SimpleNamespace(id=322, voided_at=None, void_reason=None)
+    session = FakeSession()
+    reasons = {321: None, 322: "Пересчёт №322 не вступит в силу: появились заявки №13"}
+
+    with (
+        patch.object(replan_autoapply, "async_session_maker", lambda: session),
+        patch.object(
+            replan_autoapply.plans_repository,
+            "waiting_replans",
+            AsyncMock(return_value=[fresh, stale]),
+        ),
+        patch.object(
+            replan_autoapply.planning_service,
+            "replan_stale_reason",
+            AsyncMock(side_effect=lambda _s, plan: reasons[plan.id]),
+        ),
+        patch.object(replan_autoapply.clock, "now", return_value=NOW),
+    ):
+        voided = await replan_autoapply.void_stale()
+
+    assert voided == [322]
+    assert fresh.voided_at is None
+    assert (stale.voided_at, "№13" in stale.void_reason) == (NOW, True)
+    assert session.commits == 1
