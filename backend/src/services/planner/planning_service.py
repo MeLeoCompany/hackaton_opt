@@ -608,6 +608,13 @@ async def approve_replan(
     Если с момента пересчёта бригады что-то отметили по заявкам, которые он раскладывал, —
     пересчёт устарел: считаем заново на актуальных данных.
     """
+    # отозванный пересчёт не утверждают и руками: его отозвали не просто так — план
+    # пересчитали заново или день изменился (replan_autoapply)
+    if getattr(plan, "voided_at", None) is not None:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} уже не вступит в силу. "
+            f"{plan.void_reason or 'День изменился с его расчёта'}"
+        )
     parent = await plans_repository.get_plan(session, plan.parent_plan_id)
     current = await plans_repository.get_approved_plan(
         session, plan.plan_date, office_id=plan.office_id

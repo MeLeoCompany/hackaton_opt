@@ -99,13 +99,6 @@ function solveDuration(summary) {
 // что стало с расчётом — ровно одна плашка на строку. Откуда он взялся, видно строкой выше
 // и по ветке; беды его пересчётов — по «!» у номера
 function fate(summary) {
-  if (summary.voided_at) {
-    return {
-      text: `не вступил в силу в ${moscowTimeOf(summary.voided_at)}`,
-      cls: 'takes-effect voided',
-      title: summary.void_reason ?? 'За время расчёта день изменился — посчитайте заново',
-    }
-  }
   if (summary.superseded_at) {
     return {
       text: `заменён в ${moscowTimeOf(summary.superseded_at)}`,
@@ -118,6 +111,13 @@ function fate(summary) {
       text: `действует с ${moscowTimeOf(summary.approved_at)}`,
       cls: 'approved',
       title: 'Заявки этого плана закреплены за днём',
+    }
+  }
+  if (summary.voided_at) {
+    return {
+      text: `не вступил в силу в ${moscowTimeOf(summary.voided_at)}`,
+      cls: 'takes-effect voided',
+      title: summary.void_reason ?? 'За время расчёта день изменился — посчитайте заново',
     }
   }
   const window = planWindow(summary)

@@ -264,7 +264,24 @@ async def build_for_approval(
         "day_requests": state,
         "stuck_brigades": sorted(stuck),
     }
+    await retire_previous_replans(session, parent, built.plan)
     return built.plan
+
+
+async def retire_previous_replans(session: AsyncSession, parent: Plan, plan: Plan) -> list[int]:
+    """План пересчитали заново — прежние его пересчёты ждать своего момента больше не должны.
+
+    Иначе в этот момент вступило бы в силу несколько расчётов подряд, и бригады получили бы то
+    один маршрут, то другой. Действует последний посчитанный (docs/algoV2.md, шаг 6).
+    """
+    retired = []
+    for other in await plans_repository.pending_replans(session, parent.id):
+        if other.id == plan.id:
+            continue
+        other.voided_at = clock.now()
+        other.void_reason = f"Отменён пересчётом №{plan.id}: план пересчитали заново"
+        retired.append(other.id)
+    return retired
 
 
 async def replannable(

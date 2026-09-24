@@ -472,6 +472,10 @@ async def test_the_day_before_the_calculation_is_remembered_in_the_plan():
             replan_service.planning_service, "plan_routes", AsyncMock(return_value=([], False))
         ),
         patch.object(replan_service.planning_service, "set_plan_distance"),
+        # прежних пересчётов у этого плана нет — отзывать нечего
+        patch.object(
+            replan_service.plans_repository, "pending_replans", AsyncMock(return_value=[])
+        ),
     ):
         built = await replan_service.build_for_approval(
             session, parent, SolverName.CUOPT, DEFAULT_OBJECTIVE_ORDER, at(12), office_id=1
@@ -577,3 +581,50 @@ async def test_brigade_that_overran_the_norm_is_not_counted_free_right_away():
 
 def test_estimate_follows_the_norm_while_it_holds():
     assert planning_service.free_at_estimate(at(12), 60, at(12, 15)) == at(13)
+
+
+@pytest.mark.asyncio
+async def test_new_replan_retires_the_previous_one():
+    """Пересчитали дважды — в силу вступит последний, прежний ждать своего момента не должен."""
+    parent = SimpleNamespace(id=323)
+    fresh = SimpleNamespace(id=325)
+    previous = SimpleNamespace(id=324, voided_at=None, void_reason=None)
+
+    with (
+        patch.object(
+            replan_service.plans_repository,
+            "pending_replans",
+            AsyncMock(return_value=[previous, fresh]),
+        ),
+        patch.object(replan_service.clock, "now", return_value=at(14)),
+    ):
+        retired = await replan_service.retire_previous_replans(object(), parent, fresh)
+
+    assert retired == [324]
+    assert previous.voided_at == at(14)
+    assert "№325" in previous.void_reason
+
+
+@pytest.mark.asyncio
+async def test_retired_replan_is_not_approved_by_hand():
+    """Отозванный пересчёт не утверждают кнопкой: иначе план и действует, и недействителен."""
+    plan = SimpleNamespace(
+        id=326,
+        parent_plan_id=323,
+        plan_date=date(2026, 8, 17),
+        office_id=1,
+        approved_at=None,
+        voided_at=at(11),
+        void_reason="Отменён пересчётом №327: план пересчитали заново",
+        input_snapshot={},
+        replanned_at=at(12),
+    )
+    repository = planning_service.plans_repository
+
+    with (
+        patch.object(repository, "get_plan", AsyncMock()) as parent,
+        pytest.raises(planning_service.PlanInUseError, match="№327"),
+    ):
+        await planning_service.approve_replan(object(), plan)
+
+    parent.assert_not_awaited()

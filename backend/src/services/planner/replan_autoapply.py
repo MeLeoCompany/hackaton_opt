@@ -31,15 +31,25 @@ TICK_SECONDS = 10
 async def void_stale() -> list[int]:
     """Помечает недействительными пересчёты, которые уже не вступят в силу.
 
-    Пересчёт раскладывал день таким, каким он был в начале расчёта. Появилась или отменилась
-    заявка — в свой момент утверждение его не примет, и ждать этого момента незачем: пока он
-    висит, бригадам закрыт выезд туда, куда он их не ведёт (departure_gate). Лучше сказать
-    сразу — оператор посчитает заново с новыми вводными (docs/algoV2.md, шаги 6 и 8).
+    Таких два вида: прежний пересчёт плана, который посчитали заново, и пересчёт, чей день
+    успел измениться — появилась или отменилась заявка. Ждать их момента незачем: утверждение
+    их не примет, а пока они висят, бригадам закрыт выезд туда, куда они их не ведут
+    (departure_gate). Лучше сказать сразу — оператор посчитает заново (docs/algoV2.md, шаги 6 и 8).
     """
     voided = []
     async with async_session_maker() as session:
-        for plan in await plans_repository.waiting_replans(session):
-            reason = await planning_service.replan_stale_reason(session, plan)
+        waiting = await plans_repository.waiting_replans(session)
+        # на один план ждёт только последний расчёт: иначе в свой момент их вступило бы
+        # в силу несколько подряд и бригады получили бы то один маршрут, то другой
+        newest: dict[int, int] = {}
+        for plan in waiting:
+            newest[plan.parent_plan_id] = max(newest.get(plan.parent_plan_id, 0), plan.id)
+        for plan in waiting:
+            last = newest[plan.parent_plan_id]
+            if plan.id != last:
+                reason = f"Отменён пересчётом №{last}: план пересчитали заново"
+            else:
+                reason = await planning_service.replan_stale_reason(session, plan)
             if reason is None:
                 continue
             plan.voided_at = clock.now()

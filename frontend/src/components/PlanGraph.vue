@@ -24,10 +24,10 @@ const { now } = useSystemTime()
 // же, где его берёт таблица, иначе в графе и в строке было бы написано разное
 function state(summary) {
   if (summary.superseded_at) return { text: `до ${moscowTimeOf(summary.superseded_at)}`, cls: 'past' }
+  if (summary.approved_at) return { text: 'действует', cls: 'live' }
   if (summary.voided_at) {
     return { text: 'не вступил в силу', cls: 'failed', title: summary.void_reason ?? '' }
   }
-  if (summary.approved_at) return { text: 'действует', cls: 'live' }
   const window = planWindowOf(summary, now.value)
   if (window?.state === 'expired') {
     return { text: 'не вступит в силу', cls: 'failed', title: window.title }

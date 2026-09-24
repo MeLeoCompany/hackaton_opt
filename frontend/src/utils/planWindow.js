@@ -77,7 +77,7 @@ export function draftWindow(summary, now) {
 
 // расчёт, который утверждать поздно или не с теми вводными: кнопки закрыты
 export function planBlocked(summary, now) {
-  return planWindowOf(summary, now)?.state === 'expired'
+  return ['expired', 'voided'].includes(planWindowOf(summary, now)?.state)
 }
 
 // плашка срока: у пересчёта своя, у черновика своя — на строку приходится одна

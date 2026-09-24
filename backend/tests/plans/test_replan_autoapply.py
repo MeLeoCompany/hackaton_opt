@@ -138,8 +138,8 @@ async def test_empty_day_snapshot_still_guards_against_new_requests():
 @pytest.mark.asyncio
 async def test_stale_replan_is_retired_without_waiting_for_its_moment():
     """День изменился — ждать момента незачем: пока пересчёт висит, бригадам закрыт выезд."""
-    fresh = SimpleNamespace(id=321, voided_at=None, void_reason=None)
-    stale = SimpleNamespace(id=322, voided_at=None, void_reason=None)
+    fresh = SimpleNamespace(id=321, parent_plan_id=318, voided_at=None, void_reason=None)
+    stale = SimpleNamespace(id=322, parent_plan_id=319, voided_at=None, void_reason=None)
     session = FakeSession()
     reasons = {321: None, 322: "Пересчёт №322 не вступит в силу: появились заявки №13"}
 
@@ -163,3 +163,31 @@ async def test_stale_replan_is_retired_without_waiting_for_its_moment():
     assert fresh.voided_at is None
     assert (stale.voided_at, "№13" in stale.void_reason) == (NOW, True)
     assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_only_the_last_replan_of_a_plan_keeps_waiting():
+    """Пересчитали дважды — ждёт последний, прежний отзываем, не дожидаясь его момента."""
+    previous = SimpleNamespace(id=324, parent_plan_id=323, voided_at=None, void_reason=None)
+    last = SimpleNamespace(id=325, parent_plan_id=323, voided_at=None, void_reason=None)
+    session = FakeSession()
+
+    with (
+        patch.object(replan_autoapply, "async_session_maker", lambda: session),
+        patch.object(
+            replan_autoapply.plans_repository,
+            "waiting_replans",
+            AsyncMock(return_value=[previous, last]),
+        ),
+        patch.object(
+            replan_autoapply.planning_service, "replan_stale_reason", AsyncMock(return_value=None)
+        ) as stale,
+        patch.object(replan_autoapply.clock, "now", return_value=NOW),
+    ):
+        voided = await replan_autoapply.void_stale()
+
+    assert voided == [324]
+    assert "№325" in previous.void_reason
+    assert last.voided_at is None
+    # у прежнего день не сверяем: он отозван по более простой причине
+    assert stale.await_count == 1
