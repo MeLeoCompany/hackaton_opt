@@ -232,6 +232,10 @@ def consume_equipment(
     if not consumed_by_engineer:
         return loaded
     instance = copy.copy(loaded.instance)
+    # build_compatibility перезаписывает матрицу на месте. После copy.copy она всё ещё
+    # принадлежит исходной задаче, поэтому без отдельной копии пересчёт незаметно менял бы
+    # совместимость в loaded, переданном вызывающей стороне.
+    instance.compatible = loaded.instance.compatible.copy()
     instance.engineers = [
         replace(
             engineer,

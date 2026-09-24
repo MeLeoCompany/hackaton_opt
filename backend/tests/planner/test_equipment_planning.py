@@ -53,6 +53,7 @@ def test_consumed_equipment_reduces_stock_and_rebuilds_compatibility():
 
     assert adjusted.instance.engineers[0].equipment_capacity == {7: 1}
     assert adjusted.instance.candidates(0) == []
-    # Исходный снимок задачи не меняется.
+    # Исходный снимок задачи не меняется ни в запасах, ни в общей mutable-матрице.
     assert loaded.instance.engineers[0].equipment_capacity == {7: 3}
-
+    assert loaded.instance.candidates(0) == [0]
+    assert adjusted.instance.compatible is not loaded.instance.compatible

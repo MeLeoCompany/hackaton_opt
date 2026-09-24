@@ -27,12 +27,30 @@ def test_password_is_checked_by_hash():
     assert not verify_password("secret", stored)
 
 
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "broken",
+        "scrypt$not-a-number$8$1$salt$digest",
+        "scrypt$16384$8$1$%%%$%%%",
+    ],
+)
+def test_broken_password_hash_is_rejected_instead_of_crashing(stored):
+    assert not verify_password("secret", stored)
+
+
 def test_token_carries_user_and_rejects_tampering_and_expiry():
     token = create_token(7, now=1_000)
 
     assert read_token(token, now=1_001) == 7
     assert read_token(token[:-2] + "xx", now=1_001) is None
     assert read_token(token, now=1_000 + 13 * 3600) is None  # 12 часов по умолчанию
+
+
+def test_token_clock_accepts_unix_epoch_as_explicit_time():
+    token = create_token(7, now=0)
+
+    assert read_token(token, now=1) == 7
 
 
 @pytest.mark.asyncio
