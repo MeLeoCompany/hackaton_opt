@@ -235,6 +235,7 @@ async def build_for_approval(
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
     widen_request_ids: set[int] | None = None,
+    fallback_plan_id: int | None = None,
 ) -> Plan:
     """Считает пересчёт и запоминает, каким день был, когда расчёт начался.
 
@@ -256,6 +257,7 @@ async def build_for_approval(
         params=params,
         kept_request_ids=kept_request_ids,
         widen_request_ids=widen_request_ids,
+        fallback_plan_id=fallback_plan_id,
     )
     # маршруты строятся один раз здесь и ложатся в кеш: открытие пересчёта возьмёт готовые
     async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
@@ -332,6 +334,7 @@ async def build_replan(
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
     widen_request_ids: set[int] | None = None,
+    fallback_plan_id: int | None = None,
 ) -> ReplanResult:
     """Считает пересчёт и записывает его в сессию (без коммита).
 
@@ -344,6 +347,11 @@ async def build_replan(
     )
     if widen_request_ids:
         loaded, kept_request_ids = planner_loader.widen_day(loaded, widen_request_ids)
+    fallback_solution = (
+        await planning_service.solution_from_plan(session, loaded, fallback_plan_id)
+        if fallback_plan_id is not None
+        else None
+    )
 
     policy = validate_objective_order(objective_order)
     started = time.perf_counter()
@@ -351,7 +359,13 @@ async def build_replan(
         round_ranks(loaded.instance.requests, kept_request_ids) if kept_request_ids else None
     )
     solution = await planning_service.solve_with(
-        solver, loaded, policy, ranks, params=params, kept_request_ids=kept_request_ids
+        solver,
+        loaded,
+        policy,
+        ranks,
+        params=params,
+        kept_request_ids=kept_request_ids,
+        fallback_solution=fallback_solution,
     )
     duration_ms = (time.perf_counter() - started) * 1000
 

@@ -221,6 +221,7 @@ async def pick_windows(
                 office_id=office_id,
                 params=params,
                 widen_request_ids=widened,
+                fallback_plan_id=source.id,
                 at=getattr(source, "effective_at", None),
             )
         else:
@@ -239,6 +240,7 @@ async def pick_windows(
                 office_id=office_id,
                 params=params,
                 widen_request_ids=widened,
+                fallback_plan_id=source.id,
             )
         # Подбор окон может добавить исходно невлезшие заявки, но не вправе создавать новых
         # пострадавших. Если решатель или проверка R5 нарушили этот инвариант, предложения
@@ -257,12 +259,20 @@ async def pick_windows(
         }
         lost = sorted(kept - result_assigned)
         if lost:
-            raise PlanDataError(
-                [
-                    "подбор новых окон не смог сохранить ранее назначенные заявки: "
-                    + ", ".join(f"№{request_id}" for request_id in lost)
-                ]
+            message = (
+                "Безопасные новые окна не найдены: варианты потребовали бы снять ранее "
+                "назначенные заявки "
+                + ", ".join(f"№{request_id}" for request_id in lost)
+                + ". Исходный план сохранён — невлезшие заявки можно перенести или отменить"
             )
+            await run_log.note(message, level="warning")
+            source_id = source.id
+            # Новый план и отзыв прежних пересчётов были только в текущей транзакции.
+            # Откатываем их и возвращаем оператору исходные невлезшие заявки вместо 422.
+            await session.rollback()
+            fallback = await preview_approval(session, source_id, office_id=office_id)
+            fallback.notice = message
+            return fallback
         plan.decisions_from_plan_id = source.id
         await session.commit()
         await run_log.attach_plan(plan.id)

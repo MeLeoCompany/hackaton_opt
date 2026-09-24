@@ -204,6 +204,7 @@ async def build_inside_run(
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
     widen_request_ids: set[int] | None = None,
+    fallback_plan_id: int | None = None,
     at: datetime | None = None,
 ) -> Plan:
     """Сам расчёт дня внутри запуска журнала: план записан в сессию, коммит — за вызывающим.
@@ -230,12 +231,23 @@ async def build_inside_run(
     loaded = await load_planning_day(session, plan_date, office_id, not_before=at)
     if widen_request_ids:
         loaded, kept_request_ids = planner_loader.widen_day(loaded, widen_request_ids)
+    fallback_solution = (
+        await solution_from_plan(session, loaded, fallback_plan_id)
+        if fallback_plan_id is not None
+        else None
+    )
     policy = validate_objective_order(objective_order)
 
     started = time.perf_counter()
     ranks = round_ranks(loaded.instance.requests, kept_request_ids) if kept_request_ids else None
     solution = await solve_with(
-        solver, loaded, policy, ranks, params=params, kept_request_ids=kept_request_ids
+        solver,
+        loaded,
+        policy,
+        ranks,
+        params=params,
+        kept_request_ids=kept_request_ids,
+        fallback_solution=fallback_solution,
     )
     duration_ms = (time.perf_counter() - started) * 1000
 
@@ -273,6 +285,7 @@ async def solve_with(
     ranks: dict[int, int] | None = None,
     params: SolverParams | None = None,
     kept_request_ids: set[int] | None = None,
+    fallback_solution: cuopt_solver.DaySolution | None = None,
 ) -> cuopt_solver.DaySolution:
     """cuOpt считает на видеокарте, OR-Tools — на процессоре, базовый алгоритм — прямо здесь.
 
@@ -291,8 +304,44 @@ async def solve_with(
             else cuopt_solver.solve_day
         )
         return await transit_schedule.solve_day(
-            loaded, objective_order, ranks, params, solve=solve, kept_request_ids=kept_request_ids
+            loaded,
+            objective_order,
+            ranks,
+            params,
+            solve=solve,
+            kept_request_ids=kept_request_ids,
+            fallback_solution=fallback_solution,
         )
+
+
+async def solution_from_plan(
+    session: AsyncSession, loaded: LoadedDay, plan_id: int
+) -> cuopt_solver.DaySolution:
+    """Восстановить маршруты сохранённого плана в индексах текущей задачи.
+
+    При подборе окон этот план уже прошёл точную проверку маршрутов. Он служит допустимой
+    основой, если новый запуск решателя после проверки R5 потеряет прежнее назначение.
+    Заявки и бригады, отсутствующие в текущем остатке дня, намеренно пропускаются.
+    """
+    engineer_indices = {engineer.id: index for index, engineer in enumerate(loaded.engineers)}
+    request_indices = {request.id: index for index, request in enumerate(loaded.requests)}
+    routes: dict[int, list[cuopt_solver.PlannedVisit]] = defaultdict(list)
+    for assignment in await plans_repository.list_plan_assignments(session, plan_id):
+        engineer_index = engineer_indices.get(assignment.engineer_id)
+        request_index = request_indices.get(assignment.request_id)
+        if (
+            engineer_index is None
+            or request_index is None
+            or assignment.planned_arrival_time is None
+        ):
+            continue
+        routes[engineer_index].append(
+            cuopt_solver.PlannedVisit(
+                request_index=request_index,
+                work_start_minute=loaded.day.to_minutes(assignment.planned_arrival_time),
+            )
+        )
+    return cuopt_solver.DaySolution(dict(routes))
 
 
 @dataclass(frozen=True)

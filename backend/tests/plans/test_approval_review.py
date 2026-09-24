@@ -233,6 +233,7 @@ async def test_window_search_saves_its_own_calculation():
     # базовый алгоритм ярусов не знает: подбор окон считает cuOpt
     assert build.await_args.args[2] is SolverName.CUOPT
     assert build.await_args.kwargs["widen_request_ids"] == {12}
+    assert build.await_args.kwargs["fallback_plan_id"] == source.id
     assert новый.decisions_from_plan_id == 40  # в графе дня видно, из чего он вырос
     assert preview.await_args.args[1] == 41
     session.commit.assert_awaited_once()
@@ -274,7 +275,7 @@ async def test_replan_window_search_keeps_original_calculation_moment():
             approval_review.replan_service,
             "build_for_approval",
             AsyncMock(return_value=новый),
-        ),
+        ) as build,
         patch.object(
             approval_review.plans_repository,
             "list_plan_assignments",
@@ -288,14 +289,15 @@ async def test_replan_window_search_keeps_original_calculation_moment():
 
     assert result == "предложения"
     assert replannable.await_args.args[2] == source.replanned_at
+    assert build.await_args.kwargs["fallback_plan_id"] == source.id
 
 
 @pytest.mark.asyncio
 async def test_window_search_rejects_newly_displaced_requests():
-    """Новое окно нельзя предлагать ценой заявки, уже вошедшей в исходный расчёт."""
+    """Небезопасный подбор возвращает исходные переносы вместо тупиковой ошибки."""
     source = draft(solver="cuopt")
     новый = SimpleNamespace(id=41, decisions_from_plan_id=None, decisions_count=None)
-    session = SimpleNamespace(commit=AsyncMock(), flush=AsyncMock())
+    session = SimpleNamespace(commit=AsyncMock(), flush=AsyncMock(), rollback=AsyncMock())
     find, approved, listed, counted = patched(source, [assigned(11), unassigned(12)])
     assignments = AsyncMock(
         side_effect=[
@@ -304,6 +306,7 @@ async def test_window_search_rejects_newly_displaced_requests():
             [unassigned(11), assigned(12)],
         ]
     )
+    fallback = SimpleNamespace(notice=None)
 
     with (
         find,
@@ -321,11 +324,20 @@ async def test_window_search_rejects_newly_displaced_requests():
         patch.object(
             approval_review.plans_repository, "list_plan_assignments", assignments
         ),
-        pytest.raises(PlanDataError, match="№11"),
+        patch.object(
+            approval_review,
+            "preview_approval",
+            AsyncMock(return_value=fallback),
+        ) as preview,
     ):
-        await approval_review.pick_windows(session, 40, office_id=1)
+        result = await approval_review.pick_windows(session, 40, office_id=1)
 
+    assert result is fallback
+    assert "№11" in fallback.notice
+    assert "перенести или отменить" in fallback.notice
+    session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
+    assert preview.await_args.args[1] == source.id
 
 
 @pytest.mark.asyncio

@@ -123,6 +123,32 @@ async def test_missing_r5_route_during_insertion_keeps_verified_plan():
 
 
 @pytest.mark.asyncio
+async def test_verified_fallback_wins_when_new_solution_loses_kept_request():
+    """Раскрытое окно не должно вытеснять заявку из уже проверенного плана."""
+    loaded = loaded_day()
+    candidate = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(1, 570)]})
+    fallback = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+
+    with patch.object(
+        transit_schedule,
+        "repair_unassigned",
+        AsyncMock(side_effect=[candidate, fallback]),
+    ):
+        result = await transit_schedule.finish_solution(
+            loaded,
+            candidate,
+            transit_schedule.node_points(loaded),
+            {},
+            DEFAULT_OBJECTIVE_ORDER,
+            None,
+            {10},
+            fallback,
+        )
+
+    assert result is fallback
+
+
+@pytest.mark.asyncio
 async def test_unfixable_visit_is_left_unassigned():
     loaded = loaded_day()
     solution = cuopt_solver.DaySolution(

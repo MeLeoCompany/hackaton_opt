@@ -130,6 +130,7 @@ onBeforeUnmount(() => {
 
       <PlanRunProgress v-if="searching" :run="run" @cancel="cancelRun" />
       <p v-if="searchError" class="error">{{ searchError }}</p>
+      <p v-if="preview?.notice" class="notice">{{ preview.notice }}</p>
 
       <p v-if="preview && !problems.length" class="hint">
         Звонить некому: невлезшие заявки уже не ждут планирования — закреплены за другим планом,
@@ -254,6 +255,15 @@ onBeforeUnmount(() => {
 .error {
   margin: 0;
   color: #b91c1c;
+  font-size: 13px;
+}
+
+.notice {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
   font-size: 13px;
 }
 </style>

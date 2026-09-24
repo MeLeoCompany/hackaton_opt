@@ -389,6 +389,53 @@ async def repair_unassigned(
     return current
 
 
+async def finish_solution(
+    loaded: LoadedDay,
+    solution: cuopt_solver.DaySolution,
+    points: list[Point],
+    cache: dict[tuple[int, int, int], int],
+    objective_order: tuple[ObjectiveCriterion, ...],
+    ranks: dict[int, int] | None,
+    kept_request_ids: set[int] | None,
+    fallback_solution: cuopt_solver.DaySolution | None,
+) -> cuopt_solver.DaySolution:
+    """Доразместить заявки и не ухудшить уже проверенный исходный план.
+
+    Обычный результат решателя остаётся первым кандидатом. Если после точной проверки R5
+    он потерял прежние назначения, отдельно пытаемся встроить новые окна в маршруты
+    исходного плана. Побеждает вариант по той же строгой иерархии, что используется при
+    сравнении попыток; поэтому допустимая основа не даст случайно выкинуть старую заявку.
+    """
+    result = await repair_unassigned(
+        loaded, solution, points, cache, objective_order, ranks, kept_request_ids
+    )
+    if fallback_solution is None:
+        return result
+    fallback = await repair_unassigned(
+        loaded,
+        fallback_solution,
+        points,
+        cache,
+        objective_order,
+        ranks,
+        kept_request_ids,
+    )
+    result_score = checked_solution_score(
+        loaded.instance, result, objective_order, ranks, kept_request_ids
+    )
+    fallback_score = checked_solution_score(
+        loaded.instance, fallback, objective_order, ranks, kept_request_ids
+    )
+    if fallback_score > result_score:
+        await run_log.note(
+            "Новый вариант потерял прежние назначения: использую проверенные маршруты "
+            "исходного плана и безопасное доразмещение",
+            level="warning",
+        )
+        return fallback
+    return result
+
+
 async def explain_retry(
     current: np.ndarray, updated: np.ndarray, attempt: int, last_attempt: bool
 ) -> None:
@@ -425,6 +472,7 @@ async def solve_day(
     params: SolverParams | None = None,
     solve: Solver | None = None,
     kept_request_ids: set[int] | None = None,
+    fallback_solution: cuopt_solver.DaySolution | None = None,
 ) -> cuopt_solver.DaySolution:
     """Уточнять только использованные плечи, не пересчитывая полную матрицу R5.
 
@@ -437,12 +485,26 @@ async def solve_day(
     # с другим решателем видели одну и ту же точку подмены
     solve = solve or cuopt_solver.solve_day
     if TRANSIT_ID not in loaded.instance.travel_min:
-        return await solve(
+        solution = await solve(
             loaded.instance, objective_order=objective_order, ranks=ranks, params=params
+        )
+        if fallback_solution is None:
+            return solution
+        points = node_points(loaded)
+        cache: dict[tuple[int, int, int], int] = {}
+        return await finish_solution(
+            loaded,
+            solution,
+            points,
+            cache,
+            objective_order,
+            ranks,
+            kept_request_ids,
+            fallback_solution,
         )
 
     points = node_points(loaded)
-    cache: dict[tuple[int, int, int], int] = {}
+    cache = {}
     instance: ProblemInstance = loaded.instance
     best: cuopt_solver.DaySolution | None = None
     best_score: tuple[float, ...] | None = None
@@ -469,8 +531,15 @@ async def solve_day(
                 await run_log.note(
                     f"Расписание сходится, но вариант попытки {best_attempt} лучше — сохраняю его"
                 )
-                return await repair_unassigned(
-                    loaded, best, points, cache, objective_order, ranks, kept_request_ids
+                return await finish_solution(
+                    loaded,
+                    best,
+                    points,
+                    cache,
+                    objective_order,
+                    ranks,
+                    kept_request_ids,
+                    fallback_solution,
                 )
             if last_attempt and sum(map(len, checked.routes.values())) < sum(
                 map(len, solution.routes.values())
@@ -478,8 +547,15 @@ async def solve_day(
                 await run_log.note("Сохраняю проверенную часть последнего варианта")
             else:
                 await run_log.note("Расписание сходится: план принят")
-            return await repair_unassigned(
-                loaded, checked, points, cache, objective_order, ranks, kept_request_ids
+            return await finish_solution(
+                loaded,
+                checked,
+                points,
+                cache,
+                objective_order,
+                ranks,
+                kept_request_ids,
+                fallback_solution,
             )
         # Даже если статическая матрица ошиблась, оставшаяся часть маршрута может быть
         # выполнима. Сохраняем её до следующего запуска cuOpt: последний вариант не
@@ -512,7 +588,7 @@ async def solve_day(
             await run_log.note(
                 f"Матрица больше не меняется: сохраняю вариант попытки {best_attempt}"
             )
-            return await repair_unassigned(
+            return await finish_solution(
                 loaded,
                 best,
                 points,
@@ -520,6 +596,7 @@ async def solve_day(
                 objective_order,
                 ranks,
                 kept_request_ids,
+                fallback_solution,
             )
         instance = copy.copy(instance)
         instance.travel_min = {**instance.travel_min, TRANSIT_ID: updated}

@@ -105,6 +105,8 @@ class ReplanPreview(BaseModel):
     unassigned: list[ReplanProblem] = []
     # ширина обещанного окна: предложенное время плюс этот допуск
     promise_tolerance_minutes: int = 30
+    # пояснение к результату подбора: например, почему безопасных новых окон не нашлось
+    notice: str | None = None
 
 
 class BrigadeFreeAt(BaseModel):
