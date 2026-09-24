@@ -6,11 +6,18 @@
 import { COVERAGE_AREAS, COVERAGE_HINT } from '../utils/coverageLayer.js'
 import { useCoverage } from '../composables/useCoverage.js'
 
+// на странице тестовых маршрутов карта начинается под самыми часами демонстрации:
+// там ползунок опускаем, чтобы они не накладывались друг на друга
+defineProps({ lowered: { type: Boolean, default: false } })
+
 const { shown } = useCoverage()
 </script>
 
 <template>
-  <label class="coverage-toggle" :title="`${COVERAGE_HINT} · зон: ${COVERAGE_AREAS}`">
+  <label
+    :class="['coverage-toggle', { lowered }]"
+    :title="`${COVERAGE_HINT} · зон: ${COVERAGE_AREAS}`"
+  >
     <span class="switch">
       <input v-model="shown" type="checkbox" />
       <span class="slider"></span>
@@ -37,6 +44,10 @@ const { shown } = useCoverage()
   font-size: 12px;
   cursor: pointer;
   user-select: none;
+}
+
+.coverage-toggle.lowered {
+  top: 56px;
 }
 
 .caption {

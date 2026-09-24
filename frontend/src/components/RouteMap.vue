@@ -125,7 +125,8 @@ watch(() => props.route, drawRoute)
   <!-- карта тянется на всю высоту блока, ползунок покрытия — поверх неё в углу -->
   <div class="map-frame">
     <div ref="container" class="map"></div>
-    <CoverageToggle />
+    <!-- часы демонстрации висят ровно над этим углом карты: опускаем ползунок под них -->
+    <CoverageToggle lowered />
   </div>
 </template>
 
