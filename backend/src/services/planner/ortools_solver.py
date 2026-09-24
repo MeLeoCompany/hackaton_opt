@@ -71,6 +71,7 @@ def solve(
         [end_node] * vehicle_count,
     )
     routing = pywrapcp.RoutingModel(manager)
+    node_to_order = {int(node): order for order, node in enumerate(inputs.order_locations)}
 
     service_minutes = [0] * (inputs.location_count + 1)
     for order_index, node in enumerate(inputs.order_locations):
@@ -141,6 +142,24 @@ def solve(
         time_dimension.CumulVar(routing.End(vehicle)).SetRange(shift_start, shift_end)
         routing.AddVariableMinimizedByFinalizer(time_dimension.CumulVar(routing.Start(vehicle)))
 
+    # Каждый тип оборудования — независимая вместимость маршрута. Расход происходит на
+    # заявке, запас индивидуален для каждой бригады.
+    for equipment_id, (demands, capacities) in inputs.equipment_dimensions.items():
+        demand_callback = routing.RegisterUnaryTransitCallback(
+            lambda index, values=demands: int(
+                values[node_to_order[manager.IndexToNode(index)]]
+                if manager.IndexToNode(index) in node_to_order
+                else 0
+            )
+        )
+        routing.AddDimensionWithVehicleCapacity(
+            demand_callback,
+            0,
+            [int(capacity) for capacity in capacities],
+            True,
+            f"Оборудование_{equipment_id}",
+        )
+
     search = pywrapcp.DefaultRoutingSearchParameters()
     search.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
@@ -160,7 +179,6 @@ def solve(
             return []
         raise ExternalServiceError("OR-Tools не нашёл решение: задача оказалась неразрешимой")
 
-    node_to_order = {int(node): order for order, node in enumerate(inputs.order_locations)}
     visits: list[tuple[int, int, float]] = []
     used_vehicles = 0
     for vehicle in range(vehicle_count):

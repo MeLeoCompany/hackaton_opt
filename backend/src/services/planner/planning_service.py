@@ -233,6 +233,7 @@ async def build_inside_run(
         loaded, kept_request_ids = planner_loader.widen_day(
             loaded, widen_request_ids, not_before=at
         )
+    await planner_loader.describe_equipment(loaded)
     fallback_solution = (
         await solution_from_plan(session, loaded, fallback_plan_id)
         if fallback_plan_id is not None
@@ -1150,14 +1151,14 @@ async def save_solution(
                 "engineer_id": None,
                 "visit_order": None,
                 "planned_arrival_time": None,
-                "unassigned_reason": unassigned_reason(loaded, request_index),
+                "unassigned_reason": unassigned_reason(loaded, request_index, solution),
             },
         )
 
     await session.flush()
     assigned_count = len(assigned_request_indices)
     unassigned = [
-        unassigned_reason(loaded, index)
+        unassigned_reason(loaded, index, solution)
         for index in range(len(loaded.requests))
         if index not in assigned_request_indices
     ]
@@ -1172,7 +1173,11 @@ async def save_solution(
     return plan
 
 
-def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
+def unassigned_reason(
+    loaded: LoadedDay,
+    request_index: int,
+    solution: cuopt_solver.DaySolution | None = None,
+) -> str:
     """Почему заявка не назначена — понятным диспетчеру языком.
 
     Для совместимых исполнителей различаем невозможный отдельный первый выезд и
@@ -1180,6 +1185,23 @@ def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
     """
     candidates = loaded.instance.candidates(request_index)
     if candidates:
+        demand = loaded.instance.requests[request_index].equipment_demand
+        if demand and solution is not None:
+            has_remaining_stock = any(
+                loaded.instance.route_fits_equipment(
+                    engineer_index,
+                    [
+                        *(
+                            visit.request_index
+                            for visit in solution.routes.get(engineer_index, [])
+                        ),
+                        request_index,
+                    ],
+                )
+                for engineer_index in candidates
+            )
+            if not has_remaining_stock:
+                return equipment_shortage_reason(loaded, request_index, distributed=True)
         if any(can_serve_as_first_visit(loaded, request_index, index) for index in candidates):
             return SCHEDULE_REASON
         return TIME_REASON
@@ -1194,10 +1216,35 @@ def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
     if not engineers_with_skill:
         return f"На этот день нет исполнителя с навыком «{skill_name}»"
 
-    if request.transport_id is None:
-        return SCHEDULE_REASON
-    transport_name = loaded.transport_names.get(request.transport_id, f"№{request.transport_id}")
-    return f"Исполнители с навыком «{skill_name}» есть, но ни у одного нет транспорта «{transport_name}»"
+    engineers_with_transport = [
+        engineer
+        for engineer in engineers_with_skill
+        if request.transport_id is None or engineer.transport_id == request.transport_id
+    ]
+    if not engineers_with_transport:
+        transport_name = loaded.transport_names.get(
+            request.transport_id, f"№{request.transport_id}"
+        )
+        return (
+            f"Исполнители с навыком «{skill_name}» есть, но ни у одного нет транспорта "
+            f"«{transport_name}»"
+        )
+    if loaded.instance.requests[request_index].equipment_demand:
+        return equipment_shortage_reason(loaded, request_index, distributed=False)
+    return SCHEDULE_REASON
+
+
+def equipment_shortage_reason(
+    loaded: LoadedDay, request_index: int, *, distributed: bool
+) -> str:
+    demand = loaded.instance.requests[request_index].equipment_demand
+    listed = ", ".join(
+        f"«{loaded.equipment_names.get(equipment_id, f'№{equipment_id}')}» × {quantity}"
+        for equipment_id, quantity in sorted(demand.items())
+    )
+    if distributed:
+        return f"Не хватает оборудования после распределения по плану: требуется {listed}"
+    return f"У подходящих исполнителей нет требуемого оборудования: {listed}"
 
 
 def can_serve_as_first_visit(loaded: LoadedDay, request_index: int, engineer_index: int) -> bool:
@@ -1707,7 +1754,7 @@ async def plan_route_delays(
 
 
 def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
-    """Сколько исполнителей дня подходили под каждую заявку: навык и требуемый транспорт.
+    """Сколько исполнителей подходили по навыку, транспорту и запасу на одну заявку.
 
     Считается по снимку плана — тем данным, на которых план и строился.
     """
@@ -1717,6 +1764,7 @@ def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
     engineers = list(snapshot["engineers"].values())
     counts = {}
     for request in snapshot["requests"].values():
+        demand = {int(key): value for key, value in (request.get("equipment") or {}).items()}
         counts[request["id"]] = sum(
             1
             for engineer in engineers
@@ -1724,6 +1772,14 @@ def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
             and (
                 request["transport_id"] is None
                 or request["transport_id"] == engineer["transport_id"]
+            )
+            and all(
+                quantity
+                <= {
+                    int(key): value
+                    for key, value in (engineer.get("equipment") or {}).items()
+                }.get(equipment_id, 0)
+                for equipment_id, quantity in demand.items()
             )
         )
     return counts
@@ -2011,6 +2067,7 @@ def snapshot_inputs(loaded: LoadedDay) -> dict:
             "skill_id": r.skill_id,
             "transport_id": r.transport_id,
             "is_urgent": loaded.instance.requests[index].is_urgent,
+            "equipment": getattr(loaded.instance.requests[index], "equipment_demand", {}),
         }
         for index, r in enumerate(loaded.requests)
     }
@@ -2024,8 +2081,13 @@ def snapshot_inputs(loaded: LoadedDay) -> dict:
             "shift_start": e.shift_start.isoformat(),
             "shift_end": e.shift_end.isoformat(),
             "skill_ids": [skill.id for skill in e.skills],
+            "equipment": getattr(
+                (getattr(loaded.instance, "engineers", []) or [None] * len(loaded.engineers))[index],
+                "equipment_capacity",
+                {},
+            ),
         }
-        for e in loaded.engineers
+        for index, e in enumerate(loaded.engineers)
     }
     return {
         "requests": requests,

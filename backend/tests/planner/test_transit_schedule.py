@@ -123,6 +123,35 @@ async def test_missing_r5_route_during_insertion_keeps_verified_plan():
 
 
 @pytest.mark.asyncio
+async def test_insertion_does_not_reuse_consumed_equipment():
+    loaded = loaded_day()
+    loaded.instance.engineers[0] = replace(
+        loaded.instance.engineers[0], equipment_capacity={7: 1}
+    )
+    loaded.instance.requests[0] = replace(
+        loaded.instance.requests[0], equipment_demand={7: 1}
+    )
+    loaded.instance.requests[1] = replace(
+        loaded.instance.requests[1], equipment_demand={7: 1}
+    )
+    solution = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+
+    with patch.object(transit_schedule, "build_route", AsyncMock()) as build:
+        route = await transit_schedule.inserted_route(
+            loaded,
+            solution,
+            transit_schedule.node_points(loaded),
+            {},
+            engineer_index=0,
+            position=1,
+            request_index=1,
+        )
+
+    assert route is None
+    build.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_verified_fallback_wins_when_new_solution_loses_kept_request():
     """Раскрытое окно не должно вытеснять заявку из уже проверенного плана."""
     loaded = loaded_day()

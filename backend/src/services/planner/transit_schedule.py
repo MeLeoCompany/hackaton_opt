@@ -287,6 +287,14 @@ async def inserted_route(
     instance = loaded.instance
     engineer = instance.engineers[engineer_index]
     existing = solution.routes.get(engineer_index, [])
+    if not instance.route_fits_equipment(
+        engineer_index,
+        [
+            *(visit.request_index for visit in existing),
+            request_index,
+        ],
+    ):
+        return None
     prefix = list(existing[:position])
     if prefix:
         last = prefix[-1]
@@ -410,6 +418,21 @@ async def finish_solution(
         loaded, solution, points, cache, objective_order, ranks, kept_request_ids
     )
     if fallback_solution is None:
+        return result
+    fallback_is_compatible = all(
+        loaded.instance.route_fits_equipment(
+            engineer_index, [visit.request_index for visit in visits]
+        )
+        and all(
+            loaded.instance.compatible[visit.request_index, engineer_index] for visit in visits
+        )
+        for engineer_index, visits in fallback_solution.routes.items()
+    )
+    if not fallback_is_compatible:
+        await run_log.note(
+            "Исходный план не подходит к текущему остатку ресурсов — безопасную основу не использую",
+            level="warning",
+        )
         return result
     fallback = await repair_unassigned(
         loaded,

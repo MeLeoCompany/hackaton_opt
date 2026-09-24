@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from planner_test_helpers import engineer, make_instance, request
 
+from src.services.planner.cuopt_solver import DaySolution, PlannedVisit
 from src.services.planner.planning_service import (
     SCHEDULE_REASON,
     TIME_REASON,
@@ -35,6 +36,43 @@ def test_unassigned_reason_reports_conflict_when_request_fits_separately():
     )
 
     assert unassigned_reason(loaded_day(instance), 0) == SCHEDULE_REASON
+
+
+def test_unassigned_reason_reports_missing_equipment():
+    instance = make_instance(
+        engineers=[engineer(1, equipment={7: 1})],
+        requests=[request(10, skill=1, window=("10:00", "12:00"), equipment={7: 2})],
+        skills={1: {1}},
+    )
+    loaded = SimpleNamespace(
+        instance=instance,
+        requests=[SimpleNamespace(skill_id=1, transport_id=None)],
+        engineers=[SimpleNamespace(skills=[SimpleNamespace(id=1)], transport_id=1)],
+        skill_names={1: "Монтаж"},
+        transport_names={1: "Автомобиль"},
+        equipment_names={7: "Роутер"},
+    )
+
+    assert unassigned_reason(loaded, 0) == (
+        "У подходящих исполнителей нет требуемого оборудования: «Роутер» × 2"
+    )
+
+
+def test_unassigned_reason_reports_stock_distributed_to_other_requests():
+    instance = make_instance(
+        engineers=[engineer(1, equipment={7: 1})],
+        requests=[
+            request(10, skill=1, window=("10:00", "12:00"), equipment={7: 1}),
+            request(11, skill=1, window=("13:00", "15:00"), equipment={7: 1}),
+        ],
+        skills={1: {1}},
+    )
+    loaded = SimpleNamespace(instance=instance, equipment_names={7: "Роутер"})
+    solution = DaySolution({0: [PlannedVisit(0, 600)]})
+
+    assert unassigned_reason(loaded, 1, solution) == (
+        "Не хватает оборудования после распределения по плану: требуется «Роутер» × 1"
+    )
 
 
 def test_visit_keeps_facts_of_its_own_place_in_route():
@@ -74,19 +112,24 @@ def test_visit_keeps_facts_of_its_own_place_in_route():
 def test_candidate_engineers_counted_by_skill_and_transport():
     snapshot = {
         "requests": {
-            "10": {"id": 10, "skill_id": 1, "transport_id": None},
+            "10": {
+                "id": 10,
+                "skill_id": 1,
+                "transport_id": None,
+                "equipment": {"7": 2},
+            },
             "11": {"id": 11, "skill_id": 1, "transport_id": 2},
             "12": {"id": 12, "skill_id": 3, "transport_id": None},
         },
         "engineers": {
-            "1": {"skill_ids": [1, 2], "transport_id": 1},
-            "2": {"skill_ids": [1], "transport_id": 2},
+            "1": {"skill_ids": [1, 2], "transport_id": 1, "equipment": {"7": 1}},
+            "2": {"skill_ids": [1], "transport_id": 2, "equipment": {"7": 2}},
         },
     }
 
     counts = candidate_engineers_by_request(snapshot)
 
-    assert counts == {10: 2, 11: 1, 12: 0}
+    assert counts == {10: 1, 11: 1, 12: 0}
 
 
 def test_urgent_assignments_are_counted_from_frozen_snapshot():

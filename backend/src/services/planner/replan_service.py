@@ -349,6 +349,7 @@ async def build_replan(
         loaded, kept_request_ids = planner_loader.widen_day(
             loaded, widen_request_ids, not_before=at
         )
+    await planner_loader.describe_equipment(loaded)
     fallback_solution = (
         await planning_service.solution_from_plan(session, loaded, fallback_plan_id)
         if fallback_plan_id is not None
@@ -415,11 +416,29 @@ async def day_of_replan(
     told = {item.engineer_id: item.free_at for item in free_at or []}
     fixed, starts = await brigade_positions(session, parent, assignments, at, told)
     loaded = await planner_loader.load_day(session, day, office_id, starts=starts, not_before=at)
+    loaded = planner_loader.consume_equipment(loaded, consumed_equipment(fixed))
     # раскладывать может быть нечего: всё закрыто, начато или перенесено решениями оператора.
     # Это не ошибка — пересчёт выйдет из одних закреплённых визитов, иначе решения откатятся
     if loaded.instance.n_engineers == 0:
         raise PlanDataError(["на этот момент ни у одной бригады не осталось смены"])
     return fixed, loaded, starts
+
+
+def consumed_equipment(fixed: dict[int, list[Assignment]]) -> dict[int, dict[int, int]]:
+    """Что уже израсходовано или зарезервировано бригадами к моменту пересчёта.
+
+    Выполненная заявка оставила устройства у клиента, а для заявки в пути или в работе они
+    уже сняты со свободного запаса. Отменённая заявка оборудование не расходует.
+    """
+    result: dict[int, dict[int, int]] = {}
+    for engineer_id, assignments in fixed.items():
+        stock = result.setdefault(engineer_id, {})
+        for assignment in assignments:
+            if assignment.request.status_id == RequestStatusId.CANCELLED:
+                continue
+            for item in assignment.request.equipment:
+                stock[item.equipment_id] = stock.get(item.equipment_id, 0) + item.quantity
+    return result
 
 
 async def apply_decisions(

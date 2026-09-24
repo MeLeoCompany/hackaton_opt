@@ -12,7 +12,7 @@
 import copy
 import math
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 
 import httpx
@@ -97,6 +97,7 @@ class LoadedDay:
     engineers: list[Engineer]  # в том же порядке, что instance.engineers, навыки загружены
     skill_names: dict[int, str]
     transport_names: dict[int, str]
+    equipment_names: dict[int, str] = field(default_factory=dict)
     start_points: list[Point] | None = None  # фактические старты при пересчёте
 
 
@@ -158,6 +159,7 @@ async def load_day(
     skills = await references_repository.list_skills(session)
     transports = await references_repository.list_transports(session)
     priorities = await references_repository.list_priorities(session)
+    equipment = await references_repository.list_equipment(session)
     priority_levels = {priority.id: priority.level for priority in priorities}
     await describe_day(requests, engineers, priority_levels)
 
@@ -179,6 +181,9 @@ async def load_day(
                 transport_id=engineer.transport_id,
                 shift_start_min=day.to_minutes(free_from(engineer), round_up=True),
                 shift_end_min=day.to_minutes(engineer.shift_end),
+                equipment_capacity={
+                    item.equipment_id: item.quantity for item in engineer.equipment_items
+                },
             )
             for engineer in engineers
         ],
@@ -194,6 +199,9 @@ async def load_day(
                 # отметки синхронизации: обещание клиенту и перенос с другого дня (036)
                 promised=request.promised_from is not None,
                 moved=request.moved_from is not None,
+                equipment_demand={
+                    item.equipment_id: item.quantity for item in request.equipment
+                },
             )
             for request in requests
         ],
@@ -212,8 +220,76 @@ async def load_day(
         engineers=engineers,
         skill_names={skill.id: skill.name for skill in skills},
         transport_names={transport.id: transport.name for transport in transports},
+        equipment_names={item.id: item.name for item in equipment},
         start_points=start_points,
     )
+
+
+def consume_equipment(
+    loaded: LoadedDay, consumed_by_engineer: dict[int, dict[int, int]]
+) -> LoadedDay:
+    """Вычесть оборудование уже выполненных или начатых заявок при пересчёте дня."""
+    if not consumed_by_engineer:
+        return loaded
+    instance = copy.copy(loaded.instance)
+    instance.engineers = [
+        replace(
+            engineer,
+            equipment_capacity={
+                equipment_id: max(
+                    0,
+                    quantity
+                    - consumed_by_engineer.get(engineer.engineer_id, {}).get(equipment_id, 0),
+                )
+                for equipment_id, quantity in engineer.equipment_capacity.items()
+            },
+        )
+        for engineer in instance.engineers
+    ]
+    adjusted = copy.copy(loaded)
+    adjusted.instance = instance
+    build_compatibility(
+        instance,
+        {engineer.id: {skill.id for skill in engineer.skills} for engineer in loaded.engineers},
+    )
+    return adjusted
+
+
+async def describe_equipment(loaded: LoadedDay) -> None:
+    """Показать в журнале доступный запас и суммарную потребность дня."""
+    engineers = getattr(loaded.instance, "engineers", [])
+    requests = getattr(loaded.instance, "requests", [])
+    equipment_ids = sorted(
+        {
+            equipment_id
+            for engineer in engineers
+            for equipment_id in getattr(engineer, "equipment_capacity", {})
+        }
+        | {
+            equipment_id
+            for request in requests
+            for equipment_id in getattr(request, "equipment_demand", {})
+        }
+    )
+    for equipment_id in equipment_ids:
+        available = sum(
+            getattr(engineer, "equipment_capacity", {}).get(equipment_id, 0)
+            for engineer in engineers
+        )
+        requested = sum(
+            getattr(request, "equipment_demand", {}).get(equipment_id, 0)
+            for request in requests
+        )
+        name = getattr(loaded, "equipment_names", {}).get(equipment_id, f"№{equipment_id}")
+        await run_log.note(
+            f"Оборудование «{name}»: доступно {available}, требуется заявкам {requested}",
+            level="warning" if requested > available else "info",
+            details={
+                "equipment_id": equipment_id,
+                "available": available,
+                "requested": requested,
+            },
+        )
 
 
 async def describe_day(

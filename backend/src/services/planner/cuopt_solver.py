@@ -113,6 +113,8 @@ class SolverInputs:
     order_service_minutes: np.ndarray  # int32: длительность работы
     order_prizes: np.ndarray  # float32
     order_allowed_vehicles: list[np.ndarray]  # int32: кому из исполнителей можно отдать заявку
+    # тип оборудования -> (расход каждой заявки, запас каждой бригады)
+    equipment_dimensions: dict[int, tuple[np.ndarray, np.ndarray]]
     objective: ObjectivePolicy
     # параметры расчёта: сколько искать решение и подробно ли писать лог решателя
     params: SolverParams = field(default_factory=SolverParams)
@@ -208,6 +210,13 @@ def build_solver_inputs(
         objective_order,
         request_ranks,
     )
+    equipment_ids = sorted(
+        {
+            equipment_id
+            for request in requests
+            for equipment_id in request.equipment_demand
+        }
+    )
 
     return SolverInputs(
         location_count=len(selected_nodes),
@@ -255,6 +264,22 @@ def build_solver_inputs(
             np.array(instance.candidates(request_index), dtype=np.int32)
             for request_index in task_request_indices
         ],
+        equipment_dimensions={
+            equipment_id: (
+                np.array(
+                    [request.equipment_demand.get(equipment_id, 0) for request in requests],
+                    dtype=np.int32,
+                ),
+                np.array(
+                    [
+                        engineer.equipment_capacity.get(equipment_id, 0)
+                        for engineer in engineers
+                    ],
+                    dtype=np.int32,
+                ),
+            )
+            for equipment_id in equipment_ids
+        },
         objective=objective,
         params=params or SolverParams(),
     )
@@ -440,6 +465,8 @@ def run_cuopt(inputs: SolverInputs, time_limit_seconds: float) -> list[dict]:
     data_model.set_order_prizes(inputs.order_prizes)
     for order_index, allowed_vehicles in enumerate(inputs.order_allowed_vehicles):
         data_model.add_order_vehicle_match(order_index, allowed_vehicles)
+    for equipment_id, (demand, capacity) in inputs.equipment_dimensions.items():
+        data_model.add_capacity_dimension(f"equipment_{equipment_id}", demand, capacity)
 
     data_model.set_objective_function(
         np.array(
@@ -591,6 +618,12 @@ def validate_solution(instance: ProblemInstance, solution: DaySolution) -> None:
         if not 0 <= engineer_index < instance.n_engineers:
             raise ExternalServiceError("Решатель вернул неизвестного исполнителя")
         engineer = instance.engineers[engineer_index]
+        if any(not 0 <= visit.request_index < instance.n_requests for visit in visits):
+            raise ExternalServiceError("Решатель вернул неизвестную или повторную заявку")
+        if not instance.route_fits_equipment(
+            engineer_index, [visit.request_index for visit in visits]
+        ):
+            raise ExternalServiceError("Результат решателя превышает запас оборудования бригады")
         previous_node = instance.start_node(engineer_index)
         available: float = engineer.shift_start_min
         for visit in visits:
