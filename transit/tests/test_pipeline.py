@@ -376,7 +376,7 @@ def test_multiple_dates_of_same_bus_route_do_not_duplicate_route_or_shape(
     assert counts["shapes.txt"] == 1899
 
 
-def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
+def test_weekday_bus_calendar_is_used_daily_and_ignores_weekend_snapshots(
     tmp_path: Path,
 ) -> None:
     root = Path(__file__).parents[2]
@@ -388,7 +388,6 @@ def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
             bus / "route-1054-2026-09-19.json",
             bus / "route-1054-2026-09-20.json",
             bus / "e10-weekday-weekly.json",
-            bus / "e10-weekend-weekly.json",
         ],
         output,
     )
@@ -402,14 +401,19 @@ def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
             )
 
         calendars = rows("calendar.txt")
-        assert len(calendars) == 2
-        assert {
-            tuple(row[day] for day in ("monday", "friday", "saturday", "sunday"))
-            for row in calendars
-        } == {
-            ("1", "1", "0", "0"),
-            ("0", "0", "1", "1"),
-        }
+        assert len(calendars) == 1
+        assert all(
+            calendars[0][day] == "1"
+            for day in (
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            )
+        )
         assert {row["end_date"] for row in calendars} == {"20261231"}
         assert {row["start_date"] for row in calendars} == {"20260801"}
         assert any(
@@ -417,8 +421,9 @@ def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
             for row in calendars
         )
         exceptions = rows("calendar_dates.txt")
-        assert len(exceptions) == 6
-        assert Counter(row["exception_type"] for row in exceptions) == {"1": 3, "2": 3}
+        assert len(exceptions) == 2
+        assert Counter(row["exception_type"] for row in exceptions) == {"1": 1, "2": 1}
+        assert {row["date"] for row in exceptions} == {"20260918"}
         trips = rows("trips.txt")
         assert len({row["trip_id"] for row in trips}) == len(trips)
 
@@ -470,9 +475,9 @@ def test_backdated_bus_calendar_requires_explicit_retrospective_mark(
 def test_weekly_bus_rejects_different_control_day(tmp_path: Path) -> None:
     root = Path(__file__).parents[2]
     bus = root / "transit/data/bus"
-    manifest = json.loads((bus / "e10-weekend-weekly.json").read_text(encoding="utf-8"))
-    manifest["template"] = str(bus / "route-1054-2026-09-19.json")
-    manifest["matching_examples"] = [str(bus / "e10-2026-09-18.json")]
+    manifest = json.loads((bus / "e10-weekday-weekly.json").read_text(encoding="utf-8"))
+    manifest["template"] = str(bus / "e10-2026-09-18.json")
+    manifest["matching_examples"] = [str(bus / "route-1054-2026-09-19.json")]
     path = tmp_path / "weekly.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
 

@@ -100,7 +100,23 @@ def _load_datasets(inputs: list[Path]) -> list[dict[str, Any]]:
                 and right["service"]["start_date"] <= left["service"]["end_date"]
             ):
                 raise ValueError("пересекаются недельные календари одного автобуса")
-    return datasets
+
+    # Для пилотных автобусов один будний снимок намеренно действует каждый день.
+    # Точные выходные снимки храним как исходные данные, но не добавляем в GTFS:
+    # иначе отдельный service_id снова включит выходное расписание поверх шаблона.
+    weekday_daily = {
+        dataset["route"]["source_route_id"]: dataset["source"]["template_date"]
+        for dataset in weekly
+        if dataset["source"].get("calendar_policy") == "weekday_daily"
+    }
+    return [
+        dataset
+        for dataset in datasets
+        if dataset["kind"] != "bus_exact"
+        or dataset["route"]["source_route_id"] not in weekday_daily
+        or dataset["source"]["service_date"]
+        == weekday_daily[dataset["route"]["source_route_id"]]
+    ]
 
 
 def _distributed_offsets(stops: list[dict[str, Any]], duration: int) -> list[int]:
