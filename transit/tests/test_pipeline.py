@@ -21,7 +21,7 @@ from gtfs_pipeline.night_weekly import generate_night_weekly
 from gtfs_pipeline.osm_metro import MetroDataError, normalize_line
 from gtfs_pipeline.transport_mos import (
     ScheduleParseError,
-    _align_circular_departures,
+    _align_trip_departures,
     collect_bus_route,
     parse_catalog_page,
     parse_route_page,
@@ -91,7 +91,7 @@ def test_transport_mos_parser_preserves_service_day_order() -> None:
     assert result["stops"][1]["name"] == "Конец"
 
 
-def test_circular_bus_parser_aligns_trips_after_control_stop_reset() -> None:
+def test_bus_parser_aligns_trips_after_control_stop_reset() -> None:
     stops = [
         {"departures": [180, 195, 210, 225]},
         {"departures": [194, 209, 224, 239]},
@@ -99,9 +99,20 @@ def test_circular_bus_parser_aligns_trips_after_control_stop_reset() -> None:
         {"departures": [180, 195, 210, 225]},
     ]
 
-    _align_circular_departures(stops)
+    _align_trip_departures(stops)
 
     assert stops[2]["departures"] == [195, 210, 225, 1620]
+
+
+def test_bus_parser_aligns_trip_ending_after_service_day_boundary() -> None:
+    stops = [
+        {"departures": [308, 314, 320, 1608]},
+        {"departures": [180, 310, 316, 322]},
+    ]
+
+    _align_trip_departures(stops)
+
+    assert stops[1]["departures"] == [310, 316, 322, 1620]
 
 
 def test_night_bus_parser_keeps_morning_departures_on_next_day() -> None:
@@ -275,6 +286,71 @@ def test_import_bus_html_creates_schedule_and_archives_sources(tmp_path: Path) -
     ]
     assert not list(incoming.iterdir())
     assert inventory.read_text(encoding="utf-8") == "А\nт1\n"
+
+
+def test_import_bus_html_accepts_one_closed_circular_direction(tmp_path: Path) -> None:
+    incoming = tmp_path / "new"
+    archive = tmp_path / "added"
+    output = tmp_path / "data"
+    incoming.mkdir()
+    page = _page().replace(
+        'data-direction="0" data-stop="1"',
+        'data-direction="0" data-route="42" data-date="2026-09-22" data-stop="1"',
+    )
+    page = page.replace(
+        '[[37.1, 55.1], [37.2, 55.2]]',
+        '[[37.1, 55.1], [37.2, 55.2], [37.1, 55.1]]',
+    )
+    (incoming / "т1 - 1.html").write_text(page, encoding="utf-8")
+    catalog = tmp_path / "catalog.json"
+    # Официальная страница остаётся проверяемым источником, даже если локальный
+    # снимок каталога был сделан до появления подтверждённого маршрута.
+    catalog.write_text(json.dumps({"routes": []}), encoding="utf-8")
+    inventory = tmp_path / "bus_names.txt"
+    inventory.write_text("т1\n", encoding="utf-8")
+
+    imported = import_bus_html(
+        incoming,
+        archive,
+        catalog,
+        output,
+        date(2026, 8, 1),
+        date(2026, 12, 31),
+        inventory,
+    )
+
+    assert imported == ["т1"]
+    exact = json.loads((output / "route-42-2026-09-22.json").read_text(encoding="utf-8"))
+    assert [pattern["direction_id"] for pattern in exact["patterns"]] == [0]
+
+
+def test_import_bus_html_rejects_missing_reverse_of_non_circular_route(
+    tmp_path: Path,
+) -> None:
+    incoming = tmp_path / "new"
+    incoming.mkdir()
+    page = _page().replace(
+        'data-direction="0" data-stop="1"',
+        'data-direction="0" data-route="42" data-date="2026-09-22" data-stop="1"',
+    )
+    (incoming / "т1 - 1.html").write_text(page, encoding="utf-8")
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(
+        json.dumps(
+            {"routes": [{"source_route_id": "42", "short_name": "т1", "mode": "bus"}]}
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="отсутствует второе направление"):
+        import_bus_html(
+            incoming,
+            tmp_path / "added",
+            catalog,
+            tmp_path / "data",
+            date(2026, 8, 1),
+            date(2026, 12, 31),
+        )
 
 
 def test_local_html_import_classifies_river_routes_as_ferries() -> None:

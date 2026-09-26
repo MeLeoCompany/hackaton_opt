@@ -12,10 +12,9 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from .bus_weekly import prepare_bus
+from .bus_weekly import _closed_shape, prepare_bus
 from .common import read_json, write_json
 from .transport_mos import BASE_URL, parse_route_page
-
 
 FILE_NAME = re.compile(r"^(.+?)\s+-\s+([12])\.html$", re.IGNORECASE)
 
@@ -34,6 +33,15 @@ def import_bus_html(
     catalog_by_id = {
         str(route["source_route_id"]): route for route in catalog["routes"]
     }
+    inventory_names = (
+        {
+            line.strip().casefold()
+            for line in inventory_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        if inventory_path is not None
+        else set()
+    )
     grouped: dict[str, list[tuple[Path, int]]] = defaultdict(list)
     for path in sorted(input_dir.glob("*.html")):
         match = FILE_NAME.match(path.name.strip())
@@ -44,8 +52,12 @@ def import_bus_html(
 
     prepared: list[dict[str, Any]] = []
     for file_route_name, files in sorted(grouped.items()):
-        if sorted(number for _, number in files) != [1, 2]:
-            raise ValueError(f"для маршрута {file_route_name} нужны ровно два направления")
+        direction_numbers = sorted(number for _, number in files)
+        if direction_numbers not in ([1], [1, 2]):
+            raise ValueError(
+                f"для маршрута {file_route_name} нужны направления 1 и 2; "
+                "один файл допустим только для кольцевого маршрута"
+            )
         patterns = []
         route_id: int | None = None
         service_date: date | None = None
@@ -70,11 +82,18 @@ def import_bus_html(
             patterns.append(pattern)
             source_files.append(path)
 
+        if direction_numbers == [1] and not _closed_shape(patterns[0].get("shape", [])):
+            raise ValueError(
+                f"для некольцевого маршрута {file_route_name} отсутствует второе направление"
+            )
+
         assert route_id is not None and service_date is not None
         catalog_route = catalog_by_id.get(str(route_id))
-        if catalog_route is None:
-            raise ValueError(f"маршрут {route_id} отсутствует в каталоге")
-        short_name = str(catalog_route["short_name"])
+        if catalog_route is None and file_route_name.casefold() not in inventory_names:
+            raise ValueError(
+                f"маршрут {route_id} отсутствует в каталоге и не подтверждён в перечне"
+            )
+        short_name = file_route_name if catalog_route is None else str(catalog_route["short_name"])
         if short_name.casefold() != file_route_name.casefold():
             raise ValueError(
                 f"имя файлов {file_route_name} не совпадает с каталогом: {short_name}"
@@ -160,11 +179,17 @@ def _page_metadata(html: str, path: Path) -> tuple[int, date]:
 
 
 def _update_inventory(path: Path, route_names: list[str]) -> None:
-    existing = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
-    existing = [line for line in existing if line]
+    content = path.read_text(encoding="utf-8")
+    existing = [line.strip() for line in content.splitlines() if line.strip()]
     known = {line.casefold() for line in existing}
-    existing.extend(name for name in route_names if name.casefold() not in known)
-    path.write_text("\n".join(existing) + "\n", encoding="utf-8")
+    missing = [name for name in route_names if name.casefold() not in known]
+    if not missing:
+        return
+    separator = "" if not content or content.endswith("\n") else "\n"
+    path.write_text(
+        content + separator + "\n".join(missing) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _route_type(short_name: str) -> int:
