@@ -94,6 +94,13 @@ def import_bus_html(
                 f"маршрут {route_id} отсутствует в каталоге и не подтверждён в перечне"
             )
         short_name = file_route_name if catalog_route is None else str(catalog_route["short_name"])
+        if (
+            short_name.casefold() != file_route_name.casefold()
+            and file_route_name.casefold() in inventory_names
+        ):
+            # Портал может переименовать маршрут или повторно использовать ID после
+            # сохранения каталога. Ручной перечень служит явным подтверждением нового имени.
+            short_name = file_route_name
         if short_name.casefold() != file_route_name.casefold():
             raise ValueError(
                 f"имя файлов {file_route_name} не совпадает с каталогом: {short_name}"

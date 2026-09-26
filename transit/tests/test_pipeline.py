@@ -303,9 +303,11 @@ def test_import_bus_html_accepts_one_closed_circular_direction(tmp_path: Path) -
     )
     (incoming / "т1 - 1.html").write_text(page, encoding="utf-8")
     catalog = tmp_path / "catalog.json"
-    # Официальная страница остаётся проверяемым источником, даже если локальный
-    # снимок каталога был сделан до появления подтверждённого маршрута.
-    catalog.write_text(json.dumps({"routes": []}), encoding="utf-8")
+    # Ручной перечень подтверждает актуальное имя, если снимок каталога устарел.
+    catalog.write_text(
+        json.dumps({"routes": [{"source_route_id": "42", "short_name": "старое"}]}),
+        encoding="utf-8",
+    )
     inventory = tmp_path / "bus_names.txt"
     inventory.write_text("т1\n", encoding="utf-8")
 
