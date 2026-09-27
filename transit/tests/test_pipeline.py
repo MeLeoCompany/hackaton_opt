@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+
 from gtfs_pipeline.bus_weekly import prepare_bus
 from gtfs_pipeline.gtfs import build_gtfs
 from gtfs_pipeline.local_bus import _route_type, import_bus_html
@@ -239,6 +240,72 @@ def test_prepare_bus_accepts_one_closed_circular_direction(tmp_path: Path) -> No
     )
 
     assert created.is_file()
+
+
+def test_scheduled_service_builds_explicit_regional_trips(tmp_path: Path) -> None:
+    dataset = {
+        "schema_version": 1,
+        "kind": "scheduled_service",
+        "source": {"quality": "test"},
+        "route": {
+            "source_route_id": "regional-test",
+            "short_name": "Т",
+            "long_name": "Тестовый пригородный маршрут",
+            "route_type": 2,
+        },
+        "service": {
+            "start_date": "2026-08-01",
+            "end_date": "2026-12-31",
+            "weekdays": list(range(7)),
+        },
+        "patterns": [
+            {
+                "direction_id": 0,
+                "stops": [
+                    {
+                        "source_stop_id": "regional-a",
+                        "name": "А",
+                        "lat": 55.0,
+                        "lon": 37.0,
+                    },
+                    {
+                        "source_stop_id": "regional-b",
+                        "name": "Б",
+                        "lat": 55.1,
+                        "lon": 37.1,
+                    },
+                ],
+                "trips": [[360, 390], [420, 450]],
+            }
+        ],
+    }
+    source = tmp_path / "regional.json"
+    source.write_text(json.dumps(dataset), encoding="utf-8")
+    output = tmp_path / "regional.zip"
+
+    build_gtfs([source], output)
+
+    validate_gtfs(output)
+    with zipfile.ZipFile(output) as archive:
+        routes = archive.read("routes.txt").decode("utf-8-sig")
+        trips = archive.read("trips.txt").decode("utf-8-sig")
+        stop_times = archive.read("stop_times.txt").decode("utf-8-sig")
+        assert "regional-test" in routes
+        assert len(list(csv.DictReader(io.StringIO(trips)))) == 2
+        assert "06:30:00" in stop_times
+
+
+def test_scheduled_service_rejects_time_travel(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    source = json.loads(
+        (root / "transit/data/regional/rail-paveletsky-kashira.json").read_text()
+    )
+    source["patterns"][0]["trips"] = [[600, 590] + [600] * 29]
+    path = tmp_path / "broken.json"
+    path.write_text(json.dumps(source), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="время рейса идёт назад"):
+        build_gtfs([path], tmp_path / "broken.zip")
 
 
 def test_import_bus_html_creates_schedule_and_archives_sources(tmp_path: Path) -> None:

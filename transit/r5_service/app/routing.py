@@ -213,6 +213,7 @@ def route(
         departure=local_departure(departure),
         transport_modes=[r5py.TransportMode.TRANSIT, r5py.TransportMode.WALK],
         speed_walking=settings.walking_speed_kmh,
+        max_time=timedelta(minutes=settings.max_travel_minutes),
         snap_to_network=True,
     )
     if result.empty:

@@ -190,6 +190,7 @@ def main() -> None:
         inputs += sorted((root / "bus").glob("e10-*.json"))
         inputs += sorted((root / "bus" / "night").glob("route-*.json"))
         inputs += sorted((root / "metro").glob("line-*.json"))
+        inputs += sorted((root / "regional").glob("*.json"))
         if not inputs:
             raise ValueError("локальные данные для GTFS не найдены")
         build_gtfs(inputs, args.output)
