@@ -6,6 +6,7 @@
 #   cp deploy/deploy.env.example deploy/deploy.env   # заполнить
 #   ./deploy/deploy.sh                # развернуть или обновить
 #   ./deploy/deploy.sh --force        # то же, но пересобрать всё заново
+#   ./deploy/deploy.sh --transit      # пересобрать транспорт: карту R5 и его сеть заново
 #   ./deploy/deploy.sh --follow       # развернуть и остаться на логах сервера
 #   ./deploy/deploy.sh --check        # только проверить доступ и настройки
 #   ./deploy/deploy.sh --logs         # хвост логов сервера
@@ -83,6 +84,27 @@ DOMAIN="${DOMAIN:-$SERVER_HOST}"
 [ "$TLS" = "true" ] && : "${ACME_EMAIL:?для TLS укажите ACME_EMAIL}"
 [ "$TLS" = "true" ] && [ "$DOMAIN" = "$SERVER_HOST" ] && die "для TLS нужен DOMAIN, а не адрес"
 
+# --- доступ к репозиторию: ловим типовые ошибки до выхода на сервер ----------
+case "$REPO_URL" in
+  https://*)
+    if [ -z "${GITHUB_TOKEN:-}" ]; then
+      echo "REPO_URL по https, токена нет — попробую ключом $DEPLOY_KEY_PATH с сервера." >&2
+      echo "  Если ключа там нет, забрать приватный репозиторий не выйдет: задайте токен" >&2
+      echo "  или пропишите ssh-адрес git@github.com:<владелец>/<репозиторий>.git" >&2
+    else
+      case "$GITHUB_TOKEN" in
+        ghp_*|github_pat_*|gho_*|ghs_*|ghu_*) ;;
+        *)
+          echo "Внимание: GITHUB_TOKEN не похож на токен GitHub." >&2
+          echo "  Токены начинаются с github_pat_ (fine-grained) или ghp_ (classic)." >&2
+          echo "  Похоже, в поле лежит случайная строка — GitHub ответит «Invalid username or token»." >&2
+          echo "  Либо вставьте настоящий токен, либо переключитесь на ssh-адрес с ключом." >&2
+          ;;
+      esac
+    fi
+    ;;
+esac
+
 # --- как ходим на сервер ----------------------------------------------------
 SSH_BASE=(ssh -p "$SERVER_PORT" -o StrictHostKeyChecking=accept-new)
 if [ -n "${SERVER_PASSWORD:-}" ]; then
@@ -106,6 +128,11 @@ on_server() {
     for name in "$@"; do
       printf '%s=%q\n' "$name" "${!name-}"
     done
+    # трассировку включаем после присваиваний: иначе пароли и токен попадут в лог.
+    # дальше видно каждую команду, которая выполняется на сервере — сразу понятно,
+    # на чём именно споткнулись, а не «шаг упал»
+    echo 'PS4="+ [сервер] "'
+    echo 'set -x'
     cat
   } | "${SSH[@]}" "$TARGET" "bash -s"
 }
@@ -117,28 +144,66 @@ case "$MODE" in
     on_server <<'REMOTE'
 echo "сервер: $(hostname), $(uname -sr)"
 docker --version 2>/dev/null || echo "docker не установлен — поставлю при развёртывании"
-nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo "видеокарты не видно"
 df -h / | awk 'NR==2 {print "свободно на диске: " $4}'
 free -g | awk 'NR==2 {print "памяти всего: " $2 " ГБ"}'
+
+# видеокарта: по пунктам, чтобы сразу было видно, какого звена не хватает
+echo "— видеокарта —"
+if nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null; then
+  echo "  драйвер: на месте"
+else
+  echo "  драйвер: нет (nvidia-smi не отвечает) — cuOpt не поедет"
+fi
+if command -v nvidia-ctk >/dev/null; then
+  echo "  тулкит: $(nvidia-ctk --version 2>/dev/null | head -1)"
+else
+  echo "  тулкит: нет (nvidia-ctk не найден)"
+fi
+if docker info 2>/dev/null | grep -qE '^ Runtimes:.*nvidia'; then
+  echo "  docker: среда nvidia подключена"
+else
+  echo "  docker: про nvidia не знает — нужен nvidia-ctk runtime configure --runtime=docker"
+fi
+if ls /dev/nvidia* >/dev/null 2>&1; then
+  echo "  устройства: $(ls /dev/nvidia* | tr '\n' ' ')"
+else
+  echo "  устройства: /dev/nvidia* нет — обычно помогает перезагрузка"
+fi
+# итоговая проверка — настоящим запуском контейнера, если образ уже есть или качается
+if docker run --rm --gpus all ubuntu:24.04 nvidia-smi -L 2>/dev/null; then
+  echo "  ИТОГ: контейнер видит видеокарту, cuOpt поедет"
+else
+  echo "  ИТОГ: из контейнера видеокарта не видна — развернётся без GPU, на OR-Tools"
+fi
 REMOTE
     echo; echo "Настройки: домен $DOMAIN, TLS=$TLS, транспорт=$TRANSIT, GPU=$GPU, ветка $REPO_BRANCH"
     exit 0 ;;
   --logs)
-    on_server DEPLOY_PATH <<'REMOTE'
+    on_server DEPLOY_PATH TRANSIT <<'REMOTE'
 cd "$DEPLOY_PATH"
-docker compose -f docker-compose.yml -f deploy/compose.server.yml logs --tail 80
+# с профилем transit: иначе журналы r5 и подготовки карты остаются за кадром
+profile=""
+[ "$TRANSIT" = "true" ] && profile="--profile transit"
+docker compose -f docker-compose.yml -f deploy/compose.server.yml $profile logs --tail 80
 REMOTE
     exit 0 ;;
   --status)
-    on_server DEPLOY_PATH <<'REMOTE'
+    on_server DEPLOY_PATH TRANSIT <<'REMOTE'
 cd "$DEPLOY_PATH"
-docker compose -f docker-compose.yml -f deploy/compose.server.yml ps
+profile=""
+[ "$TRANSIT" = "true" ] && profile="--profile transit"
+docker compose -f docker-compose.yml -f deploy/compose.server.yml $profile ps
 REMOTE
     exit 0 ;;
-  deploy|--force|--follow) ;;
-  *) die "не знаю режим «$MODE». Есть: --force, --follow, --check, --logs, --status" ;;
+  deploy|--force|--follow|--transit) ;;
+  *) die "не знаю режим «$MODE». Есть: --force, --transit, --follow, --check, --logs, --status" ;;
 esac
 FORCE=$([ "$MODE" = "--force" ] && echo yes || echo no)
+# транспорт (профиль transit) собирается долго и живёт в своих томах: карта-экстракт и
+# сеть R5. Обычное обновление их не трогает, а этот флаг просит собрать их заново
+REBUILD_TRANSIT=$([ "$MODE" = "--transit" ] && echo yes || echo no)
+[ "$REBUILD_TRANSIT" = "yes" ] && [ "$TRANSIT" != "true" ] && \
+  die "--transit при TRANSIT=false: включите TRANSIT=true в deploy/deploy.env"
 # --follow: после развёртывания остаёмся на логах сервера, пока не нажмут Ctrl+C
 FOLLOW=$([ "$MODE" = "--follow" ] && echo yes || echo no)
 
@@ -151,7 +216,8 @@ step "Готовлю сервер $TARGET"
 #   1) драйвер NVIDIA на самом сервере — его ставит администратор, нужна перезагрузка;
 #   2) nvidia-container-toolkit — прокидывает видеокарту внутрь контейнера, его ставим тут.
 # CUDA Toolkit с сайта NVIDIA ставить не нужно: cuOpt со своей CUDA уже внутри образа.
-PREP=$(on_server INSTALL_DOCKER GPU <<'REMOTE'
+# tee: то же самое и на экран по ходу дела, и в переменную для разбора ниже
+PREP=$(on_server INSTALL_DOCKER GPU <<'REMOTE' | tee /dev/stderr
 # ставить пакеты может либо root, либо пользователь с sudo — разбираемся один раз
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
@@ -185,12 +251,35 @@ if [ "${GPU:-true}" = "true" ]; then
     echo "  Разворачиваю без GPU: расчёт пойдёт на OR-Tools, это рабочий вариант." >&2
   else
     nvidia-smi --query-gpu=name,driver_version --format=csv,noheader || true
-    # Ставим контейнерный тулкит, если docker ещё не знает про nvidia. Вывод apt не глушим:
-    # когда шаг не удаётся, нужно видеть, на чём именно
-    if ! docker info 2>/dev/null | grep -qE '^ Runtimes:.*nvidia'; then
+
+    # Сначала смотрим, работает ли уже: если видеокарта видна из контейнера, в систему
+    # не лезем вовсе. Так настройки, сделанные провайдером образа, остаются нетронутыми
+    if docker run --rm --gpus all ubuntu:24.04 nvidia-smi -L >/dev/null 2>&1; then
+      gpu_ready=yes
+      echo "видеокарта уже доступна из контейнера — ничего не трогаю"
+    else
       echo "ставлю nvidia-container-toolkit (прокидывает видеокарту в контейнер)"
+      # Часть пакетов может быть зафиксирована провайдером (apt-mark hold). Ломать эту
+      # фиксацию нельзя: под неё подобраны версии всей связки. Поэтому подстраиваемся —
+      # ставим тулкит ровно той версии, что стоит у закреплённой библиотеки
+      held=$(apt-mark showhold 2>/dev/null | grep -E 'nvidia-container' | tr '\n' ' ' || true)
+      pinned=$(dpkg-query -W -f='${Version}' libnvidia-container1 2>/dev/null || true)
+      # Закрепить можно и пакет, который не установлен. Тогда ломать нечего: фиксация
+      # просто не даёт его поставить. Разделяем эти два случая
+      held_present=""; held_absent=""
+      for pkg in $held; do
+        if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed'; then
+          held_present="$held_present $pkg"
+        else
+          held_absent="$held_absent $pkg"
+        fi
+      done
+      held_present="${held_present# }"; held_absent="${held_absent# }"
+      if [ -n "$held_absent" ] && [ -z "$held_present" ]; then
+        echo "  закреплены, но не установлены: $held_absent" >&2
+        echo "  ставлю их и возвращаю фиксацию обратно — заменять в системе нечего" >&2
+      fi
       (
-        set -x
         $SUDO apt-get update
         $SUDO apt-get install -y gnupg curl ca-certificates
         $SUDO install -m 0755 -d /usr/share/keyrings
@@ -200,34 +289,55 @@ if [ "${GPU:-true}" = "true" ]; then
           | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
           | $SUDO tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null
         $SUDO apt-get update
-        $SUDO apt-get install -y nvidia-container-toolkit
-      ) >&2 || echo "ВНИМАНИЕ: установка пакета не удалась — смотрите вывод apt выше" >&2
+        if [ -n "$held_present" ] && [ -n "$pinned" ]; then
+          # установленные библиотеки провайдера не трогаем: берём тулкит их же версии
+          $SUDO apt-get install -y \
+            "nvidia-container-toolkit=$pinned" "nvidia-container-toolkit-base=$pinned"
+        elif [ -n "$held_absent" ]; then
+          # снимаем фиксацию только с неустановленных пакетов и сразу возвращаем её
+          $SUDO apt-mark unhold $held_absent
+          $SUDO apt-get install -y \
+            nvidia-container-toolkit nvidia-container-toolkit-base \
+            libnvidia-container-tools libnvidia-container1 || true
+          $SUDO apt-mark hold $held_absent
+          command -v nvidia-ctk >/dev/null
+        else
+          $SUDO apt-get install -y \
+            nvidia-container-toolkit nvidia-container-toolkit-base \
+            libnvidia-container-tools libnvidia-container1
+        fi
+      ) >&2 || {
+        echo "ВНИМАНИЕ: установка не удалась." >&2
+        if [ -n "$held_present" ]; then
+          echo "  Провайдер зафиксировал установленные пакеты: $held_present" >&2
+          echo "  Версия закреплённой библиотеки: ${pinned:-неизвестна}" >&2
+          echo "  Фиксацию я намеренно не снимаю — под неё подобрана вся связка." >&2
+          echo "  Если решите снять сами:  apt-mark unhold $held_present && ./deploy/deploy.sh" >&2
+        elif [ -n "$held_absent" ]; then
+          echo "  Закреплены (но не установлены): $held_absent" >&2
+          echo "  Я снимал фиксацию на время установки и вернул её обратно." >&2
+        fi
+        echo "  Откуда apt берёт версии:" >&2
+        apt-cache policy nvidia-container-toolkit nvidia-container-toolkit-base \
+          libnvidia-container-tools libnvidia-container1 >&2 2>/dev/null || true
+      }
       if command -v nvidia-ctk >/dev/null; then
         $SUDO nvidia-ctk runtime configure --runtime=docker >&2 && $SUDO systemctl restart docker
-      else
-        echo "ВНИМАНИЕ: nvidia-ctk так и не появился — пакет nvidia-container-toolkit не встал." >&2
-        echo "  Проверьте вручную:  apt-get install -y nvidia-container-toolkit" >&2
       fi
-    fi
-
-    # Готовность проверяем без скачивания образов: нужны устройство, драйвер и знание docker
-    # про nvidia. Настоящую работу на видеокарте проверит уже сам бэкенд
-    if ! docker info 2>/dev/null | grep -qE '^ Runtimes:.*nvidia'; then
-      echo "ВНИМАНИЕ: docker не знает про среду nvidia — разворачиваю без GPU." >&2
-      echo "  Что посмотреть:  docker info | grep -i runtime  и  cat /etc/docker/daemon.json" >&2
-    elif [ ! -e /dev/nvidiactl ] && [ ! -e /dev/nvidia0 ]; then
-      echo "ВНИМАНИЕ: устройств /dev/nvidia* нет, хотя nvidia-smi отвечает." >&2
-      echo "  Обычно помогает перезагрузка сервера после установки драйвера." >&2
-    else
-      gpu_ready=yes
-      echo "видеокарта готова: docker знает про nvidia, устройства на месте"
+      # решает не наличие пакетов, а то, видно ли видеокарту из контейнера на самом деле
+      if docker run --rm --gpus all ubuntu:24.04 nvidia-smi -L >/dev/null 2>&1; then
+        gpu_ready=yes
+        echo "видеокарта доступна из контейнера"
+      else
+        echo "ВНИМАНИЕ: из контейнера видеокарта не видна — разворачиваю без GPU." >&2
+        echo "  Проверить по шагам:  ./deploy/deploy.sh --check" >&2
+      fi
     fi
   fi
 fi
 echo "GPU_READY=$gpu_ready"
 REMOTE
 )
-echo "$PREP"
 if [ "$GPU" = "true" ] && ! grep -q 'GPU_READY=yes' <<<"$PREP"; then
   echo "   продолжаю без видеокарты: решатель cuOpt заменит OR-Tools"
   GPU=false
@@ -246,13 +356,28 @@ REMOTE
 
 step "Забираю код: $REPO_BRANCH из $REPO_URL"
 # сервер возвращает список того, что поменялось: по нему и решаем, что пересобирать
-CHANGED=$(on_server DEPLOY_PATH REPO_URL REPO_BRANCH GITHUB_TOKEN DEPLOY_KEY_PATH <<'REMOTE'
+if ! CHANGED=$(on_server DEPLOY_PATH REPO_URL REPO_BRANCH GITHUB_TOKEN DEPLOY_KEY_PATH <<'REMOTE'
 # Приватный репозиторий: либо ssh-ключ, либо токен — смотря какой адрес у репозитория.
+# git не должен ничего спрашивать: терминала нет, и вопрос обернулся бы «не могу прочитать
+# имя пользователя» вместо внятной ошибки
+export GIT_TERMINAL_PROMPT=0
 ASKPASS=""
 FETCH_URL="$REPO_URL"
+key="${DEPLOY_KEY_PATH/#\~/$HOME}"
+
+# https-адрес без токена, но на сервере лежит ключ — идём ключом. Так работает и тогда,
+# когда в настройках остался https, а доступ заведён как deploy key
+case "$REPO_URL" in
+  https://github.com/*)
+    if [ -z "${GITHUB_TOKEN:-}" ] && [ -f "$key" ]; then
+      FETCH_URL="git@github.com:${REPO_URL#https://github.com/}"
+      REPO_URL="$FETCH_URL"
+      echo "токена нет, но есть ключ $key — беру код по ssh" >&2
+    fi
+    ;;
+esac
 case "$REPO_URL" in
   git@*|ssh://*)
-    key="${DEPLOY_KEY_PATH/#\~/$HOME}"
     if [ -f "$key" ]; then
       # IdentitiesOnly: иначе ssh предложит серверу другие свои ключи и получит отказ
       export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
@@ -275,9 +400,30 @@ fi
 cleanup() { [ -n "$ASKPASS" ] && rm -f "$ASKPASS"; return 0; }
 trap cleanup EXIT
 
+# Запасной путь: токен мог протухнуть или быть скопирован с ошибкой. Если на сервере
+# лежит рабочий ключ — переходим на него, а не валим весь деплой из-за одной строки
+SSH_FALLBACK=""
+case "$FETCH_URL" in
+  https://github.com/*|https://x-access-token@github.com/*)
+    [ -f "$key" ] && SSH_FALLBACK="git@github.com:${REPO_URL#https://github.com/}"
+    ;;
+esac
+use_ssh() {
+  export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
+  unset GIT_ASKPASS GIT_TOKEN
+  FETCH_URL="$SSH_FALLBACK"
+  REPO_URL="$SSH_FALLBACK"
+  echo "по https не пустили — перехожу на ssh-ключ $key" >&2
+}
+
 if [ ! -d "$DEPLOY_PATH/.git" ]; then
   mkdir -p "$DEPLOY_PATH"
-  git clone --quiet --branch "$REPO_BRANCH" "$FETCH_URL" "$DEPLOY_PATH"
+  if ! git clone --quiet --branch "$REPO_BRANCH" "$FETCH_URL" "$DEPLOY_PATH"; then
+    [ -n "$SSH_FALLBACK" ] || exit 1
+    use_ssh
+    rm -rf "$DEPLOY_PATH"
+    git clone --quiet --branch "$REPO_BRANCH" "$FETCH_URL" "$DEPLOY_PATH"
+  fi
   cd "$DEPLOY_PATH"
   git remote set-url origin "$REPO_URL"   # без токена в настройках
   echo "ВСЁ"                              # первый раз собираем всё
@@ -285,7 +431,12 @@ else
   cd "$DEPLOY_PATH"
   git remote set-url origin "$REPO_URL"
   before=$(git rev-parse HEAD)
-  git fetch --quiet "$FETCH_URL" "$REPO_BRANCH"
+  if ! git fetch --quiet "$FETCH_URL" "$REPO_BRANCH"; then
+    [ -n "$SSH_FALLBACK" ] || exit 1
+    use_ssh
+    git remote set-url origin "$REPO_URL"
+    git fetch --quiet "$FETCH_URL" "$REPO_BRANCH"
+  fi
   git checkout --quiet -B "$REPO_BRANCH" FETCH_HEAD
   after=$(git rev-parse HEAD)
   if [ "$before" = "$after" ]; then
@@ -296,7 +447,14 @@ else
 fi
 git --no-pager log -1 --format='версия: %h %s' >&2
 REMOTE
-)
+); then
+  echo
+  echo "Сервер не смог забрать код. Обычные причины:" >&2
+  echo "  · https-адрес и негодный GITHUB_TOKEN — GitHub отвечает «Invalid username or token»;" >&2
+  echo "  · ssh-адрес, а ключа DEPLOY_KEY_PATH на сервере нет или он не добавлен в Deploy keys." >&2
+  echo "Проверить ключ прямо с сервера:  ssh -i ~/.ssh/routing_deploy -T git@github.com" >&2
+  die "нет доступа к $REPO_URL"
+fi
 
 # что пересобирать: образ трогаем, только если поменялись его файлы
 build_backend=no; build_web=no; build_r5=no; changed_compose=no
@@ -316,6 +474,10 @@ if [ "$FORCE" = "yes" ]; then
   echo "--force: пересобираю всё"
   build_backend=yes; build_web=yes; build_r5=yes; changed_compose=yes
 fi
+if [ "$REBUILD_TRANSIT" = "yes" ]; then
+  echo "--transit: собираю транспорт заново"
+  build_r5=yes
+fi
 
 TO_BUILD=""
 [ "$build_backend" = "yes" ] && TO_BUILD="$TO_BUILD backend"
@@ -334,7 +496,10 @@ DOMAIN=$DOMAIN
 TLS=$TLS
 DB_PASSWORD=$DB_PASSWORD
 AUTH_SECRET=$AUTH_SECRET
-ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}"
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+# на чистом сервере valhalla сначала качает карту (~700 МБ), и подготовка карты для R5
+# ждёт её. Часа хватает с запасом; локально по умолчанию 15 минут
+R5_SOURCE_WAIT_SECONDS=${R5_SOURCE_WAIT_SECONDS:-3600}"
 for name in R5_WALKING_SPEED_KMH R5_TIMEOUT_SECONDS R5_MATRIX_MAX_POINTS \
             CUOPT_TIME_LIMIT_SECONDS CUOPT_MAX_TIME_LIMIT_SECONDS CUOPT_DISTANCE_WEIGHT; do
   value="${!name-}"
@@ -348,6 +513,24 @@ rm -f /tmp/routing.env
 echo "настройки записаны"
 REMOTE
 
+if [ "$REBUILD_TRANSIT" = "yes" ]; then
+  step "Сбрасываю данные транспорта"
+  on_server DEPLOY_PATH COMPOSE_FILES PROFILES <<'REMOTE'
+cd "$DEPLOY_PATH"
+COMPOSE="docker compose $COMPOSE_FILES $PROFILES"
+# останавливаем то, что держит тома, иначе удалить их не дадут
+# shellcheck disable=SC2086
+$COMPOSE rm -sf r5 r5-osm || true
+# экстракт карты и собранная сеть R5 — их и пересобираем. Карту valhalla (сотни мегабайт)
+# не трогаем: она качается заново часами, а для экстракта годится та же
+for suffix in r5_osm r5_cache; do
+  for volume in $(docker volume ls -q | grep -E "_${suffix}\$" || true); do
+    docker volume rm "$volume" && echo "удалён том $volume"
+  done
+done
+REMOTE
+fi
+
 step "Собираю и поднимаю"
 on_server DEPLOY_PATH COMPOSE_FILES PROFILES TO_BUILD <<'REMOTE'
 cd "$DEPLOY_PATH"
@@ -358,7 +541,17 @@ COMPOSE="docker compose $COMPOSE_FILES $PROFILES"
 # up без --build: поднимает недостающее и перезапускает только то, у чего сменился образ
 # или настройки. Базу, Valhalla и R5 с их томами это не трогает
 # shellcheck disable=SC2086
-$COMPOSE up -d --remove-orphans
+if ! $COMPOSE up -d --remove-orphans; then
+  # сам compose говорит только «service … didn't complete successfully» — дополняем
+  # журналом упавших контейнеров, чтобы причина была в этом же логе
+  echo "--- журналы упавших контейнеров ---" >&2
+  # shellcheck disable=SC2086
+  for c in $($COMPOSE ps -a --status exited --format '{{.Service}}' 2>/dev/null); do
+    echo "--- $c ---" >&2
+    $COMPOSE logs --tail 40 "$c" >&2 || true
+  done
+  exit 1
+fi
 REMOTE
 
 step "Накатываю миграции базы"
@@ -389,9 +582,10 @@ REMOTE
 fi
 
 step "Проверяю, что поднялось"
-on_server DEPLOY_PATH <<'REMOTE'
+on_server DEPLOY_PATH PROFILES <<'REMOTE'
 cd "$DEPLOY_PATH"
-COMPOSE="docker compose -f docker-compose.yml -f deploy/compose.server.yml"
+# с профилем: без него compose не считает r5 и подготовку карты частью проекта
+COMPOSE="docker compose -f docker-compose.yml -f deploy/compose.server.yml $PROFILES"
 # Первый запуск долгий: пока Valhalla строит тайлы, бэкенд уже поднимается, но здоровым
 # становится не сразу. Показываем, что говорят контейнеры, — иначе ожидание выглядит
 # зависанием, и непонятно, поднимается система или падает по кругу
@@ -427,9 +621,9 @@ REMOTE
 
 if [ "$FOLLOW" = "yes" ]; then
   step "Логи сервера · выход Ctrl+C"
-  on_server DEPLOY_PATH <<'REMOTE'
+  on_server DEPLOY_PATH PROFILES <<'REMOTE'
 cd "$DEPLOY_PATH"
-docker compose -f docker-compose.yml -f deploy/compose.server.yml logs -f --tail 30
+docker compose -f docker-compose.yml -f deploy/compose.server.yml $PROFILES logs -f --tail 30
 REMOTE
 fi
 

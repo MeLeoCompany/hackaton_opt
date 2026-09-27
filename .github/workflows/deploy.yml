@@ -50,10 +50,11 @@ jobs:
       - name: Проверить, заведён ли доступ к серверу
         id: secret
         run: |
-          if [ -n "${{ secrets.DEPLOY_ENV }}" ]; then echo "есть=да" >> "$GITHUB_OUTPUT";
-          else echo "есть=нет" >> "$GITHUB_OUTPUT"; echo "секрета DEPLOY_ENV нет — выкладка пропущена"; fi
+          # имя вывода только латиницей: в выражениях GitHub кириллица не разбирается
+          if [ -n "${{ secrets.DEPLOY_ENV }}" ]; then echo "ready=yes" >> "$GITHUB_OUTPUT";
+          else echo "ready=no" >> "$GITHUB_OUTPUT"; echo "секрета DEPLOY_ENV нет — выкладка пропущена"; fi
       - name: Развернуть
-        if: steps.secret.outputs.есть == 'да'
+        if: steps.secret.outputs.ready == 'yes'
         env:
           DEPLOY_ENV_CONTENT: ${{ secrets.DEPLOY_ENV }}
         run: |
