@@ -13,6 +13,8 @@ from src.api.deps import current_office_id, current_user, require_admin
 from src.db.session import get_db
 from src.models import AppUser
 from src.schemas.system import (
+    DataWipeDone,
+    DataWipeWrite,
     DemoModeWrite,
     PlanRunRead,
     SolverParams,
@@ -115,9 +117,7 @@ async def cancel_run(
     user: AppUser = Depends(current_user),
 ) -> PlanRunRead:
     """Расчёт останавливается на ближайшем шаге: ничего не сохраняется."""
-    return await system_service.cancel_run(
-        session, run_id, office_id=office_id, user_id=user.id
-    )
+    return await system_service.cancel_run(session, run_id, office_id=office_id, user_id=user.id)
 
 
 @router.get(
@@ -188,3 +188,21 @@ async def read_travel_cache() -> TravelCacheRead:
 async def clear_travel_cache() -> TravelCacheCleared:
     """Нужно после замены карты или расписания вручную: следующие расчёты спросят R5 заново."""
     return TravelCacheCleared(deleted=await travel_cache.clear())
+
+
+@router.post(
+    "/data/clear",
+    response_model=DataWipeDone,
+    summary="Очистить рабочие данные: заявки, планы, смены (только администратор)",
+    dependencies=[Depends(require_admin)],
+)
+async def clear_data(
+    payload: DataWipeWrite,
+    session: AsyncSession = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> DataWipeDone:
+    """Подготовка к показу: убирает всё наработанное, оставляя справочники и учётки.
+
+    Отменить нельзя. Поэтому `confirm` — слово «УДАЛИТЬ», его вводит человек руками.
+    """
+    return await system_service.wipe_data(session, confirm=payload.confirm, user_id=user.id)

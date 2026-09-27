@@ -5,6 +5,7 @@
 в базе (034) и держится в памяти процесса (`core/clock.py`).
 """
 
+import logging
 import platform
 import sys
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,7 @@ from src.models import AppUser, Brigade, Engineer, Office, Plan, Request
 from src.repositories.plan_runs import plan_runs_repository
 from src.repositories.system import system_repository
 from src.schemas.system import (
+    DataWipeDone,
     PlanRunEventRead,
     PlanRunRead,
     ServiceStatus,
@@ -51,6 +53,9 @@ async def load_offset(session: AsyncSession) -> None:
     """При старте приложения поднимаем сохранённый сдвиг в память."""
     row = await system_repository.get_system_time(session)
     clock.set_offset(timedelta(seconds=row.offset_seconds))
+
+
+logger = logging.getLogger(__name__)
 
 
 async def read_time(session: AsyncSession) -> SystemTimeRead:
@@ -308,3 +313,30 @@ async def save_solver_params(
     row.updated_by = user_id
     await session.commit()
     return await read_solver_params(session)
+
+
+# Очистка стирает работу целого дня, поэтому её подтверждают словом, а не галочкой:
+# то же слово просит интерфейс, и случайный POST ничего не удалит
+WIPE_CONFIRMATION = "УДАЛИТЬ"
+
+
+async def wipe_data(
+    session: AsyncSession, *, confirm: str, user_id: int | None = None
+) -> DataWipeDone:
+    """Убрать рабочие данные перед показом: заявки, планы, расчёты, смены.
+
+    Справочники (офисы, бригады, оборудование, нормы, приоритеты) и учётки остаются —
+    иначе после очистки нечем работать и некому входить.
+    """
+    if confirm.strip().upper() != WIPE_CONFIRMATION:
+        raise DataError([f"для очистки введите слово «{WIPE_CONFIRMATION}»"])
+    deleted = await system_repository.wipe_operational_data(session)
+    await session.commit()
+    total = sum(deleted.values())
+    logger.warning(
+        "очистка данных: удалено записей %s (%s), пользователь %s",
+        total,
+        ", ".join(f"{name} {count}" for name, count in deleted.items()) or "нечего было удалять",
+        user_id,
+    )
+    return DataWipeDone(deleted=deleted, total=total)

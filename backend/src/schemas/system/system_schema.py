@@ -147,3 +147,16 @@ class TravelCacheRead(BaseModel):
 
 class TravelCacheCleared(BaseModel):
     deleted: int
+
+
+class DataWipeWrite(BaseModel):
+    """Подтверждение очистки: слово вводит человек руками, случайно не нажмёшь."""
+
+    confirm: str
+
+
+class DataWipeDone(BaseModel):
+    """Что удалено: по записям на таблицу, в человеческих названиях."""
+
+    deleted: dict[str, int]
+    total: int

@@ -4,7 +4,13 @@
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
-import { clearTravelCache, fetchSolverParams, fetchTravelCache, saveSolverParams } from '../api/systemApi.js'
+import {
+  clearAllData,
+  clearTravelCache,
+  fetchSolverParams,
+  fetchTravelCache,
+  saveSolverParams,
+} from '../api/systemApi.js'
 import InfoHint from '../components/InfoHint.vue'
 import SolverParamRows from '../components/SolverParamRows.vue'
 import { limitFor, numericParams } from '../utils/solverParams.js'
@@ -123,6 +129,45 @@ async function resetTravelCache() {
     errorMessage.value = error.message
   } finally {
     clearingCache.value = false
+  }
+}
+
+// очистка перед показом: стирает работу целого дня, поэтому подтверждается словом,
+// а не кнопкой «точно?» — случайный клик ничего не удалит
+const WIPE_WORD = 'УДАЛИТЬ'
+const wipeOpen = ref(false)
+const wipeWord = ref('')
+const wiping = ref(false)
+const wipeResult = ref('')
+const wipeReady = computed(() => wipeWord.value.trim().toUpperCase() === WIPE_WORD)
+
+function openWipe() {
+  wipeOpen.value = true
+  wipeWord.value = ''
+  wipeResult.value = ''
+}
+
+function cancelWipe() {
+  wipeOpen.value = false
+  wipeWord.value = ''
+}
+
+async function runWipe() {
+  if (!wipeReady.value) return
+  wiping.value = true
+  try {
+    const done = await clearAllData(wipeWord.value)
+    const rows = Object.entries(done.deleted).map(([name, count]) => `${name.toLowerCase()} ${count}`)
+    wipeResult.value = done.total
+      ? `Удалено записей ${done.total}: ${rows.join(', ')}`
+      : 'Удалять было нечего — рабочих данных нет'
+    wipeOpen.value = false
+    wipeWord.value = ''
+    await load()
+  } catch (error) {
+    errorMessage.value = error.message
+  } finally {
+    wiping.value = false
   }
 }
 
@@ -325,12 +370,105 @@ onMounted(() => {
       <p class="muted">
         <button class="link" :disabled="loading" @click="load(); loadTravelCache()">{{ loading ? 'Обновляю…' : 'Обновить' }}</button>
       </p>
+
+      <!-- подготовка к показу: убрать всё наработанное, оставив справочники и учётки -->
+      <h2 class="section-title">Очистка перед показом</h2>
+      <section class="danger">
+        <p>
+          <strong>Удалит все рабочие данные:</strong> заявки и факты по ним, планы с маршрутами
+          и назначениями, журнал расчётов, отметки бригад и смены инженеров.
+        </p>
+        <p>
+          <strong>Останется:</strong> справочники — офисы, бригады, оборудование, нормы,
+          приоритеты — и учётные записи. Входить и заводить работу заново будет чем.
+        </p>
+        <p class="danger-note">Отменить нельзя. Вернуть данные можно только загрузкой заново.</p>
+
+        <button v-if="!wipeOpen" type="button" class="danger-button" @click="openWipe">
+          Очистить все данные
+        </button>
+        <template v-else>
+          <label class="confirm">
+            <span>Введите слово <strong>{{ WIPE_WORD }}</strong>, чтобы подтвердить:</span>
+            <input
+              v-model="wipeWord"
+              class="confirm-input"
+              :disabled="wiping"
+              autocomplete="off"
+              :aria-label="`подтверждение словом ${WIPE_WORD}`"
+              @keyup.enter="runWipe"
+            />
+          </label>
+          <div class="confirm-actions">
+            <button type="button" class="danger-button" :disabled="wiping || !wipeReady" @click="runWipe">
+              {{ wiping ? 'Удаляю…' : 'Удалить безвозвратно' }}
+            </button>
+            <button type="button" class="link" :disabled="wiping" @click="cancelWipe">Отмена</button>
+          </div>
+        </template>
+        <p v-if="wipeResult" class="saved">{{ wipeResult }}</p>
+      </section>
     </template>
 
   </div>
 </template>
 
 <style scoped>
+/* очистка данных: блок заметно отделён и покрашен, чтобы не нажать мимоходом */
+.danger {
+  border: 1px solid #e0b4b4;
+  border-radius: 8px;
+  background: #fdf5f5;
+  padding: 16px 18px;
+  max-width: 760px;
+}
+
+.danger p {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.danger-note {
+  color: #a03030;
+  font-weight: 600;
+}
+
+.danger-button {
+  border: 1px solid #c0392b;
+  border-radius: 6px;
+  background: #c0392b;
+  color: #fff;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.danger-button:disabled {
+  border-color: #d9a29b;
+  background: #d9a29b;
+  cursor: default;
+}
+
+.confirm {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0 10px;
+}
+
+.confirm-input {
+  border: 1px solid #c0a0a0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  width: 160px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .card-head {
   display: flex;
   gap: 12px;

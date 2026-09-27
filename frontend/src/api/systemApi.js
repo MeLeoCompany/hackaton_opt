@@ -58,3 +58,9 @@ export function fetchTravelCache() {
 export function clearTravelCache() {
   return apiRequest('DELETE', '/system/travel-cache')
 }
+
+// очистка рабочих данных перед показом: заявки, планы, расчёты, смены (только администратор).
+// confirm — слово «УДАЛИТЬ»: его вводит человек руками, сервер проверяет ещё раз
+export function clearAllData(confirm) {
+  return apiRequest('POST', '/system/data/clear', { json: { confirm } })
+}
