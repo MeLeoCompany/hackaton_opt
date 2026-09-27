@@ -1,11 +1,12 @@
 """Оборудование: справочник того, что техник привозит на заявку."""
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import DataError, InUseError, NotFoundError
-from src.models import Equipment
+from src.models import Equipment, Transport
 from src.repositories.equipment import equipment_repository
-from src.schemas.equipment import EquipmentRead, EquipmentWrite
+from src.schemas.equipment import CapacityRow, EquipmentRead, EquipmentWrite
 
 
 class EquipmentNotFoundError(NotFoundError):
@@ -93,3 +94,35 @@ async def check_name_is_free(
     same_name = await equipment_repository.find_equipment_by_name(session, name)
     if same_name is not None and same_name.id != except_id:
         raise EquipmentDataError([f"«{name}» уже есть в справочнике оборудования"])
+
+
+async def list_capacity(session: AsyncSession) -> list[CapacityRow]:
+    """Справочник ёмкости строками: все пары «транспорт × оборудование».
+
+    Показываем и пары, которых в базе ещё нет: иначе новый тип оборудования не завести
+    в справочнике — его просто не было бы видно.
+    """
+    transports = (await session.execute(select(Transport).order_by(Transport.id))).scalars().all()
+    equipment = (await session.execute(select(Equipment).order_by(Equipment.id))).scalars().all()
+    known = await equipment_repository.capacity_map(session)
+    return [
+        CapacityRow(
+            transport_id=transport.id,
+            transport_name=transport.name,
+            equipment_id=item.id,
+            equipment_name=item.name,
+            max_quantity=known.get((transport.id, item.id), 0),
+        )
+        for transport in transports
+        for item in equipment
+    ]
+
+
+async def save_capacity(session: AsyncSession, rows: list[CapacityRow]) -> list[CapacityRow]:
+    """Сохранить изменившиеся пределы. Что не прислали — остаётся как было."""
+    for row in rows:
+        await equipment_repository.set_capacity(
+            session, row.transport_id, row.equipment_id, row.max_quantity
+        )
+    await session.commit()
+    return await list_capacity(session)

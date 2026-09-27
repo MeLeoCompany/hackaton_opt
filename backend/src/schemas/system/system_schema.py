@@ -116,6 +116,8 @@ class SolverParams(BaseModel):
     distance_weight: float = Field(default=1.0, gt=0, le=1000)
     transit_attempts: int = Field(default=4, ge=1, le=10)
     verbose_log: bool = False
+    # запас штук сверх потребности плана при выдаче оборудования бригадам (db/init/051)
+    equipment_reserve: int = Field(default=2, ge=0, le=100)
 
     @model_validator(mode="after")
     def check_limits(self) -> "SolverParams":

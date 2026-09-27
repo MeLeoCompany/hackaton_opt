@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
 from src.models import AppUser
+from src.schemas.equipment import IssueDone, IssuePreview, IssueWrite
 from src.schemas.plans import (
     PlanApprovalReviewRequest,
     PlanBuildRequest,
@@ -24,6 +25,7 @@ from src.schemas.plans import (
     PlanSyncRequest,
     ReplanPreview,
 )
+from src.services.equipment import equipment_issue
 from src.services.planner import approval_review, plan_sync, planning_service, replan_service
 from src.services.system import system_service
 
@@ -280,6 +282,35 @@ async def cancel_plan_approval(
     return await planning_service.cancel_plan_approval(
         session, plan_id, office_id=office_id, user_id=user.id
     )
+
+
+@router.get(
+    "/{plan_id}/equipment",
+    response_model=IssuePreview,
+    summary="Рекомендуемая выдача оборудования по плану",
+)
+async def preview_equipment(
+    plan_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    """Сколько чего нужно бригадам по этому плану и сколько предлагается выдать."""
+    return await equipment_issue.preview(session, plan_id, office_id=office_id)
+
+
+@router.post(
+    "/{plan_id}/equipment",
+    response_model=IssueDone,
+    summary="Утвердить выдачу оборудования бригадам",
+)
+async def issue_equipment(
+    plan_id: int,
+    payload: IssueWrite,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    """Записывает утверждённые количества в запас смен: пересчёты считают уже от него."""
+    return await equipment_issue.apply(session, plan_id, payload.brigades, office_id=office_id)
 
 
 @router.get("/{plan_id}", response_model=PlanDetail, summary="План с маршрутами исполнителей")

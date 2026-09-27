@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import IconButton from '../components/IconButton.vue'
+import EquipmentIssueDialog from '../components/EquipmentIssueDialog.vue'
 import PlanApprovalDialog from '../components/PlanApprovalDialog.vue'
 import PlanBuildDialog from '../components/PlanBuildDialog.vue'
 import PlanMap from '../components/PlanMap.vue'
@@ -34,6 +35,7 @@ const {
   errorMessage,
   errorDetails,
   noticeMessage,
+  showNotice,
   load,
   loadPlans,
   selectPlan,
@@ -173,6 +175,13 @@ async function startBuild(params) {
 }
 
 // «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
+// выдача оборудования под открытый план: рекомендацию диспетчер правит и утверждает
+const issuePlanId = ref(null)
+function equipmentIssued(done) {
+  issuePlanId.value = null
+  showNotice(`Оборудование выдано: бригад ${done.brigades}, штук ${done.items}`)
+}
+
 const viewMode = ref('details')
 
 // Страница в двух состояниях: список планов дня или маршруты одного плана.
@@ -504,6 +513,13 @@ onMounted(async () => {
             {{ syncing ? 'Синхронизирую…' : `По плану${syncSelected.length ? ` (${syncSelected.length})` : ''}` }}
           </button>
           <button
+            class="issue-button"
+            title="Сколько оборудования выдать бригадам под этот план: нужное по плану плюс запас, но не больше, чем увезёт транспорт"
+            @click="issuePlanId = plan.id"
+          >
+            Оборудование
+          </button>
+          <button
             v-if="openedSummary?.approved_at && !openedSummary?.superseded_at"
             :class="['primary', 'replan-button', {
               'attention-pulse':
@@ -563,6 +579,12 @@ onMounted(async () => {
       :building="building"
       @build="startReplan"
       @close="replanTarget = null"
+    />
+    <EquipmentIssueDialog
+      v-if="issuePlanId"
+      :plan-id="issuePlanId"
+      @issued="equipmentIssued"
+      @close="issuePlanId = null"
     />
     <PlanApprovalDialog
       v-if="approvalTarget"

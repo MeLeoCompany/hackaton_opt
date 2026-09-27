@@ -369,6 +369,7 @@ export function usePlans() {
     errorMessage,
     errorDetails,
     noticeMessage,
+    showNotice,
     load,
     loadPlans,
     selectPlan,

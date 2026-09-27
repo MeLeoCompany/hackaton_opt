@@ -1,12 +1,13 @@
 <script setup>
 // Справочник оборудования: что техник привозит на заявку. Требование ставится в заявке
 // (колонка «Тип работ» на вкладке заявок). Тип, который требуют заявки, не удалить.
-import { onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import ErrorMessage from '../components/ErrorMessage.vue'
 import IconButton from '../components/IconButton.vue'
 import { useAuth } from '../composables/useAuth.js'
 import { NEW_EQUIPMENT, useEquipment } from '../composables/useEquipment.js'
+import { listCapacity, saveCapacity } from '../api/equipmentApi.js'
 
 const {
   equipment,
@@ -28,7 +29,65 @@ const {
 // справочник правит администратор; диспетчер его только смотрит
 const { isAdmin } = useAuth()
 
-onMounted(load)
+// Ёмкость: сколько штук бригада увезёт на своём транспорте. По ней считается выдача
+// оборудования по плану — больше предела диспетчер выписать не сможет.
+const capacityRows = ref([])
+const limits = ref({})
+const savingCapacity = ref(false)
+const capacityNotice = ref('')
+
+const key = (transportId, equipmentId) => `${transportId}:${equipmentId}`
+
+// из плоского списка пар делаем сетку: строки — транспорт, колонки — оборудование
+const transportRows = computed(() => {
+  const seen = new Map()
+  for (const row of capacityRows.value) {
+    if (!seen.has(row.transport_id)) seen.set(row.transport_id, row.transport_name)
+  }
+  return [...seen].map(([id, name]) => ({ id, name }))
+})
+
+const equipmentColumns = computed(() => {
+  const seen = new Map()
+  for (const row of capacityRows.value) {
+    if (!seen.has(row.equipment_id)) seen.set(row.equipment_id, row.equipment_name)
+  }
+  return [...seen].map(([id, name]) => ({ id, name }))
+})
+
+async function loadCapacity() {
+  try {
+    capacityRows.value = await listCapacity()
+    limits.value = Object.fromEntries(
+      capacityRows.value.map((row) => [key(row.transport_id, row.equipment_id), row.max_quantity]),
+    )
+  } catch (error) {
+    errorMessage.value = error.message
+  }
+}
+
+async function storeCapacity() {
+  savingCapacity.value = true
+  capacityNotice.value = ''
+  try {
+    const rows = capacityRows.value.map((row) => ({
+      transport_id: row.transport_id,
+      equipment_id: row.equipment_id,
+      max_quantity: Number(limits.value[key(row.transport_id, row.equipment_id)]) || 0,
+    }))
+    capacityRows.value = await saveCapacity(rows)
+    capacityNotice.value = 'Пределы сохранены'
+  } catch (error) {
+    errorMessage.value = error.message
+  } finally {
+    savingCapacity.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  loadCapacity()
+})
 </script>
 
 <template>
@@ -121,6 +180,53 @@ onMounted(load)
           </tbody>
         </table>
       </div>
+
+      <h2 class="section-title">Сколько увозит бригада</h2>
+      <p class="muted section-note">
+        Предел выдачи на один выезд: по нему считается, сколько оборудования выдать бригаде
+        под её план — <strong>min(предел, нужно по плану + запас)</strong>. Запас общий,
+        он задаётся в «Система» → «Состояние».
+      </p>
+      <div class="table-scroll">
+        <table class="data-table fixed-columns">
+          <colgroup>
+            <col style="width: 220px" />
+            <col v-for="column in equipmentColumns" :key="column.id" style="width: 160px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Транспорт</th>
+              <th v-for="column in equipmentColumns" :key="column.id">{{ column.name }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in transportRows" :key="row.id">
+              <td><strong>{{ row.name }}</strong></td>
+              <td v-for="column in equipmentColumns" :key="column.id" class="number-cell">
+                <input
+                  v-if="isAdmin"
+                  v-model="limits[`${row.id}:${column.id}`]"
+                  type="number"
+                  min="0"
+                  class="limit-input"
+                  :disabled="savingCapacity"
+                  :aria-label="`${row.name}: сколько увезёт (${column.name})`"
+                />
+                <template v-else>{{ limits[`${row.id}:${column.id}`] ?? 0 }}</template>
+              </td>
+            </tr>
+            <tr v-if="!transportRows.length">
+              <td :colspan="equipmentColumns.length + 1" class="empty">Справочник ёмкости пуст</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-if="isAdmin" class="muted">
+        <button class="primary" :disabled="savingCapacity" @click="storeCapacity">
+          {{ savingCapacity ? 'Сохраняю…' : 'Сохранить пределы' }}
+        </button>
+        <span v-if="capacityNotice" class="saved">{{ capacityNotice }}</span>
+      </p>
     </template>
 
     <Transition name="toast">
@@ -128,3 +234,30 @@ onMounted(load)
     </Transition>
   </div>
 </template>
+
+<style scoped>
+.section-title {
+  margin: 18px 0 8px;
+  font-size: 15px;
+}
+
+.section-note {
+  max-width: 720px;
+  margin: 0 0 10px;
+}
+
+/* поле предела: числа короткие, широкое поле выглядело бы пустым */
+.limit-input {
+  width: 80px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  text-align: right;
+}
+
+.saved {
+  margin-left: 10px;
+  color: #166534;
+  font-size: 12px;
+}
+</style>

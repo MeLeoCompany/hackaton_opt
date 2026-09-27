@@ -24,6 +24,8 @@ class SolverSettings(Base):
     distance_weight: Mapped[Decimal] = mapped_column(Numeric(7, 3))
     transit_attempts: Mapped[int] = mapped_column(SmallInteger)
     verbose_log: Mapped[bool] = mapped_column(Boolean)
+    # запас штук сверх потребности плана при выдаче оборудования (db/init/051)
+    equipment_reserve: Mapped[int] = mapped_column(SmallInteger)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("app_user.id", ondelete="SET NULL")

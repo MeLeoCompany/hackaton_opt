@@ -292,6 +292,7 @@ async def read_solver_params(session: AsyncSession) -> SolverParamsRead:
         distance_weight=float(row.distance_weight),
         transit_attempts=row.transit_attempts,
         verbose_log=row.verbose_log,
+        equipment_reserve=row.equipment_reserve,
         updated_at=row.updated_at,
         updated_by=author.name if author else None,
     )
@@ -309,6 +310,7 @@ async def save_solver_params(
     row.distance_weight = Decimal(str(payload.distance_weight))
     row.transit_attempts = payload.transit_attempts
     row.verbose_log = payload.verbose_log
+    row.equipment_reserve = payload.equipment_reserve
     row.updated_at = clock.now()
     row.updated_by = user_id
     await session.commit()

@@ -10,6 +10,7 @@ const params = {
   max_time_limit_seconds: 20,
   distance_weight: 1,
   transit_attempts: 4,
+  equipment_reserve: 2,
 }
 
 test('время поиска растёт с размером дня и упирается в максимум', () => {

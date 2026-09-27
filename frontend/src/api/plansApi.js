@@ -78,3 +78,13 @@ export function dropWindows(planId) {
 export function decideApproval(planId, params = {}) {
   return apiRequest('POST', `/plans/${planId}/approval/decisions`, { json: params })
 }
+
+// выдача оборудования по плану: сколько нужно бригадам (x0), сколько влезет и что выдать
+export function fetchPlanEquipment(planId) {
+  return apiRequest('GET', `/plans/${planId}/equipment`)
+}
+
+// утверждение выдачи: числа уходят в запас смен, от него считают пересчёты
+export function issuePlanEquipment(planId, brigades) {
+  return apiRequest('POST', `/plans/${planId}/equipment`, { json: { brigades } })
+}
