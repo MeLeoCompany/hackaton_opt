@@ -31,8 +31,24 @@ const showPassword = ref(false)
             autocomplete="current-password"
             required
           />
-          <button type="button" class="ghost" @click="showPassword = !showPassword">
-            {{ showPassword ? 'Скрыть' : 'Показать' }}
+          <!-- глазок внутри поля: как на входе диспетчера, кнопка со словом ела полстроки -->
+          <button
+            type="button"
+            class="reveal"
+            :title="showPassword ? 'Скрыть пароль' : 'Показать пароль'"
+            :aria-label="showPassword ? 'Скрыть пароль' : 'Показать пароль'"
+            @click="showPassword = !showPassword"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path
+                d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              />
+              <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8" />
+              <path v-if="showPassword" d="M4 4l16 16" stroke="currentColor" stroke-width="1.8" />
+            </svg>
           </button>
         </span>
       </label>
@@ -92,13 +108,36 @@ label {
 }
 
 .password {
+  position: relative;
   display: flex;
-  gap: 8px;
 }
 
 .password input {
   flex: 1;
   min-width: 0;
+  /* место под глазок, иначе длинный пароль уезжает под кнопку */
+  padding-right: 46px;
+}
+
+.reveal {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #94a3b8;
+  transform: translateY(-50%);
+}
+
+.reveal:active {
+  color: #e5e7eb;
 }
 
 .error {
