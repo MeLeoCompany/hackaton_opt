@@ -6,6 +6,7 @@
 #   cp deploy/deploy.env.example deploy/deploy.env   # заполнить
 #   ./deploy/deploy.sh                # развернуть или обновить
 #   ./deploy/deploy.sh --force        # то же, но пересобрать всё заново
+#   ./deploy/deploy.sh --follow       # развернуть и остаться на логах сервера
 #   ./deploy/deploy.sh --check        # только проверить доступ и настройки
 #   ./deploy/deploy.sh --logs         # хвост логов сервера
 #   ./deploy/deploy.sh --status       # что запущено на сервере
@@ -133,10 +134,12 @@ cd "$DEPLOY_PATH"
 docker compose -f docker-compose.yml -f deploy/compose.server.yml ps
 REMOTE
     exit 0 ;;
-  deploy|--force) ;;
-  *) die "не знаю режим «$MODE». Есть: --force, --check, --logs, --status" ;;
+  deploy|--force|--follow) ;;
+  *) die "не знаю режим «$MODE». Есть: --force, --follow, --check, --logs, --status" ;;
 esac
 FORCE=$([ "$MODE" = "--force" ] && echo yes || echo no)
+# --follow: после развёртывания остаёмся на логах сервера, пока не нажмут Ctrl+C
+FOLLOW=$([ "$MODE" = "--follow" ] && echo yes || echo no)
 
 # --- профили ----------------------------------------------------------------
 PROFILES=""
@@ -369,19 +372,46 @@ step "Проверяю, что поднялось"
 on_server DEPLOY_PATH <<'REMOTE'
 cd "$DEPLOY_PATH"
 COMPOSE="docker compose -f docker-compose.yml -f deploy/compose.server.yml"
-# первый запуск долгий: пока Valhalla строит тайлы, бэкенд уже поднимается, но здоровым
-# становится не сразу. Пишем, сколько ждём, чтобы не казалось, что всё зависло
+# Первый запуск долгий: пока Valhalla строит тайлы, бэкенд уже поднимается, но здоровым
+# становится не сразу. Показываем, что говорят контейнеры, — иначе ожидание выглядит
+# зависанием, и непонятно, поднимается система или падает по кругу
+shown=""
 for i in $(seq 1 60); do
   state=$($COMPOSE ps --format '{{.Name}} {{.Status}}' | grep routing_backend || true)
   case "$state" in *healthy*) echo "бэкенд здоров"; break;; esac
-  [ $((i % 6)) = 0 ] && echo "жду бэкенд, прошло $((i * 5)) с: ${state:-контейнера ещё нет}"
-  [ "$i" = 60 ] && echo "бэкенд не стал здоровым за 5 минут — смотрите логи" >&2
+  fresh=$($COMPOSE logs --tail 3 backend 2>/dev/null || true)
+  if [ -n "$fresh" ] && [ "$fresh" != "$shown" ]; then
+    printf '%s\n' "$fresh" | sed 's/^/   | /'
+    shown="$fresh"
+  fi
+  [ $((i % 6)) = 0 ] && echo "   жду бэкенд, прошло $((i * 5)) с: ${state:-контейнера ещё нет}"
+  if [ "$i" = 60 ]; then
+    echo "бэкенд не стал здоровым за 5 минут — вот что он пишет:" >&2
+    $COMPOSE logs --tail 40 backend >&2 || true
+  fi
   sleep 5
 done
 $COMPOSE ps --format '{{.Name}}\t{{.Status}}'
 curl -fsS -o /dev/null -w 'веб: HTTP %{http_code}\n' http://localhost/healthz 2>/dev/null \
-  || echo "веб пока не отвечает — посмотрите ./deploy/deploy.sh --logs"
+  || { echo "веб пока не отвечает, вот его логи:"; $COMPOSE logs --tail 20 web || true; }
+# маршрутизаторы собираются долго и после развёртывания: говорим, готовы ли они
+for name in routing_valhalla routing_r5; do
+  line=$($COMPOSE ps --format '{{.Name}} {{.Status}}' | grep "$name" || true)
+  case "$line" in
+    *healthy*) echo "$name: готов" ;;
+    "") ;;
+    *) echo "$name: ещё собирает данные — это нормально, следите ./deploy/deploy.sh --logs" ;;
+  esac
+done
 REMOTE
+
+if [ "$FOLLOW" = "yes" ]; then
+  step "Логи сервера · выход Ctrl+C"
+  on_server DEPLOY_PATH <<'REMOTE'
+cd "$DEPLOY_PATH"
+docker compose -f docker-compose.yml -f deploy/compose.server.yml logs -f --tail 30
+REMOTE
+fi
 
 echo
 if [ "$TLS" = "true" ]; then
