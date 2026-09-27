@@ -4,6 +4,15 @@
 self-hosted Valhalla для дорожной сети и R5 для общественного транспорта.
 
 ```
+./deploy/local.sh            # поднять всё локально одной командой
+./deploy/deploy.sh           # развернуть или обновить сервер (настройки — deploy/deploy.env)
+```
+
+Развёртывание описано в [deploy/README.md](deploy/README.md): локально —
+[deploy/LOCAL.md](deploy/LOCAL.md), на сервере с доменом и сертификатом —
+[deploy/SERVER.md](deploy/SERVER.md). Для разработки можно поднимать compose напрямую:
+
+```
 docker compose --profile transit up
 ```
 

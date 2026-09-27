@@ -1,0 +1,63 @@
+# Проверка и выкладка на сервер. Тесты гоняются на каждый push и pull request,
+# выкладка — только с ветки по умолчанию и только если заведён секрет DEPLOY_ENV.
+#
+# Как включить выкладку: Settings → Secrets and variables → Actions → New repository secret
+#   имя    DEPLOY_ENV
+#   значение — целиком содержимое вашего deploy/deploy.env
+# Пока секрета нет, шаг выкладки пропускается, а тесты всё равно идут.
+name: Проверка и выкладка
+
+on:
+  push:
+    branches: [main, algoV2-update]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Поставить зависимости бэкенда
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          # решатель cuOpt ставится только на машине с видеокартой: в CI он не нужен,
+          # тесты подменяют его заглушками
+          pip install -e '.[dev]' || pip install -e .
+      - name: Тесты бэкенда
+        working-directory: backend
+        run: python -m pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Сборка интерфейсов
+        run: |
+          cd frontend && npm ci && npm run build
+          cd ../mobile && npm ci && npm run build
+
+  deploy:
+    name: Выкладка на сервер
+    needs: tests
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверить, заведён ли доступ к серверу
+        id: secret
+        run: |
+          if [ -n "${{ secrets.DEPLOY_ENV }}" ]; then echo "есть=да" >> "$GITHUB_OUTPUT";
+          else echo "есть=нет" >> "$GITHUB_OUTPUT"; echo "секрета DEPLOY_ENV нет — выкладка пропущена"; fi
+      - name: Развернуть
+        if: steps.secret.outputs.есть == 'да'
+        env:
+          DEPLOY_ENV_CONTENT: ${{ secrets.DEPLOY_ENV }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          printf '%s' "$DEPLOY_ENV_CONTENT" > deploy/deploy.env
+          chmod 600 deploy/deploy.env
+          ./deploy/deploy.sh

@@ -1,0 +1,11 @@
+# Видеокарта NVIDIA для решателя cuOpt. Подключается, когда в deploy.env GPU=true.
+# На сервере должны стоять драйвер и nvidia-container-toolkit.
+services:
+  backend:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
