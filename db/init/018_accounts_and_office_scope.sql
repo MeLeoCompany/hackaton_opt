@@ -6,7 +6,8 @@
 --
 -- app_user — учётки. role: admin (справочники, пользователи, любой офис) или dispatcher
 -- (только свой офис). Пароль — хэш scrypt (backend/src/core/security.py). Первый
--- администратор: логин admin, пароль admin — смените его после первого входа.
+-- администратор: логин admin, пароль задаётся переменной ADMIN_PASSWORD при развёртывании
+-- (локально — backend/.env, на сервере — deploy/deploy.env). Не задан — будет admin.
 --
 -- Разделение по офисам:
 --   request.office_id  — чья заявка. Новая получает офис того, кто её завёл или загрузил.
@@ -32,10 +33,11 @@ CREATE TABLE IF NOT EXISTS app_user (
 );
 COMMENT ON TABLE app_user IS 'Учётки: администраторы и диспетчеры офисов';
 
+-- Пароль администратора в миграции не хранится: он приходит из окружения (ADMIN_PASSWORD)
+-- и ставится при старте бэкенда. Здесь заводится только сама учётка, со значением, под
+-- которое не подходит ни один пароль: войти по нему нельзя.
 INSERT INTO app_user (id, login, name, password_hash, role) OVERRIDING SYSTEM VALUE VALUES
-    (1, 'admin', 'Администратор',
-     'scrypt$16384$8$1$aGFja2F0b24tb3B0LWFkbQ$KkKriaTtLOkvkdU1KbGJy_74DprBRr1VjSzV9pROmRMuIdYytDRR-mkayeJG9AuBHJWYmbBFth05y3wnRbLSwg',
-     'admin')
+    (1, 'admin', 'Администратор', 'нет пароля: задаётся из ADMIN_PASSWORD', 'admin')
 ON CONFLICT (id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('app_user', 'id'), (SELECT MAX(id) FROM app_user));
 

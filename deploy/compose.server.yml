@@ -39,6 +39,7 @@ services:
       R5_URL: http://r5:8003
       R5_GTFS_PATH: /app/transit/moscow-pilot.gtfs.zip
       AUTH_SECRET: ${AUTH_SECRET:?задайте AUTH_SECRET в deploy.env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       WALKING_SPEED_KMH: ${R5_WALKING_SPEED_KMH:-4.8}
       R5_TIMEOUT_SECONDS: ${R5_TIMEOUT_SECONDS:-180}
       R5_MATRIX_BLOCK_ORIGINS: ${R5_MATRIX_BLOCK_ORIGINS:-5}

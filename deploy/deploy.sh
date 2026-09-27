@@ -310,7 +310,8 @@ SERVER_ENV="# создан deploy/deploy.sh — правьте deploy.env и з�
 DOMAIN=$DOMAIN
 TLS=$TLS
 DB_PASSWORD=$DB_PASSWORD
-AUTH_SECRET=$AUTH_SECRET"
+AUTH_SECRET=$AUTH_SECRET
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}"
 for name in R5_WALKING_SPEED_KMH R5_TIMEOUT_SECONDS R5_MATRIX_MAX_POINTS \
             CUOPT_TIME_LIMIT_SECONDS CUOPT_MAX_TIME_LIMIT_SECONDS CUOPT_DISTANCE_WEIGHT; do
   value="${!name-}"
@@ -388,4 +389,8 @@ if [ "$TLS" = "true" ]; then
 else
   echo "Готово. Диспетчер: http://$SERVER_HOST  ·  бригады: http://$SERVER_HOST/mobile/"
 fi
-echo "Первый вход: admin / admin — смените пароль в «Справочники» → «Пользователи»."
+if [ -n "${ADMIN_PASSWORD:-}" ]; then
+  echo "Вход: admin с паролем из ADMIN_PASSWORD."
+else
+  echo "Первый вход: admin / admin — смените пароль в «Справочники» → «Пользователи»."
+fi

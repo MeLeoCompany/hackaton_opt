@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     walking_speed_kmh: float = Field(default=4.8, ge=0.5, le=25, allow_inf_nan=False)
     # подпись токенов входа; в любом общем окружении задайте свой AUTH_SECRET
     auth_secret: str = "dev-secret-change-me"
+    # пароль администратора: ставится при старте, в базе и миграциях не хранится.
+    # Пусто — учётке дадут «admin», о чём приложение напишет в журнал
+    admin_password: str = "admin"
     auth_token_hours: int = Field(default=12, gt=0)
     # ширина обещанного клиенту окна: предложенное время плюс допуск (docs/algoV2.md)
     promise_tolerance_minutes: int = Field(default=30, ge=5, le=240)
