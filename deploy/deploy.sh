@@ -74,6 +74,7 @@ DEPLOY_PATH="${DEPLOY_PATH:-~/routing}"
 : "${AUTH_SECRET:?укажите AUTH_SECRET}"
 SERVER_PORT="${SERVER_PORT:-22}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
+DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH:-~/.ssh/routing_deploy}"
 TLS="${TLS:-true}"
 TRANSIT="${TRANSIT:-true}"
 GPU="${GPU:-true}"
@@ -179,40 +180,47 @@ if [ "${GPU:-true}" = "true" ]; then
       echo "  Поставьте драйвер и перезагрузите сервер:  ubuntu-drivers install" >&2
       echo "  CUDA Toolkit с сайта NVIDIA не нужен — CUDA идёт внутри образа бэкенда." >&2
     else
-      echo "ВНИМАНИЕ: видеокарты на сервере не видно." >&2
+      echo "ВНИМАНИЕ: видеокарты на сервере не видно (нет ни nvidia-smi, ни устройства)." >&2
     fi
     echo "  Разворачиваю без GPU: расчёт пойдёт на OR-Tools, это рабочий вариант." >&2
   else
-    nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
-    # Установка тулкита не должна ронять развёртывание: не вышло — развернёмся без GPU,
-    # поэтому весь кусок в подоболочке и с честной проверкой результата
+    nvidia-smi --query-gpu=name,driver_version --format=csv,noheader || true
+    # Ставим контейнерный тулкит, если docker ещё не знает про nvidia. Вывод apt не глушим:
+    # когда шаг не удаётся, нужно видеть, на чём именно
     if ! docker info 2>/dev/null | grep -qE '^ Runtimes:.*nvidia'; then
       echo "ставлю nvidia-container-toolkit (прокидывает видеокарту в контейнер)"
-      if ! (
-        set -e
-        $SUDO apt-get update -qq
-        $SUDO apt-get install -y -qq gnupg curl ca-certificates
+      (
+        set -x
+        $SUDO apt-get update
+        $SUDO apt-get install -y gnupg curl ca-certificates
         $SUDO install -m 0755 -d /usr/share/keyrings
         curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
           | $SUDO gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
         curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
           | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
           | $SUDO tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null
-        $SUDO apt-get update -qq
-        $SUDO apt-get install -y -qq nvidia-container-toolkit
-        $SUDO nvidia-ctk runtime configure --runtime=docker
-        $SUDO systemctl restart docker
-      ) 2>&1; then
-        echo "ВНИМАНИЕ: поставить nvidia-container-toolkit не вышло" >&2
-        echo "  Поставьте его вручную по инструкции NVIDIA и запустите скрипт заново." >&2
-        echo "  Сейчас разворачиваю без GPU: расчёт пойдёт на OR-Tools." >&2
+        $SUDO apt-get update
+        $SUDO apt-get install -y nvidia-container-toolkit
+      ) >&2 || echo "ВНИМАНИЕ: установка пакета не удалась — смотрите вывод apt выше" >&2
+      if command -v nvidia-ctk >/dev/null; then
+        $SUDO nvidia-ctk runtime configure --runtime=docker >&2 && $SUDO systemctl restart docker
+      else
+        echo "ВНИМАНИЕ: nvidia-ctk так и не появился — пакет nvidia-container-toolkit не встал." >&2
+        echo "  Проверьте вручную:  apt-get install -y nvidia-container-toolkit" >&2
       fi
     fi
-    # проверяем не наличие пакета, а что видеокарта реально видна изнутри контейнера
-    if docker run --rm --gpus all ubuntu:24.04 nvidia-smi -L >/dev/null 2>&1; then
-      gpu_ready=yes
+
+    # Готовность проверяем без скачивания образов: нужны устройство, драйвер и знание docker
+    # про nvidia. Настоящую работу на видеокарте проверит уже сам бэкенд
+    if ! docker info 2>/dev/null | grep -qE '^ Runtimes:.*nvidia'; then
+      echo "ВНИМАНИЕ: docker не знает про среду nvidia — разворачиваю без GPU." >&2
+      echo "  Что посмотреть:  docker info | grep -i runtime  и  cat /etc/docker/daemon.json" >&2
+    elif [ ! -e /dev/nvidiactl ] && [ ! -e /dev/nvidia0 ]; then
+      echo "ВНИМАНИЕ: устройств /dev/nvidia* нет, хотя nvidia-smi отвечает." >&2
+      echo "  Обычно помогает перезагрузка сервера после установки драйвера." >&2
     else
-      echo "ВНИМАНИЕ: контейнер видеокарту не видит — разворачиваю без GPU" >&2
+      gpu_ready=yes
+      echo "видеокарта готова: docker знает про nvidia, устройства на месте"
     fi
   fi
 fi
@@ -238,11 +246,23 @@ REMOTE
 
 step "Забираю код: $REPO_BRANCH из $REPO_URL"
 # сервер возвращает список того, что поменялось: по нему и решаем, что пересобирать
-CHANGED=$(on_server DEPLOY_PATH REPO_URL REPO_BRANCH GITHUB_TOKEN <<'REMOTE'
-# Приватный репозиторий: токен отдаём git через askpass и стираем сразу после. В адрес
-# репозитория он не попадает, поэтому в .git/config на сервере его не остаётся.
+CHANGED=$(on_server DEPLOY_PATH REPO_URL REPO_BRANCH GITHUB_TOKEN DEPLOY_KEY_PATH <<'REMOTE'
+# Приватный репозиторий: либо ssh-ключ, либо токен — смотря какой адрес у репозитория.
 ASKPASS=""
 FETCH_URL="$REPO_URL"
+case "$REPO_URL" in
+  git@*|ssh://*)
+    key="${DEPLOY_KEY_PATH/#\~/$HOME}"
+    if [ -f "$key" ]; then
+      # IdentitiesOnly: иначе ssh предложит серверу другие свои ключи и получит отказ
+      export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
+      echo "беру код по ssh, ключ $key" >&2
+    else
+      export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
+      echo "ключа $key нет — пробую ssh с ключом по умолчанию" >&2
+    fi
+    ;;
+esac
 if [ -n "${GITHUB_TOKEN:-}" ]; then
   ASKPASS="$(mktemp)"
   printf '#!/bin/sh\necho "$GIT_TOKEN"\n' > "$ASKPASS"
