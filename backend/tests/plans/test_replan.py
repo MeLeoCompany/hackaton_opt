@@ -305,7 +305,8 @@ async def test_started_request_is_not_decided_about():
 
 
 @pytest.mark.asyncio
-async def test_replan_without_free_requests_still_saves_the_decisions():
+@pytest.mark.parametrize("solver", [SolverName.CUOPT, SolverName.ORTOOLS])
+async def test_replan_without_free_requests_still_saves_the_decisions(solver):
     """Оператор перенёс последнюю заявку: раскладывать нечего, но перенос не должен откатиться."""
     parent = SimpleNamespace(id=22, plan_date=date(2026, 8, 17))
     loaded = SimpleNamespace(instance=SimpleNamespace(n_requests=0, n_engineers=3, travel_min={}))
@@ -323,12 +324,13 @@ async def test_replan_without_free_requests_still_saves_the_decisions():
         ) as save,
     ):
         result = await replan_service.build_replan(
-            session, parent, SolverName.CUOPT, DEFAULT_OBJECTIVE_ORDER, at(15), office_id=1
+            session, parent, solver, DEFAULT_OBJECTIVE_ORDER, at(15), office_id=1
         )
 
     assert result.plan is plan
     assert plan.parent_plan_id == 22
     save.assert_awaited_once()
+    assert save.await_args.kwargs["objective_order"] == DEFAULT_OBJECTIVE_ORDER
 
 
 @pytest.mark.asyncio

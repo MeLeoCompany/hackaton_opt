@@ -379,7 +379,9 @@ async def build_replan(
         run_type=PlanRunType.REPLANNED,
         solver=solver.value,
         solve_duration_ms=duration_ms,
-        objective_order=policy if solver is SolverName.CUOPT else None,
+        # OR-Tools решает ту же модель с той же иерархией целей, что и cuOpt.
+        # Не теряем выбранную диспетчером политику в сохранённом пересчёте.
+        objective_order=policy if solver is not SolverName.BASELINE else None,
         fixed=fixed,
     )
     plan.parent_plan_id = parent.id
