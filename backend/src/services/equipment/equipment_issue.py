@@ -48,6 +48,10 @@ async def preview(session: AsyncSession, plan_id: int, *, office_id: int) -> Iss
     needed: dict[int, dict[int, int]] = {}
     counted: dict[int, int] = {}
     for assignment in assignments:
+        # Неназначенной заявке выдавать оборудование некому. Не складываем её потребность
+        # под ключом None и не пытаемся затем загрузить «бригаду без номера» из БД.
+        if assignment.engineer_id is None:
+            continue
         counted[assignment.engineer_id] = counted.get(assignment.engineer_id, 0) + 1
         stock = needed.setdefault(assignment.engineer_id, {})
         for item in assignment.request.equipment:
