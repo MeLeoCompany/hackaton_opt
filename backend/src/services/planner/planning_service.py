@@ -41,6 +41,7 @@ from src.schemas.plans import (
 )
 from src.schemas.system import SolverParams
 from src.schemas.travel import Point, TransportKind, TravelProvider, TravelRoute
+from src.services.equipment import equipment_issue
 from src.services.planner import (
     baseline_solver,
     cuopt_solver,
@@ -136,7 +137,13 @@ async def load_planning_day(
     «сейчас плюс запас» (departure_moment), а не задним числом.
     """
     day = planner_loader.planning_day(plan_date)
-    loaded = await planner_loader.load_day(session, day, office_id, not_before=not_before)
+    loaded = await planner_loader.load_day(
+        session,
+        day,
+        office_id,
+        not_before=not_before,
+        use_transport_equipment_capacity=True,
+    )
     if loaded.instance.n_requests == 0:
         raise PlanDataError([f"На {plan_date:%d.%m.%Y} нет активных заявок"])
     if loaded.instance.n_engineers == 0:
@@ -442,6 +449,14 @@ async def approve_plan(
         raise PlanInUseError(
             f"В план №{plan_id} не вошли заявки {numbers}: сначала решите по каждой — "
             "согласуйте другое время, перенесите на другой день или отмените"
+        )
+
+    equipment_problems = await equipment_issue.plan_stock_problems(session, plan)
+    if equipment_problems:
+        raise PlanInUseError(
+            f"План №{plan_id} рассчитан, но оборудование ещё не выдано: "
+            + "; ".join(equipment_problems)
+            + ". Откройте «Оборудование», выдайте комплект и повторите утверждение"
         )
 
     # заявки плана переходят «Новая» -> «В плане»: переход системный, он должен быть в таблице

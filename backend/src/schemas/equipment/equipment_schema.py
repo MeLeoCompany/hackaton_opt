@@ -42,7 +42,7 @@ class IssueItem(BaseModel):
     needed: int = 0  # x0: сумма по заявкам этой бригады в плане
     capacity: int = 0  # предел транспорта из справочника
     current: int = 0  # что у бригады записано сейчас
-    recommended: int = 0  # min(предел, x0 + запас)
+    recommended: int = 0  # min(предел, max(уже выдано, x0 + запас))
 
 
 class IssueBrigade(BaseModel):

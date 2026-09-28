@@ -57,3 +57,34 @@ def test_consumed_equipment_reduces_stock_and_rebuilds_compatibility():
     assert loaded.instance.engineers[0].equipment_capacity == {7: 3}
     assert loaded.instance.candidates(0) == [0]
     assert adjusted.instance.compatible is not loaded.instance.compatible
+
+
+def test_initial_plan_uses_transport_capacity_before_equipment_is_issued():
+    engineer_row = SimpleNamespace(
+        transport_id=4,
+        equipment_items=[],
+    )
+    equipment = [SimpleNamespace(id=7), SimpleNamespace(id=8)]
+
+    capacity = planner_loader._engineer_equipment_capacity(
+        engineer_row,
+        equipment,
+        {(4, 7): 6, (4, 8): 0},
+    )
+
+    assert capacity == {7: 6}
+
+
+def test_replan_uses_only_the_actual_shift_stock():
+    engineer_row = SimpleNamespace(
+        transport_id=4,
+        equipment_items=[SimpleNamespace(equipment_id=7, quantity=3)],
+    )
+
+    capacity = planner_loader._engineer_equipment_capacity(
+        engineer_row,
+        [SimpleNamespace(id=7)],
+        None,
+    )
+
+    assert capacity == {7: 3}

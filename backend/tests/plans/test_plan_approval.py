@@ -46,6 +46,17 @@ def nothing_left_undecided():
         yield listed
 
 
+@pytest.fixture(autouse=True)
+def equipment_is_issued():
+    # Проверка содержимого выдачи тестируется отдельно; здесь по умолчанию комплект полный.
+    with patch.object(
+        planning_service.equipment_issue,
+        "plan_stock_problems",
+        AsyncMock(return_value=[]),
+    ) as checked:
+        yield checked
+
+
 def summary(plan_id):
     return PlanSummary(
         id=plan_id,
@@ -75,6 +86,24 @@ async def test_approval_holds_plan_requests():
 
     assert hold.await_args.args[1] is target
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_approval_requires_equipment_to_be_issued(equipment_is_issued):
+    target = plan(9)
+    session = SimpleNamespace(commit=AsyncMock())
+    equipment_is_issued.return_value = ["Бригада Арташкин: «Роутер» нужно 4, выдано 2"]
+
+    with (
+        patch.object(planning_service.plans_repository, "get_plan", AsyncMock(return_value=target)),
+        patch.object(
+            planning_service.plans_repository, "get_approved_plan", AsyncMock(return_value=None)
+        ),
+        pytest.raises(PlanInUseError, match="оборудование ещё не выдано"),
+    ):
+        await planning_service.approve_plan(session, 9, office_id=OFFICE)
+
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

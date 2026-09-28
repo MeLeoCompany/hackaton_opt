@@ -1,9 +1,10 @@
 """Выдача оборудования бригадам по плану дня.
 
 По первому плану видно, сколько штук нужно каждой бригаде на её заявки — это x0. Выдаём
-`items = min(ёмкость транспорта, x0 + запас)`: запас (общая настройка системы) нужен на
-брак и на заявки, которые появятся в течение дня, а ёмкость из справочника не даёт
-выписать больше, чем бригада физически увезёт.
+`items = min(ёмкость транспорта, max(уже выдано, x0 + запас))`: запас (общая настройка
+системы) нужен на брак и на заявки, которые появятся в течение дня, повторное открытие
+не уменьшает уже выданный комплект, а ёмкость из справочника не даёт выписать больше,
+чем бригада физически увезёт.
 
 Рекомендацию диспетчер правит и утверждает — только тогда числа уходят в запас смен
 (`engineer_equipment`). Дальше пересчёты считают от него: `replan_service` вычитает то,
@@ -110,8 +111,38 @@ def _item(*, equipment_id: int, name: str, need: int, limit: int, current: int, 
         needed=need,
         capacity=limit,
         current=current,
-        recommended=min(limit, need + reserve),
+        recommended=min(limit, max(current, need + reserve)),
     )
+
+
+async def plan_stock_problems(session: AsyncSession, plan) -> list[str]:
+    """Проверить фактическую выдачу против суммарной потребности маршрутов плана."""
+    assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    needed: dict[int, dict[int, int]] = {}
+    for assignment in assignments:
+        if assignment.engineer_id is None:
+            continue
+        stock = needed.setdefault(assignment.engineer_id, {})
+        for item in getattr(assignment.request, "equipment", ()):
+            stock[item.equipment_id] = stock.get(item.equipment_id, 0) + item.quantity
+
+    if not needed:
+        return []
+    names = await _equipment_names(session)
+    problems: list[str] = []
+    for engineer in await _engineers_by_ids(session, set(needed)):
+        if engineer is None:
+            continue
+        current = _current(engineer)
+        missing = [
+            f"«{names.get(equipment_id, f'№{equipment_id}')}» нужно {quantity}, "
+            f"выдано {current.get(equipment_id, 0)}"
+            for equipment_id, quantity in sorted(needed[engineer.id].items())
+            if current.get(equipment_id, 0) < quantity
+        ]
+        if missing:
+            problems.append(f"{engineer.name}: " + ", ".join(missing))
+    return problems
 
 
 async def apply(
@@ -128,16 +159,51 @@ async def apply(
 
     capacity = await equipment_repository.capacity_map(session)
     names = await _equipment_names(session)
+    day = planner_loader.planning_day(plan.plan_date)
+    plan_engineers = {
+        engineer.id
+        for engineer in await engineers_repository.list_engineers_in_period(
+            session, day.day_start, day.day_end, office_id=office_id
+        )
+    }
+    # Старый черновик может ссылаться на смену, которую уже поправили в справочнике.
+    # Preview такую бригаду показывает; выдача тоже должна разрешать её, но не произвольную
+    # бригаду офиса, не имеющую отношения к плану.
+    plan_engineers.update(
+        assignment.engineer_id
+        for assignment in await plans_repository.list_plan_assignments(session, plan.id)
+        if assignment.engineer_id is not None
+    )
     problems: list[str] = []
+    validated: list[tuple[Engineer, dict[int, int]]] = []
+    seen_engineers: set[int] = set()
     changed = 0
     total = 0
     for row in brigades:
+        if row.engineer_id in seen_engineers:
+            problems.append(f"бригада №{row.engineer_id} указана несколько раз")
+            continue
+        seen_engineers.add(row.engineer_id)
         engineer = await session.get(Engineer, row.engineer_id)
-        if engineer is None or engineer.office_id != office_id:
-            problems.append(f"бригады №{row.engineer_id} нет")
+        if (
+            engineer is None
+            or engineer.office_id != office_id
+            or engineer.id not in plan_engineers
+        ):
+            problems.append(f"бригады №{row.engineer_id} нет в сменах этого плана")
             continue
         quantities: dict[int, int] = {}
+        seen_equipment: set[int] = set()
         for item in row.items:
+            if item.equipment_id in seen_equipment:
+                problems.append(
+                    f"{engineer.name}: оборудование №{item.equipment_id} указано несколько раз"
+                )
+                continue
+            seen_equipment.add(item.equipment_id)
+            if item.equipment_id not in names:
+                problems.append(f"{engineer.name}: оборудования №{item.equipment_id} нет")
+                continue
             limit = capacity.get((engineer.transport_id, item.equipment_id), 0)
             if item.quantity > limit:
                 name = names.get(item.equipment_id, f"№{item.equipment_id}")
@@ -145,11 +211,13 @@ async def apply(
                 continue
             if item.quantity:
                 quantities[item.equipment_id] = item.quantity
-        engineers_repository.set_equipment(engineer, quantities)
+        validated.append((engineer, quantities))
         changed += 1
         total += sum(quantities.values())
     if problems:
         raise IssueDataError(problems)
+    for engineer, quantities in validated:
+        engineers_repository.set_equipment(engineer, quantities)
     await session.commit()
     return IssueDone(brigades=changed, items=total)
 

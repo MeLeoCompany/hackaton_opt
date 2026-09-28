@@ -25,6 +25,7 @@ from src.core.errors import ExternalServiceError
 from src.core.local_day import local_timezone
 from src.models import Engineer, Request
 from src.repositories.engineers import engineers_repository
+from src.repositories.equipment import equipment_repository
 from src.repositories.references import references_repository
 from src.repositories.requests import requests_repository
 from src.schemas.travel import Point, TransportKind
@@ -120,10 +121,13 @@ async def load_day(
     *,
     starts: dict[int, EngineerStart] | None = None,
     not_before: datetime | None = None,
+    use_transport_equipment_capacity: bool = False,
 ) -> LoadedDay:
     """starts — пересчёт с текущего момента: у бригады своя точка старта и время, с которого
     она свободна. В LoadedDay.engineers остаются сами бригады (для снимка и отображения
-    плана), подмена — только в задаче решателя."""
+    плана), подмена — только в задаче решателя. Первый расчёт может использовать физическую
+    вместимость транспорта до фактической выдачи оборудования; пересчёт использует запас
+    смены и затем вычитает уже израсходованное."""
     starts = starts or {}
     # not_before — момент пересчёта: раньше него не свободна ни одна бригада
     # офисы изолированы: бригады офиса берут только заявки своего офиса.
@@ -160,6 +164,11 @@ async def load_day(
     transports = await references_repository.list_transports(session)
     priorities = await references_repository.list_priorities(session)
     equipment = await references_repository.list_equipment(session)
+    transport_equipment_capacity = (
+        await equipment_repository.capacity_map(session)
+        if use_transport_equipment_capacity
+        else None
+    )
     priority_levels = {priority.id: priority.level for priority in priorities}
     await describe_day(requests, engineers, priority_levels)
 
@@ -181,9 +190,9 @@ async def load_day(
                 transport_id=engineer.transport_id,
                 shift_start_min=day.to_minutes(free_from(engineer), round_up=True),
                 shift_end_min=day.to_minutes(engineer.shift_end),
-                equipment_capacity={
-                    item.equipment_id: item.quantity for item in engineer.equipment_items
-                },
+                equipment_capacity=_engineer_equipment_capacity(
+                    engineer, equipment, transport_equipment_capacity
+                ),
             )
             for engineer in engineers
         ],
@@ -223,6 +232,21 @@ async def load_day(
         equipment_names={item.id: item.name for item in equipment},
         start_points=start_points,
     )
+
+
+def _engineer_equipment_capacity(
+    engineer: Engineer,
+    equipment: list,
+    transport_capacity: dict[tuple[int, int], int] | None,
+) -> dict[int, int]:
+    """Запас для первого расчёта берётся из вместимости, для пересчёта — из смены."""
+    if transport_capacity is None:
+        return {item.equipment_id: item.quantity for item in engineer.equipment_items}
+    return {
+        item.id: quantity
+        for item in equipment
+        if (quantity := transport_capacity.get((engineer.transport_id, item.id), 0)) > 0
+    }
 
 
 def consume_equipment(
