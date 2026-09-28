@@ -50,9 +50,7 @@ async def bulk_update(engineers, payload, *, brigade_shifts=()):
         patch.object(
             engineers_service.engineers_repository,
             "get_skills_by_ids",
-            AsyncMock(
-                side_effect=lambda _, ids: [SimpleNamespace(id=skill_id) for skill_id in ids]
-            ),
+            AsyncMock(side_effect=lambda _, ids: [SimpleNamespace(id=skill_id) for skill_id in ids]),
         ),
         patch.object(
             engineers_service.engineers_repository,
@@ -116,7 +114,9 @@ async def test_unknown_skill_is_refused():
     engineers = [stored(1)]
     session = SimpleNamespace(commit=AsyncMock())
     with (
-        patch.object(engineers_service, "find_engineer", AsyncMock(return_value=engineers[0])),
+        patch.object(
+            engineers_service, "find_engineer", AsyncMock(return_value=engineers[0])
+        ),
         patch.object(
             engineers_service.engineers_repository,
             "get_skills_by_ids",

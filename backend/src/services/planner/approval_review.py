@@ -13,9 +13,7 @@
    который он видел.
 """
 
-import copy
 from datetime import datetime, timedelta
-from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,12 +94,6 @@ async def preview_approval(
         suggestions = {}
         if unassigned:
             loaded = await planning_service.load_planning_day(session, draft.plan_date, office_id)
-            assignments = await plans_repository.list_plan_assignments(session, draft.id)
-            protected_request_ids = {
-                assignment.request_id
-                for assignment in assignments
-                if assignment.engineer_id is not None
-            }
             async with run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 50, 95):
                 await run_log.note(
                     f"не влезли в черновик №{draft.id}: "
@@ -114,7 +106,6 @@ async def preview_approval(
                         planning_service.objective_order_from_plan(draft) or DEFAULT_OBJECTIVE_ORDER
                     ),
                     {a.request_id for a in unassigned},
-                    protected_request_ids,
                     params=params,
                 )
                 await run_log.note(
@@ -149,59 +140,6 @@ def problem(assignment, suggestion, tolerance_minutes: int, now: datetime) -> Re
     )
 
 
-async def draft_after_removals(
-    session: AsyncSession, draft: Plan, removed_request_ids: set[int]
-) -> Plan:
-    """Создаёт новый черновик без перенесённых/отменённых невлезших заявок.
-
-    Пересчитывать оптимизацию здесь нельзя: эти заявки и так не были назначены, поэтому их
-    удаление ничего не меняет в готовых маршрутах. Новый запуск решателя лишь случайно
-    перетасовал бы день и мог выбросить другую заявку.
-    """
-    plan = plans_repository.add_plan(
-        session,
-        draft.run_type,
-        draft.plan_date,
-        draft.solver,
-        office_id=draft.office_id,
-        solve_duration_ms=Decimal(0),
-        objective_policy=copy.deepcopy(draft.objective_policy),
-    )
-    snapshot = copy.deepcopy(draft.input_snapshot or {})
-    snapshot["request_order"] = [
-        request_id
-        for request_id in snapshot.get("request_order", [])
-        if request_id not in removed_request_ids
-    ]
-    if isinstance(snapshot.get("requests"), dict):
-        for request_id in removed_request_ids:
-            snapshot["requests"].pop(str(request_id), None)
-    plan.input_snapshot = snapshot
-    plan.total_distance_km = draft.total_distance_km
-    plan.distance_provider = draft.distance_provider
-    await session.flush()
-
-    for assignment in await plans_repository.list_plan_assignments(session, draft.id):
-        if assignment.request_id in removed_request_ids:
-            continue
-        plans_repository.add_assignment(
-            session,
-            {
-                "plan_id": plan.id,
-                "request_id": assignment.request_id,
-                "engineer_id": assignment.engineer_id,
-                "visit_order": assignment.visit_order,
-                "planned_arrival_time": assignment.planned_arrival_time,
-                "unassigned_reason": assignment.unassigned_reason,
-            },
-        )
-    await session.flush()
-    await run_log.note(
-        "Маршруты сохранены без повторной оптимизации: изменились только невлезшие заявки"
-    )
-    return plan
-
-
 async def decide_approval(
     session: AsyncSession,
     plan_id: int,
@@ -221,7 +159,6 @@ async def decide_approval(
     if not decisions:
         raise PlanDataError(["решений по заявкам нет — утвердите черновик как есть"])
     waiting = {a.request_id for a in await planning_service.waiting_unassigned(session, draft)}
-    decided = {decision.request_id for decision in decisions}
     stray = sorted({d.request_id for d in decisions} - waiting)
     if stray:
         raise PlanDataError(
@@ -255,36 +192,16 @@ async def decide_approval(
                 user_id=user_id,
                 occasion="при утверждении",
             )
-        only_removals = all(decision.action != "agree" for decision in decisions)
-        if only_removals:
-            plan = await draft_after_removals(session, draft, decided)
-        else:
-            plan = await planning_service.build_inside_run(
-                session,
-                draft.plan_date,
-                solver,
-                objective_order,
-                office_id=office_id,
-                params=params,
-            )
+        plan = await planning_service.build_inside_run(
+            session,
+            draft.plan_date,
+            solver,
+            objective_order,
+            office_id=office_id,
+            params=params,
+        )
         plan.decisions_from_plan_id = draft.id
         plan.decisions_count = len(decisions)
-        # Согласие клиента не должно превращаться в скрытую замену: если после нового
-        # расчёта выпала согласованная или ранее размещённая заявка, результат не сохраняем.
-        if not only_removals:
-            allowed_unassigned = waiting - decided
-            final_unassigned = {
-                assignment.request_id
-                for assignment in await planning_service.waiting_unassigned(session, plan)
-            }
-            displaced = final_unassigned - allowed_unassigned
-            if displaced:
-                await session.rollback()
-                numbers = ", ".join(f"№{request_id}" for request_id in sorted(displaced))
-                raise PlanInUseError(
-                    f"После согласования окна расчёт не смог сохранить все прежние назначения: "
-                    f"не вошли заявки {numbers}. Изменения отменены; подберите окна заново"
-                )
         await session.commit()
         await run_log.attach_plan(plan.id)
         return (await planning_service.summarize_plans(session, [plan]))[0]

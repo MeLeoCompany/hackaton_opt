@@ -276,9 +276,7 @@ async def update_requests(
     unique_ids = list(dict.fromkeys(payload.request_ids))
     stored = await requests_repository.get_requests_by_ids(session, unique_ids)
     requests = [request for request in stored.values() if request.office_id == office_id]
-    missing = [
-        request_id for request_id in unique_ids if request_id not in {r.id for r in requests}
-    ]
+    missing = [request_id for request_id in unique_ids if request_id not in {r.id for r in requests}]
     if missing:
         listed = ", ".join(f"№{request_id}" for request_id in missing)
         raise RequestNotFoundError(f"Не найдены заявки: {listed}")

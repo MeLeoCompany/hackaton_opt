@@ -80,7 +80,9 @@ async def test_route_is_built_once_and_cached():
     crew = engineer()
     assignments = [visit(crew, 1, 10, 10), visit(crew, 2, 11, 12)]
 
-    routes, built, saved, build_route = await build(assignments, return_value=travel(12.3456))
+    routes, built, saved, build_route = await build(
+        assignments, return_value=travel(12.3456)
+    )
 
     assert built is True
     assert build_route.await_count == 1

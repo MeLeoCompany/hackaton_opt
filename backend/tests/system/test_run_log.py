@@ -55,9 +55,8 @@ def values_of(statement) -> dict:
 
 @pytest.mark.asyncio
 async def test_run_writes_start_steps_and_finish(journal):
-    async with (
-        run_log.track("build", office_id=1, solver="cuopt"),
-        run_log.step("Считаю матрицы", 10, 50),
+    async with run_log.track("build", office_id=1, solver="cuopt"), run_log.step(
+        "Считаю матрицы", 10, 50
     ):
         await run_log.note("блок 1 из 4", fraction=0.25)
 

@@ -304,12 +304,7 @@ async def voided_replan_of(session: AsyncSession, plan_ids: list[int]) -> dict[i
 
 
 async def due_replans(session: AsyncSession, moment: datetime) -> list[Plan]:
-    """Забирает один пересчёт, которому пора вступать в силу.
-
-    Блокировка с пропуском уже занятых строк позволяет нескольким backend-процессам
-    безопасно разбирать очередь. Берём по одному: approve_replan завершает транзакцию и
-    тем самым снимает блокировки, поэтому заранее выбирать всю очередь было бы ошибкой.
-    """
+    """Пересчёты, которым пора вступать в силу: их момент выезда уже настал."""
     result = await session.execute(
         select(Plan)
         .where(
@@ -320,8 +315,6 @@ async def due_replans(session: AsyncSession, moment: datetime) -> list[Plan]:
             Plan.replanned_at <= moment,
         )
         .order_by(Plan.id)
-        .limit(1)
-        .with_for_update(skip_locked=True)
     )
     return list(result.scalars().all())
 

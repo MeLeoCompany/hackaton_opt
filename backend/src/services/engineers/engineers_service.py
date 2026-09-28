@@ -197,9 +197,7 @@ async def update_engineers(
     elif changes.get("transport_id") is not None:
         await check_bulk_references(session, changes)
 
-    shifts = {
-        engineer.id: new_shift(engineer, changes, payload.move_to_day) for engineer in engineers
-    }
+    shifts = {engineer.id: new_shift(engineer, changes, payload.move_to_day) for engineer in engineers}
     problems = [
         f"смена №{engineer.id}: конец смены должен быть позже начала "
         f"({format_local_shift(shifts[engineer.id])})"

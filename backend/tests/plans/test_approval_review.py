@@ -9,7 +9,7 @@ import pytest
 from src.models import RequestStatusId
 from src.schemas.plans import ReplanDecision, SolverName
 from src.services.planner import approval_review
-from src.services.planner.objective_policy import ObjectiveCriterion
+from src.services.planner.objective_policy import DEFAULT_OBJECTIVE_ORDER, ObjectiveCriterion
 from src.services.planner.planning_service import PlanDataError, PlanInUseError
 from src.services.planner.window_suggestions import WindowSuggestion
 
@@ -92,7 +92,6 @@ async def test_preview_offers_time_for_requests_that_did_not_fit():
     # базовый алгоритм ярусов не знает: второй расчёт всегда у cuOpt
     assert suggest.await_args.args[1] is SolverName.CUOPT
     assert suggest.await_args.args[3] == {12}
-    assert suggest.await_args.args[4] == {11}
     assert preview.assigned_count == 1
     [problem] = preview.unassigned
     assert (problem.request_id, problem.suggested_engineer) == (12, "Бригада 1")
@@ -173,11 +172,6 @@ async def test_decisions_rebuild_the_day_as_a_new_draft():
             "summarize_plans",
             AsyncMock(return_value=["сводка"]),
         ),
-        patch.object(
-            approval_review.planning_service,
-            "waiting_unassigned",
-            AsyncMock(side_effect=[[unassigned(12)], []]),
-        ),
     ):
         summary = await approval_review.decide_approval(
             session, 40, decisions, office_id=1, user_id=5
@@ -195,12 +189,11 @@ async def test_decisions_rebuild_the_day_as_a_new_draft():
 
 
 @pytest.mark.asyncio
-async def test_removal_decision_keeps_routes_without_running_solver_again():
+async def test_baseline_draft_is_rebuilt_by_baseline():
     new_plan = SimpleNamespace(id=41)
     session = SimpleNamespace(commit=AsyncMock())
     decisions = [ReplanDecision(request_id=12, action="no_answer")]
-    source = draft(solver="baseline")
-    find, approved, listed, counted = patched(source, [unassigned(12)])
+    find, approved, listed, counted = patched(draft(solver="baseline"), [unassigned(12)])
 
     with (
         find,
@@ -209,98 +202,13 @@ async def test_removal_decision_keeps_routes_without_running_solver_again():
         counted,
         patch.object(approval_review.replan_service, "apply_decisions", AsyncMock()),
         patch.object(
-            approval_review,
-            "draft_after_removals",
-            AsyncMock(return_value=new_plan),
-        ) as clone,
-        patch.object(
             approval_review.planning_service,
             "build_inside_run",
-            AsyncMock(),
+            AsyncMock(return_value=new_plan),
         ) as build,
         patch.object(approval_review.planning_service, "summarize_plans", AsyncMock()),
     ):
         await approval_review.decide_approval(session, 40, decisions, office_id=1)
 
-    clone.assert_awaited_once_with(session, source, {12})
-    build.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_removal_draft_copies_routes_and_excludes_moved_request():
-    source = SimpleNamespace(
-        id=40,
-        run_type="optimized",
-        plan_date=DAY,
-        solver="cuopt",
-        office_id=1,
-        objective_policy={"criteria": ["assigned_requests"]},
-        input_snapshot={"request_order": [11, 12], "requests": {"11": {}, "12": {}}},
-        total_distance_km=10,
-        distance_provider="r5",
-    )
-    new_plan = SimpleNamespace(id=41)
-    kept = SimpleNamespace(
-        request_id=11,
-        engineer_id=1,
-        visit_order=1,
-        planned_arrival_time=at(10),
-        unassigned_reason=None,
-    )
-    removed = SimpleNamespace(
-        request_id=12,
-        engineer_id=None,
-        visit_order=None,
-        planned_arrival_time=None,
-        unassigned_reason="не влезла",
-    )
-    session = SimpleNamespace(flush=AsyncMock())
-    repository = approval_review.plans_repository
-
-    with (
-        patch.object(repository, "add_plan", return_value=new_plan),
-        patch.object(repository, "list_plan_assignments", AsyncMock(return_value=[kept, removed])),
-        patch.object(repository, "add_assignment") as add_assignment,
-    ):
-        result = await approval_review.draft_after_removals(session, source, {12})
-
-    assert result is new_plan
-    assert new_plan.input_snapshot["request_order"] == [11]
-    assert new_plan.input_snapshot["requests"] == {"11": {}}
-    assert (new_plan.total_distance_km, new_plan.distance_provider) == (10, "r5")
-    add_assignment.assert_called_once()
-    assert add_assignment.call_args.args[1]["request_id"] == 11
-
-
-@pytest.mark.asyncio
-async def test_decision_is_rolled_back_if_it_displaces_another_request():
-    source = draft()
-    new_plan = SimpleNamespace(id=41, decisions_from_plan_id=None, decisions_count=None)
-    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
-    decisions = [
-        ReplanDecision(request_id=12, action="agree", window_start=at(14), window_end=at(14, 30))
-    ]
-    find, approved, listed, counted = patched(source, [assigned(11), unassigned(12)])
-
-    with (
-        find,
-        approved,
-        listed,
-        counted,
-        patch.object(approval_review.replan_service, "apply_decisions", AsyncMock()),
-        patch.object(
-            approval_review.planning_service,
-            "build_inside_run",
-            AsyncMock(return_value=new_plan),
-        ),
-        patch.object(
-            approval_review.planning_service,
-            "waiting_unassigned",
-            AsyncMock(side_effect=[[unassigned(12)], [unassigned(11)]]),
-        ),
-        pytest.raises(PlanInUseError, match="не вошли заявки №11"),
-    ):
-        await approval_review.decide_approval(session, 40, decisions, office_id=1)
-
-    session.rollback.assert_awaited_once()
-    session.commit.assert_not_awaited()
+    assert build.await_args.args[2] is SolverName.BASELINE
+    assert tuple(build.await_args.args[3]) == tuple(DEFAULT_OBJECTIVE_ORDER)

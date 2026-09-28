@@ -30,11 +30,7 @@ def test_state_follows_the_plan_at_any_moment():
     assert plan_sync.planned_state(departed, start, 60, at(8)).status_id == PLANNED
     assert plan_sync.planned_state(departed, start, 60, at(9, 30)).status_id == EN_ROUTE
     working = plan_sync.planned_state(departed, start, 60, at(10, 30))
-    assert (working.status_id, working.arrived_at, working.finished_at) == (
-        IN_PROGRESS,
-        start,
-        None,
-    )
+    assert (working.status_id, working.arrived_at, working.finished_at) == (IN_PROGRESS, start, None)
     done = plan_sync.planned_state(departed, start, 60, at(12))
     assert (done.status_id, done.finished_at) == (DONE, at(11))
 

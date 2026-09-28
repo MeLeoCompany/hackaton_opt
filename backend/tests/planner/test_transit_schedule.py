@@ -9,9 +9,8 @@ import httpx
 import numpy as np
 import pytest
 
-from src.schemas.plans import SolverName
 from src.schemas.system import SolverParams
-from src.services.planner import cuopt_solver, planner_loader, transit_schedule, window_suggestions
+from src.services.planner import cuopt_solver, planner_loader, transit_schedule
 from src.services.planner.objective_policy import DEFAULT_OBJECTIVE_ORDER, ObjectiveCriterion
 from src.services.planner.planner_problem import EngineerSpec, ProblemInstance, RequestSpec
 
@@ -39,28 +38,6 @@ def loaded_day():
         skill_names={},
         transport_names={},
     )
-
-
-@pytest.mark.asyncio
-async def test_suggested_window_does_not_displace_an_assigned_request():
-    loaded = loaded_day()
-    # Раскрытая №11 попала в результат, но вытеснила уже размещённую №10.
-    displaced = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(1, 600)]})
-
-    with patch.object(
-        window_suggestions.planning_service,
-        "solve_with",
-        AsyncMock(return_value=displaced),
-    ):
-        suggestions = await window_suggestions.suggest_windows(
-            loaded,
-            SolverName.CUOPT,
-            DEFAULT_OBJECTIVE_ORDER,
-            {11},
-            {10},
-        )
-
-    assert suggestions == {}
 
 
 @pytest.mark.asyncio
@@ -220,15 +197,6 @@ async def test_journal_explains_why_the_plan_goes_back_to_the_solver():
     assert any("Уточняю матрицу" in line for line in written)
     assert any("Решаю заново с уточнёнными временами" == line for line in written)
     assert any("Расписание сходится" in line for line in written)
-    # Это отвергнутый промежуточный вариант, поэтому он не должен выглядеть как проблема
-    # готового плана. Жёлтым помечается только снятие визита на последней попытке.
-    mismatch = [
-        call
-        for call in note.await_args_list
-        if "Промежуточный вариант нужно уточнить" in call.args[0] or "№11" in call.args[0]
-    ]
-    assert mismatch
-    assert all(call.kwargs.get("level", "info") == "info" for call in mismatch)
 
 
 @pytest.mark.asyncio

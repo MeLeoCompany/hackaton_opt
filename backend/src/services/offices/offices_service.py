@@ -60,11 +60,7 @@ async def update_office(session: AsyncSession, office_id: int, payload: OfficeWr
 async def delete_office(session: AsyncSession, office_id: int) -> None:
     """Удаляет пустой офис. Офис с данными не удалить: заявки и бригады остались бы ничьими."""
     office = await find_office(session, office_id)
-    usages = {
-        label: count
-        for label, count in (await offices_repository.count_usages(session, office_id)).items()
-        if count
-    }
+    usages = {label: count for label, count in (await offices_repository.count_usages(session, office_id)).items() if count}
     if usages:
         listed = ", ".join(f"{label} {count}" for label, count in usages.items())
         raise OfficeInUseError(f"Офис «{office.name}» нельзя удалить: у него есть {listed}")

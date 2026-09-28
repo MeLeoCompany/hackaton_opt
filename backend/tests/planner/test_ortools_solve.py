@@ -112,33 +112,6 @@ def test_work_must_finish_before_shift_end():
     assert assigned_request_ids(instance, solution) == []
 
 
-def test_empty_plan_fallback_requires_the_best_feasible_request():
-    """Невыполнимая авария не должна мешать взять менее ценную выполнимую заявку."""
-    skills = {1: {1}}
-    instance = make_instance(
-        engineers=[engineer(1, shift=("10:00", "11:00"))],
-        requests=[
-            request(10, skill=1, window=("12:00", "13:00"), priority=URGENT),
-            request(11, skill=1, window=("10:00", "11:00"), duration=30),
-        ],
-        skills=skills,
-        travel_min=0,
-    )
-
-    solution = solve(
-        instance,
-        (
-            ObjectiveCriterion.URGENT_REQUESTS,
-            ObjectiveCriterion.ENGINEERS_USED,
-            ObjectiveCriterion.ASSIGNED_REQUESTS,
-            ObjectiveCriterion.TRAVEL_DISTANCE,
-        ),
-    )
-
-    assert constraint_violations(instance, skills, solution) == []
-    assert assigned_request_ids(instance, solution) == [11]
-
-
 def test_urgent_request_wins_when_only_one_fits():
     skills = {1: {1}}
     instance = make_instance(

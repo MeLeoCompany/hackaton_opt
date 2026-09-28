@@ -193,7 +193,6 @@ async def preview_inside_run(
                 solver,
                 validate_objective_order(objective_order),
                 {a.request_id for a in unassigned},
-                {a.request_id for a in assignments if a.engineer_id is not None},
                 params=params,
             )
         tolerance = timedelta(minutes=settings.promise_tolerance_minutes)

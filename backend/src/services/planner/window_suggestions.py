@@ -20,7 +20,7 @@ from datetime import datetime
 
 from src.schemas.plans import SolverName
 from src.schemas.system import SolverParams
-from src.services.planner import planning_service, run_log
+from src.services.planner import planning_service
 from src.services.planner.objective_policy import ObjectiveCriterion
 from src.services.planner.planner_loader import LoadedDay
 from src.services.planner.planner_problem import (
@@ -70,15 +70,9 @@ async def suggest_windows(
     solver: SolverName,
     objective_order: tuple[ObjectiveCriterion, ...],
     unassigned_request_ids: set[int],
-    protected_request_ids: set[int],
     params: SolverParams | None = None,
 ) -> dict[int, WindowSuggestion]:
-    """Предложения, которые не вытесняют уже размещённые заявки черновика.
-
-    Само присутствие раскрытой заявки в пробном решении недостаточно: проверка R5 может
-    снять из маршрута прежнюю заявку. Такое время нельзя обещать клиенту — после согласия
-    просто появилась бы новая «невлезшая» заявка.
-    """
+    """Предложения по номеру заявки; кого не взяли и здесь — «сегодня никак»."""
     widened_indices = {
         index
         for index, request in enumerate(loaded.instance.requests)
@@ -93,20 +87,6 @@ async def suggest_windows(
     solution = await planning_service.solve_with(
         solver, probe, objective_order, widened_ranks(loaded, widened_indices), params=params
     )
-    assigned_request_ids = {
-        instance.requests[visit.request_index].request_id
-        for visits in solution.routes.values()
-        for visit in visits
-    }
-    displaced = protected_request_ids - assigned_request_ids
-    if displaced:
-        await run_log.note(
-            "Пробное окно не предлагаю: ради него выпали ранее размещённые заявки "
-            + ", ".join(f"№{request_id}" for request_id in sorted(displaced)),
-            level="warning",
-            details={"displaced_request_ids": sorted(displaced)},
-        )
-        return {}
     return {
         request.request_id: WindowSuggestion(
             request_id=request.request_id,
