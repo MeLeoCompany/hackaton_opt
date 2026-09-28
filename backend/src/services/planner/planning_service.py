@@ -39,6 +39,7 @@ from src.schemas.plans import (
     UnassignedRequest,
     WithdrawnRequest,
 )
+from src.schemas.requests import RequestEquipmentItem
 from src.schemas.system import SolverParams
 from src.schemas.travel import Point, TransportKind, TravelProvider, TravelRoute
 from src.services.equipment import equipment_issue
@@ -2045,6 +2046,7 @@ def to_plan_visit(
         window_end=request.window_end,
         duration_minutes=request.duration_minutes,
         priority_id=request.priority_id,
+        equipment=plan_visit_equipment(request),
         status_id=request.status_id,
         approved_plan_id=request.approved_plan_id,
         available_from=available_from,
@@ -2053,6 +2055,19 @@ def to_plan_visit(
         candidate_engineers=candidate_engineers,
         departure_allowed_at=getattr(request, "departure_allowed_at", None),
     )
+
+
+def plan_visit_equipment(request) -> list[RequestEquipmentItem]:
+    """Привести оборудование ORM-заявки и заявки из снимка решателя к одному виду."""
+    equipment = getattr(request, "equipment", None) or ()
+    if isinstance(equipment, dict):
+        return [
+            RequestEquipmentItem(equipment_id=int(equipment_id), quantity=quantity)
+            for equipment_id, quantity in sorted(
+                equipment.items(), key=lambda item: int(item[0])
+            )
+        ]
+    return [RequestEquipmentItem.model_validate(item) for item in equipment]
 
 
 def to_unassigned_request(assignment: AssignmentView) -> UnassignedRequest:

@@ -9,6 +9,7 @@ from src.services.planner.planning_service import (
     TIME_REASON,
     candidate_engineers_by_request,
     count_urgent_assignments,
+    plan_visit_equipment,
     to_plan_visit,
     unassigned_reason,
 )
@@ -16,6 +17,19 @@ from src.services.planner.planning_service import (
 
 def loaded_day(instance):
     return SimpleNamespace(instance=instance)
+
+
+def test_visit_equipment_accepts_solver_snapshot_mapping():
+    """Построенный и сохранённый планы хранят оборудование как {номер: количество}."""
+    result = plan_visit_equipment(SimpleNamespace(equipment={"8": 1, "7": 2}))
+
+    assert [(item.equipment_id, item.quantity) for item in result] == [(7, 2), (8, 1)]
+
+
+def test_visit_equipment_accepts_old_snapshot_without_equipment():
+    """Планы, сохранённые до появления оборудования, продолжают открываться."""
+    assert plan_visit_equipment(SimpleNamespace()) == []
+    assert plan_visit_equipment(SimpleNamespace(equipment=None)) == []
 
 
 def test_unassigned_reason_distinguishes_impossible_first_visit():
@@ -93,6 +107,7 @@ def test_visit_keeps_facts_of_its_own_place_in_route():
             status_id=2,
             approved_plan_id=None,
             transport_id=None,
+            equipment=[SimpleNamespace(equipment_id=7, quantity=2)],
         ),
     )
 
@@ -107,6 +122,7 @@ def test_visit_keeps_facts_of_its_own_place_in_route():
     assert visit.window_slack_minutes == 120
     assert visit.shift_slack_minutes == 420
     assert visit.candidate_engineers == 3
+    assert [(item.equipment_id, item.quantity) for item in visit.equipment] == [(7, 2)]
 
 
 def test_candidate_engineers_counted_by_skill_and_transport():

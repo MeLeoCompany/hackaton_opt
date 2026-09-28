@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.schemas.requests import RequestEquipmentItem
 from src.schemas.system import SolverParams
 from src.schemas.travel import TravelLeg
 from src.services.planner.objective_policy import (
@@ -295,6 +296,7 @@ class PlanVisit(BaseModel):
     window_end: datetime
     duration_minutes: int
     priority_id: int
+    equipment: list[RequestEquipmentItem] = Field(default_factory=list)
     # статус заявки сейчас: по нему видно, какие визиты маршрута уже закрыты
     status_id: int
     # за каким утверждённым планом заявка закреплена сейчас; у утверждённого плана визит,
