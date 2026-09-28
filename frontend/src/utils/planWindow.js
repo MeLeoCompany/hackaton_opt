@@ -1,11 +1,32 @@
-// Пересчёт посчитан на выезд в определённый момент и в этот момент вступает в силу сам:
-// до него бригады доезжают по прежнему плану, с него — по новому. Если к этому моменту
-// появились новые вводные, пересчёт в силу не вступает и приходит с причиной (void_reason).
+// Расчёт посчитан на выезд в определённый момент, и этот момент решает его судьбу.
+//
+// Пересчёт в свой момент вступает в силу сам: до него бригады доезжают по прежнему плану,
+// с него — по новому. Если к моменту появились новые вводные, он в силу не вступает и
+// приходит с причиной (void_reason).
+//
+// Черновик дня в свой момент, наоборот, заканчивается: с него бригады должны были выехать,
+// а раз не выехали — маршруты начинались бы в прошлом. Утвердить его можно только до этого
+// момента и только пока день не изменился (stale_reason с сервера).
 
 import { moscowTimeOf } from './moscowTime.js'
 
 export function approvalWindow(summary, now) {
   if (!summary?.replanned_at || summary.approved_at || summary.superseded_at) return null
+  // пересчитанный план уже заменён другим пересчётом: этот считался от него и в силу не
+  // вступит. Сервер пометит его сам, но обещать вступление нельзя и до этого
+  if (summary.outdated) {
+    return {
+      state: 'expired',
+      text: 'уже не вступит в силу',
+      title:
+        'На день действует другой план, а этот пересчёт считался от прежнего. ' +
+        'Пересчитайте действующий план заново',
+    }
+  }
+  // за время расчёта день изменился: в свой момент утверждение такой пересчёт не примет
+  if (summary.stale_reason) {
+    return { state: 'expired', text: 'не вступит в силу', title: summary.stale_reason }
+  }
   if (summary.voided_at) {
     return {
       state: 'voided',
@@ -28,4 +49,58 @@ export function approvalWindow(summary, now) {
     text: `вступает в силу в ${moscowTimeOf(summary.replanned_at)}`,
     title: 'Момент, на который считался пересчёт, настал — он вот-вот заменит прежний план',
   }
+}
+
+export function draftWindow(summary, now) {
+  // у пересчёта своя плашка (approvalWindow), у утверждённого и заменённого — своя судьба
+  if (!summary?.effective_at || summary.approved_at || summary.parent_plan_id) return null
+  if (summary.superseded_at || summary.outdated) return null
+  const minutesLeft = Math.ceil((new Date(summary.effective_at) - now) / 60_000)
+  if (summary.stale_reason || minutesLeft <= 0) {
+    return {
+      state: 'expired',
+      text: `не утвердить · выезд был в ${moscowTimeOf(summary.effective_at)}`,
+      title:
+        summary.stale_reason ??
+        `Черновик посчитан на выезд в ${moscowTimeOf(summary.effective_at)} — этот момент прошёл. ` +
+          'Бригады по нему опаздывают, ещё не выехав: посчитайте день заново',
+    }
+  }
+  return {
+    state: 'waiting',
+    text: `утвердить до ${moscowTimeOf(summary.effective_at)} · ${minutesLeft} мин`,
+    title:
+      'День посчитан на выезд в этот момент — запас на сам расчёт, подбор окон и обзвон ' +
+      'клиентов. Позже план уже не утвердить: считайте день заново',
+  }
+}
+
+// подобранное окно — предложение клиенту: пока ответа нет, расчёт не утверждают и сам он
+// в силу не вступает
+function offersWindow(summary) {
+  const count = summary.pending_offers
+  return {
+    state: 'offers',
+    text: `ждёт ответов клиентов: ${count}`,
+    title:
+      'Подбор окон поставил эти заявки вне их окон — время с клиентами ещё не согласовано. ' +
+      'Обзвоните их и примите решения: до этого расчёт не утверждается и сам в силу не вступит',
+  }
+}
+
+// расчёт, который утверждать поздно или не с теми вводными: кнопки закрыты
+export function planBlocked(summary, now) {
+  return ['expired', 'voided', 'offers'].includes(planWindowOf(summary, now)?.state)
+}
+
+// плашка срока: на строку приходится одна. Сначала смотрим, годится ли расчёт вообще —
+// день мог измениться или момент выезда пройти. Это важнее ожидания ответов: звонить
+// клиентам по расчёту, который уже не утвердить, незачем
+export function planWindowOf(summary, now) {
+  const window = approvalWindow(summary, now) ?? draftWindow(summary, now)
+  if (window && ['expired', 'voided'].includes(window.state)) return window
+  if (summary?.pending_offers && !summary.approved_at && !summary.superseded_at) {
+    return offersWindow(summary)
+  }
+  return window
 }

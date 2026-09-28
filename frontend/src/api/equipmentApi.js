@@ -16,3 +16,14 @@ export function updateEquipment(equipmentId, equipment) {
 export function deleteEquipment(equipmentId) {
   return apiRequest('DELETE', `/equipment/${equipmentId}`)
 }
+
+// ёмкость: сколько штук оборудования увозит бригада на каждом транспорте
+// [{ transport_id, transport_name, equipment_id, equipment_name, max_quantity }]
+export function listCapacity() {
+  return apiRequest('GET', '/equipment/capacity')
+}
+
+// сохраняем только изменившиеся пары; править может администратор
+export function saveCapacity(rows) {
+  return apiRequest('PUT', '/equipment/capacity', { json: { rows } })
+}

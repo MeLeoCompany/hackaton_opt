@@ -43,15 +43,35 @@ def as_clock(minutes: float) -> str:
     return f"{whole_minutes // 60:02d}:{whole_minutes % 60:02d}"
 
 
-def engineer(engineer_id, transport=CAR, shift=("08:00", "18:00")):
+def engineer(engineer_id, transport=CAR, shift=("08:00", "18:00"), equipment=None):
     return EngineerSpec(
-        engineer_id, f"исполнитель {engineer_id}", transport, hhmm(shift[0]), hhmm(shift[1])
+        engineer_id,
+        f"исполнитель {engineer_id}",
+        transport,
+        hhmm(shift[0]),
+        hhmm(shift[1]),
+        equipment_capacity=equipment or {},
     )
 
 
-def request(request_id, skill, window, duration=60, transport=None, priority=REGULAR):
+def request(
+    request_id,
+    skill,
+    window,
+    duration=60,
+    transport=None,
+    priority=REGULAR,
+    equipment=None,
+):
     return RequestSpec(
-        request_id, duration, hhmm(window[0]), hhmm(window[1]), skill, transport, priority
+        request_id,
+        duration,
+        hhmm(window[0]),
+        hhmm(window[1]),
+        skill,
+        transport,
+        priority,
+        equipment_demand=equipment or {},
     )
 
 
@@ -138,6 +158,7 @@ def constraint_violations(
         travel = instance.travel_min[engineer_spec.transport_id]
         position = instance.start_node(engineer_index)
         free_from = engineer_spec.shift_start_min
+        equipment_used = {}
 
         for visit in visits:
             request_spec = instance.requests[visit.request_index]
@@ -156,6 +177,12 @@ def constraint_violations(
                 and request_spec.required_transport_id != engineer_spec.transport_id
             ):
                 violations.append(f"{label}: нужен транспорт {request_spec.required_transport_id}")
+            for equipment_id, quantity in request_spec.equipment_demand.items():
+                equipment_used[equipment_id] = equipment_used.get(equipment_id, 0) + quantity
+                if equipment_used[equipment_id] > engineer_spec.equipment_capacity.get(
+                    equipment_id, 0
+                ):
+                    violations.append(f"{label}: не хватает оборудования {equipment_id}")
 
             earliest_start = (
                 free_from + travel[position][instance.request_node(visit.request_index)]

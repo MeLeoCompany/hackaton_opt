@@ -36,14 +36,15 @@ def hash_password(password: str, *, salt: bytes | None = None) -> str:
 def verify_password(password: str, stored: str) -> bool:
     try:
         scheme, n, r, p, salt, digest = stored.split("$")
-    except ValueError:
+        if scheme != "scrypt":
+            return False
+        candidate = hashlib.scrypt(
+            password.encode(), salt=_decode(salt), n=int(n), r=int(r), p=int(p)
+        )
+        return hmac.compare_digest(candidate, _decode(digest))
+    except (TypeError, ValueError):
+        # Повреждённый или устаревший хэш одной учётки не должен превращать вход в 500.
         return False
-    if scheme != "scrypt":
-        return False
-    candidate = hashlib.scrypt(
-        password.encode(), salt=_decode(salt), n=int(n), r=int(r), p=int(p)
-    )
-    return hmac.compare_digest(candidate, _decode(digest))
 
 
 def _sign(payload: str) -> str:
@@ -51,7 +52,8 @@ def _sign(payload: str) -> str:
 
 
 def create_token(user_id: int, *, now: float | None = None) -> str:
-    expires = int((now or time.time()) + settings.auth_token_hours * 3600)
+    current = time.time() if now is None else now
+    expires = int(current + settings.auth_token_hours * 3600)
     payload = _encode(json.dumps({"uid": user_id, "exp": expires}).encode())
     return f"{payload}.{_sign(payload)}"
 
@@ -66,8 +68,18 @@ def read_token(token: str, *, now: float | None = None) -> int | None:
         return None
     try:
         data = json.loads(_decode(payload))
-    except ValueError:
+    except (TypeError, ValueError):
         return None
-    if data.get("exp", 0) < (now or time.time()):
+    if not isinstance(data, dict):
         return None
-    return data.get("uid")
+    uid = data.get("uid")
+    expires = data.get("exp")
+    # bool является подклассом int, но номером пользователя быть не должен.
+    if not isinstance(uid, int) or isinstance(uid, bool):
+        return None
+    if not isinstance(expires, (int, float)) or isinstance(expires, bool):
+        return None
+    current = time.time() if now is None else now
+    if expires < current:
+        return None
+    return uid

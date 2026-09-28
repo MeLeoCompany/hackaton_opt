@@ -44,6 +44,23 @@ def test_accepts_valid_solver_output():
     validate_solution(instance(), DaySolution(routes={0: [PlannedVisit(0, 600)]}))
 
 
+def test_rejects_route_over_equipment_capacity():
+    problem = make_instance(
+        engineers=[engineer(1, equipment={7: 1})],
+        requests=[
+            request(10, skill=1, window=("10:00", "12:00"), equipment={7: 1}),
+            request(11, skill=1, window=("12:00", "14:00"), equipment={7: 1}),
+        ],
+        skills={1: {1}},
+    )
+
+    with pytest.raises(ExternalServiceError, match="оборудования"):
+        validate_solution(
+            problem,
+            DaySolution(routes={0: [PlannedVisit(0, 600), PlannedVisit(1, 720)]}),
+        )
+
+
 @pytest.mark.asyncio
 async def test_runtime_failure_becomes_service_error():
     with (

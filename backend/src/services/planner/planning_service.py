@@ -39,8 +39,10 @@ from src.schemas.plans import (
     UnassignedRequest,
     WithdrawnRequest,
 )
+from src.schemas.requests import RequestEquipmentItem
 from src.schemas.system import SolverParams
 from src.schemas.travel import Point, TransportKind, TravelProvider, TravelRoute
+from src.services.equipment import equipment_issue
 from src.services.planner import (
     baseline_solver,
     cuopt_solver,
@@ -57,7 +59,7 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_loader import LoadedDay
-from src.services.planner.planner_problem import TOP_PRIORITY_LEVEL
+from src.services.planner.planner_problem import TOP_PRIORITY_LEVEL, round_ranks
 from src.services.planner.route_delay import RouteDelay, VisitFact, route_delay, visit_state
 from src.services.requests import request_status_service
 from src.services.travel import build_route, travel_cache
@@ -127,16 +129,43 @@ async def list_planning_days(session: AsyncSession, *, office_id: int) -> list[P
     ]
 
 
-async def load_planning_day(session: AsyncSession, plan_date: date, office_id: int) -> LoadedDay:
-    """Загружает данные дня офиса и проверяет наличие заявок и исполнителей."""
+async def load_planning_day(
+    session: AsyncSession, plan_date: date, office_id: int, not_before: datetime | None = None
+) -> LoadedDay:
+    """Загружает данные дня офиса и проверяет наличие заявок и исполнителей.
+
+    not_before — момент, раньше которого бригады не свободны: идущий день считается на выезд
+    «сейчас плюс запас» (departure_moment), а не задним числом.
+    """
     day = planner_loader.planning_day(plan_date)
-    loaded = await planner_loader.load_day(session, day, office_id)
+    loaded = await planner_loader.load_day(
+        session,
+        day,
+        office_id,
+        not_before=not_before,
+        use_transport_equipment_capacity=True,
+    )
     if loaded.instance.n_requests == 0:
         raise PlanDataError([f"На {plan_date:%d.%m.%Y} нет активных заявок"])
     if loaded.instance.n_engineers == 0:
         raise PlanDataError([f"На {plan_date:%d.%m.%Y} нет исполнителей со сменой"])
 
     return loaded
+
+
+def departure_moment(plan_date: date) -> datetime | None:
+    """На какой момент считается день: «сейчас плюс запас» (docs/algoV2.md, шаг 1).
+
+    Пока идут расчёт и обзвон клиентов, время уходит: без запаса маршруты начинались бы в
+    прошлом. С этого момента бригады и выезжают, до него план не действует, а после него
+    утверждать его уже поздно — день считают заново.
+
+    None — день ещё не идёт (планируем заранее) или уже закончился: торопиться некуда,
+    бригады свободны со своих смен.
+    """
+    day = planner_loader.planning_day(plan_date)
+    at = clock.now() + timedelta(minutes=settings.replan_lead_minutes)
+    return at if day.day_start <= at < day.day_end else None
 
 
 async def build_plan_for_day(
@@ -181,19 +210,56 @@ async def build_inside_run(
     *,
     office_id: int,
     params: SolverParams | None = None,
+    kept_request_ids: set[int] | None = None,
+    widen_request_ids: set[int] | None = None,
+    fallback_plan_id: int | None = None,
+    at: datetime | None = None,
 ) -> Plan:
     """Сам расчёт дня внутри запуска журнала: план записан в сессию, коммит — за вызывающим.
 
     Так перед расчётом в той же транзакции можно применить решения оператора по заявкам:
     не получился расчёт — не меняется ничего.
+
+    kept_request_ids — ярус B: заявки, которые влезли в первый расчёт круга. Выкидывать их
+    нельзя, переставлять можно (docs/algoV2.md, шаг 5). Ярусы считаются здесь же по
+    загруженному дню и никуда не сохраняются.
+
+    widen_request_ids — подбор окон: этим заявкам окно раскрывается до конца самой поздней
+    смены, а ярус B получают все остальные. В базе окна не меняются (docs/algoV2.md, шаг 2).
     """
     # параметры расчёта приходят из запроса; системные подставляет слой API
     params = params or SolverParams()
-    loaded = await load_planning_day(session, plan_date, office_id)
+    # идущий день считаем на выезд через запас, а заявки дня запоминаем такими, какими их
+    # увидел расчёт: по ним утверждение поймёт, что за это время день изменился
+    # Повторный расчёт того же круга (например, подбор окон) обязан использовать момент
+    # исходного расчёта. Иначе за время разговора с оператором старт сдвинется вперёд и из
+    # нового расклада выпадут заявки, которые только что в него входили.
+    at = at if at is not None else departure_moment(plan_date)
+    day_requests = await day_state.request_ids(session, plan_date, office_id)
+    loaded = await load_planning_day(session, plan_date, office_id, not_before=at)
+    if widen_request_ids:
+        loaded, kept_request_ids = planner_loader.widen_day(
+            loaded, widen_request_ids, not_before=at
+        )
+    await planner_loader.describe_equipment(loaded)
+    fallback_solution = (
+        await solution_from_plan(session, loaded, fallback_plan_id)
+        if fallback_plan_id is not None
+        else None
+    )
     policy = validate_objective_order(objective_order)
 
     started = time.perf_counter()
-    solution = await solve_with(solver, loaded, policy, params=params)
+    ranks = round_ranks(loaded.instance.requests, kept_request_ids) if kept_request_ids else None
+    solution = await solve_with(
+        solver,
+        loaded,
+        policy,
+        ranks,
+        params=params,
+        kept_request_ids=kept_request_ids,
+        fallback_solution=fallback_solution,
+    )
     duration_ms = (time.perf_counter() - started) * 1000
 
     async with run_log.step("Сохраняю план", 80, 92):
@@ -210,6 +276,16 @@ async def build_inside_run(
     async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
         routes, _ = await plan_routes(session, plan, strict=True)
         set_plan_distance(plan, routes_distance(routes))
+    plan.effective_at = at
+    plan.input_snapshot = {
+        **(plan.input_snapshot or {}),
+        "day_requests": day_requests,
+        **({"widened_requests": sorted(widen_request_ids)} if widen_request_ids else {}),
+    }
+    if at is not None:
+        await run_log.note(
+            f"расчёт на выезд с {local_clock(at)}: до этого момента план и утверждают"
+        )
     return plan
 
 
@@ -219,11 +295,15 @@ async def solve_with(
     objective_order: tuple[ObjectiveCriterion, ...] = DEFAULT_OBJECTIVE_ORDER,
     ranks: dict[int, int] | None = None,
     params: SolverParams | None = None,
+    kept_request_ids: set[int] | None = None,
+    fallback_solution: cuopt_solver.DaySolution | None = None,
 ) -> cuopt_solver.DaySolution:
     """cuOpt считает на видеокарте, OR-Tools — на процессоре, базовый алгоритм — прямо здесь.
 
-    ranks — ярусы заявок для целевой функции; нужны второму расчёту при синхронизации
-    (docs/algoV2.md). Базовый алгоритм ярусы не использует.
+    ranks — ярусы заявок для целевой функции; нужны второму и третьему расчётам круга
+    (docs/algoV2.md, шаги 3 и 5). Базовый алгоритм ярусы не использует.
+    kept_request_ids — ярус B: заявки, которые влезли в первый расчёт. Выкидывать их нельзя,
+    переставлять между бригадами и по времени можно.
     """
     async with run_log.step(SOLVER_STEPS[solver], 45, 80):
         if solver is SolverName.BASELINE:
@@ -235,8 +315,44 @@ async def solve_with(
             else cuopt_solver.solve_day
         )
         return await transit_schedule.solve_day(
-            loaded, objective_order, ranks, params, solve=solve
+            loaded,
+            objective_order,
+            ranks,
+            params,
+            solve=solve,
+            kept_request_ids=kept_request_ids,
+            fallback_solution=fallback_solution,
         )
+
+
+async def solution_from_plan(
+    session: AsyncSession, loaded: LoadedDay, plan_id: int
+) -> cuopt_solver.DaySolution:
+    """Восстановить маршруты сохранённого плана в индексах текущей задачи.
+
+    При подборе окон этот план уже прошёл точную проверку маршрутов. Он служит допустимой
+    основой, если новый запуск решателя после проверки R5 потеряет прежнее назначение.
+    Заявки и бригады, отсутствующие в текущем остатке дня, намеренно пропускаются.
+    """
+    engineer_indices = {engineer.id: index for index, engineer in enumerate(loaded.engineers)}
+    request_indices = {request.id: index for index, request in enumerate(loaded.requests)}
+    routes: dict[int, list[cuopt_solver.PlannedVisit]] = defaultdict(list)
+    for assignment in await plans_repository.list_plan_assignments(session, plan_id):
+        engineer_index = engineer_indices.get(assignment.engineer_id)
+        request_index = request_indices.get(assignment.request_id)
+        if (
+            engineer_index is None
+            or request_index is None
+            or assignment.planned_arrival_time is None
+        ):
+            continue
+        routes[engineer_index].append(
+            cuopt_solver.PlannedVisit(
+                request_index=request_index,
+                work_start_minute=loaded.day.to_minutes(assignment.planned_arrival_time),
+            )
+        )
+    return cuopt_solver.DaySolution(dict(routes))
 
 
 @dataclass(frozen=True)
@@ -259,8 +375,25 @@ async def delete_plan(session: AsyncSession, plan_id: int, *, office_id: int) ->
             "закреплёнными за несуществующим планом. По плану, который бригады уже видят, "
             "утверждение не снимают — он остаётся в истории дня"
         )
+    await revive_source_of(session, plan)
     await plans_repository.delete_plan(session, plan)
     await session.commit()
+
+
+async def revive_source_of(session: AsyncSession, plan: Plan) -> list[int]:
+    """Удаляем расчёт — возвращаем в игру те, которые он отозвал.
+
+    Новый расчёт отзывает прежний: подбор окон — тот, из которого вырос, пересчёт — прежний
+    пересчёт того же плана. Если новый удалили, отзывать было не за чем, и прежний снова
+    годится. Иначе в дне остаётся недействительный расчёт со ссылкой на несуществующий
+    (docs/algoV2.md, шаги 3 и 6).
+    """
+    revived = []
+    for other in await plans_repository.retired_by(session, plan):
+        other.voided_at = None
+        other.void_reason = None
+        revived.append(other.id)
+    return revived
 
 
 async def find_plan(session: AsyncSession, plan_id: int, *, office_id: int) -> Plan:
@@ -298,6 +431,16 @@ async def approve_plan(
             "и утверждённый пересчёт его заменит"
         )
 
+    # черновик идущего дня живёт до своего момента выезда и только при тех же вводных
+    stale = await draft_stale_reason(session, plan)
+    if stale:
+        raise PlanInUseError(stale)
+
+    # подобранное окно — это предложение клиенту, а не согласие: без ответа не утверждаем
+    offered = await undecided_offers(session, plan)
+    if offered:
+        raise offers_error(plan_id, offered)
+
     # невлезшие заявки без решения не оставляем: иначе они молча висят «Новыми», пока окно
     # не закроется. Оператор переносит их, согласует время или отменяет (подбор окон при
     # утверждении) — перенесённая войдёт в план своего дня
@@ -307,6 +450,14 @@ async def approve_plan(
         raise PlanInUseError(
             f"В план №{plan_id} не вошли заявки {numbers}: сначала решите по каждой — "
             "согласуйте другое время, перенесите на другой день или отмените"
+        )
+
+    equipment_problems = await equipment_issue.plan_stock_problems(session, plan)
+    if equipment_problems:
+        raise PlanInUseError(
+            f"План №{plan_id} рассчитан, но оборудование ещё не выдано: "
+            + "; ".join(equipment_problems)
+            + ". Откройте «Оборудование», выдайте комплект и повторите утверждение"
         )
 
     # заявки плана переходят «Новая» -> «В плане»: переход системный, он должен быть в таблице
@@ -347,23 +498,271 @@ async def approve_plan(
 
 
 async def waiting_unassigned(session: AsyncSession, plan: Plan) -> list[Assignment]:
-    """Не вошедшие в план заявки, которые всё ещё ждут планирования: «Новые», ничьи.
+    """Не вошедшие в расчёт заявки, по которым нужно решение оператора.
 
-    Закреплённые за другим планом, снятые и отменённые сюда не попадают — по ним решать нечего.
+    У черновика дня это «Новые» и ничьи. У пересчёта — ещё и те, что пока числятся за
+    пересчитываемым планом: пересчёт их не взял, и в свой момент он вернёт их в «Новые».
+    Решать по ним нужно сейчас, пока оператор смотрит расчёт (docs/algoV2.md, шаги 4 и 6).
+
+    Закреплённые за чужим планом, начатые, закрытые и отменённые сюда не попадают — по ним
+    решать нечего.
     """
+    parent_id = getattr(plan, "parent_plan_id", None)
+    assignments = await plans_repository.list_plan_assignments(session, plan.id)
+    return [a for a in assignments if a.engineer_id is None and waits_decision(a.request, parent_id)]
+
+
+def waits_decision(request, parent_plan_id: int | None) -> bool:
+    """Заявка ждёт решения: её никто не взял и она ещё в игре."""
+    if request.status_id == RequestStatusId.NEW and request.approved_plan_id is None:
+        return True
+    return (
+        parent_plan_id is not None
+        and request.status_id == RequestStatusId.PLANNED
+        and request.approved_plan_id == parent_plan_id
+    )
+
+
+def free_at_estimate(work_start: datetime, duration_minutes: int, at: datetime) -> datetime:
+    """Когда освободится бригада, которая сейчас на заявке (docs/algoV2.md, шаг 10).
+
+    Пока норматив не вышел — по нормативу, даже если бригада закончит уже после момента
+    пересчёта: она работает ровно так, как задумано. Застрявшей считаем только ту, у которой
+    норматив истёк к текущему моменту: честного ответа тут нет, точное время оператор узнаёт
+    по телефону, а до тех пор считаем, что раньше чем через запас она не освободится — иначе
+    пересчёт даёт ей выезд «прямо сейчас», она снова не выезжает, и день крутится в пересчётах.
+    """
+    planned = work_start + timedelta(minutes=duration_minutes)
+    if planned > clock.now():
+        return planned
+    return at + timedelta(minutes=settings.stuck_free_at_minutes)
+
+
+def free_at_of(fact, work_start: datetime, duration_minutes: int, at: datetime) -> datetime:
+    """Когда освободится бригада: слово оператора, пока оно не прошло, иначе оценка.
+
+    Оператор называет время один раз, и оно живёт на заявке (request_fact.expected_free_at):
+    следующий пересчёт спрашивать не должен. Если названное время уже прошло, а бригада всё
+    ещё на месте, слово устарело — снова считаем оценку и снова просим уточнить.
+    """
+    told = getattr(fact, "expected_free_at", None) if fact is not None else None
+    if told is not None and told > at:
+        return told
+    return free_at_estimate(work_start, duration_minutes, at)
+
+
+async def undecided_offers(session: AsyncSession, plan: Plan) -> list[Assignment]:
+    """Заявки, которым расчёт подобрал окно, а ответа клиента ещё нет (docs/algoV2.md, шаг 4).
+
+    Подбор окон ставит такую заявку вне её окна — это предложение, а не факт. Пока клиент не
+    согласился, план утверждать нельзя: бригада приедет не тогда, когда заявке обещано.
+
+    Согласие видно по самому расчёту: у согласованной заявки окно сужено до обещанного, и
+    расчёт ставит её внутрь него. Если следующий подбор окон сдвинул её из обещанного времени,
+    договариваться нужно заново — прежнее «согласен» уже не про это время.
+    """
+    widened = set((getattr(plan, "input_snapshot", None) or {}).get("widened_requests") or [])
+    if not widened:
+        return []
     assignments = await plans_repository.list_plan_assignments(session, plan.id)
     return [
-        a
-        for a in assignments
-        if a.engineer_id is None
-        and a.request.status_id == RequestStatusId.NEW
-        and a.request.approved_plan_id is None
+        assignment
+        for assignment in assignments
+        if assignment.request_id in widened
+        and assignment.engineer_id is not None
+        and not within_window(assignment)
     ]
+
+
+def within_window(assignment: Assignment) -> bool:
+    """Расчёт поставил заявку в её собственное окно: договариваться не о чем."""
+    start = assignment.planned_arrival_time
+    request = assignment.request
+    return start is not None and request.window_start <= start <= request.window_end
+
+
+def offers_error(plan_id: int, offered: list[Assignment]) -> PlanInUseError:
+    numbers = ", ".join(f"№{assignment.request_id}" for assignment in offered)
+    return PlanInUseError(
+        f"В расчёте №{plan_id} заявкам {numbers} подобрано окно, но ответа клиента нет: "
+        "согласуйте время, перенесите на другой день или отмените"
+    )
 
 
 def local_clock(moment: datetime) -> str:
     """Время по Москве часами и минутами: сообщения читают люди."""
     return moment.astimezone(local_timezone()).strftime("%H:%M")
+
+
+async def stale_reason(
+    session: AsyncSession, plan: Plan, current: list[int] | None = None
+) -> str | None:
+    """Почему расчёт уже не годится — одной строкой для оператора; None — годится.
+
+    У черновика дня свой срок (draft_stale_reason), у пересчёта — свой: он вступает в силу сам
+    и не вступит, если день с тех пор изменился. Говорим об этом сразу, а не в его момент.
+    """
+    if plan.approved_at is not None or getattr(plan, "voided_at", None) is not None:
+        return None
+    if getattr(plan, "parent_plan_id", None) is not None:
+        return await replan_stale_reason(session, plan, current)
+    return await draft_stale_reason(session, plan, current)
+
+
+async def late_brigades(session: AsyncSession, plan: Plan) -> list[str]:
+    """Бригады, которые по расчёту уже освободились бы, а сами всё ещё работают.
+
+    Пересчёт считает день вперёд и исходит из того, что бригада закончит текущую заявку по
+    нормативу (или ко времени, которое оператор узнал по телефону). Не закончила — день пошёл
+    не по прогнозу, и маршруты этого расчёта начинаются не с того (docs/algoV2.md, шаг 6).
+    """
+    promised = (getattr(plan, "input_snapshot", None) or {}).get("free_from") or {}
+    parent_id = getattr(plan, "parent_plan_id", None)
+    if not promised or not parent_id:
+        return []
+    assignments = await plans_repository.list_plan_assignments(session, parent_id)
+    facts = await brigade_repository.list_facts(
+        session, [assignment.request_id for assignment in assignments]
+    )
+    now = clock.now()
+    late = []
+    for assignment in assignments:
+        free_at = promised.get(str(assignment.engineer_id))
+        request = assignment.request
+        if free_at is None or request.status_id != RequestStatusId.IN_PROGRESS:
+            continue
+        fact = facts.get(request.id)
+        if fact is not None and fact.finished_at is not None:
+            continue
+        moment = datetime.fromisoformat(free_at)
+        if now <= moment + timedelta(minutes=settings.replan_grace_minutes):
+            continue
+        name = assignment.engineer.name if assignment.engineer is not None else "бригада"
+        late.append(
+            f"{name} всё ещё на заявке №{request.id}, хотя по расчёту освободилась бы "
+            f"в {local_clock(moment)}"
+        )
+    return late
+
+
+async def overrunning_brigades(session: AsyncSession, parent: Plan) -> list[str]:
+    """Бригады, у которых норматив текущей заявки уже прошёл, а она всё ещё на ней.
+
+    День уже идёт не так, как считает план: сколько она там пробудет, никто не знает. Пересчёт
+    в свой момент это проверит сам (late_brigades), а вот применять его раньше времени не
+    стоит — прогноз на этот момент держится на честном слове (docs/algoV2.md, шаги 6 и 10).
+    """
+    assignments = await plans_repository.list_plan_assignments(session, parent.id)
+    facts = await brigade_repository.list_facts(
+        session, [assignment.request_id for assignment in assignments]
+    )
+    now = clock.now()
+    late = []
+    for assignment in assignments:
+        request = assignment.request
+        if assignment.engineer_id is None or request.status_id != RequestStatusId.IN_PROGRESS:
+            continue
+        fact = facts.get(request.id)
+        if fact is not None and fact.finished_at is not None:
+            continue
+        started = fact.arrived_at if fact and fact.arrived_at else assignment.planned_arrival_time
+        if started is None:
+            continue
+        norm_end = started + timedelta(minutes=request.duration_minutes)
+        told = getattr(fact, "expected_free_at", None) if fact is not None else None
+        expected = told if told is not None and told > norm_end else norm_end
+        if now <= expected + timedelta(minutes=settings.replan_grace_minutes):
+            continue
+        name = assignment.engineer.name if assignment.engineer is not None else "бригада"
+        late.append(
+            f"{name} всё ещё на заявке №{request.id}: работа должна была кончиться "
+            f"в {local_clock(expected)}"
+        )
+    return late
+
+
+async def hold_reason(session: AsyncSession, plan: Plan) -> str | None:
+    """Почему пересчёт не стоит применять прямо сейчас, не дожидаясь его момента.
+
+    Пересчёт считался на выезд в свой момент и до него в силу не вступает. Применить раньше
+    можно — но только пока день идёт по плану: если бригада уже перерабатывает, её выезд
+    держится на честном слове, и лучше дождаться момента, когда это проверится (шаг 6).
+    """
+    moment = getattr(plan, "replanned_at", None)
+    parent_id = getattr(plan, "parent_plan_id", None)
+    if moment is None or parent_id is None or getattr(plan, "approved_at", None) is not None:
+        return None
+    if getattr(plan, "voided_at", None) is not None or clock.now() >= moment:
+        return None
+    parent = await plans_repository.get_plan(session, parent_id)
+    if parent is None:
+        return None
+    late = await overrunning_brigades(session, parent)
+    if not late:
+        return None
+    return (
+        f"Применять раньше {local_clock(moment)} нельзя: {'; '.join(late)}. "
+        "Дождитесь этого момента — пересчёт вступит в силу сам, если день сойдётся с расчётом"
+    )
+
+
+async def replan_stale_reason(
+    session: AsyncSession, plan: Plan, current: list[int] | None = None
+) -> str | None:
+    """Пересчёт считал день таким, каким он был в начале расчёта (docs/algoV2.md, шаг 6).
+
+    Появилась или отменилась заявка — он про другой день и в свой момент в силу не вступит
+    (approve_replan этого не примет). Бригады, выбившиеся из плана уже после расчёта, здесь не
+    ищутся: это дорого для списка планов, и проверка всё равно идёт при утверждении.
+    """
+    news = []
+    before = (plan.input_snapshot or {}).get("day_requests")
+    if before is not None:
+        news += await day_state.new_since(session, plan, before, current=current)
+    news += await late_brigades(session, plan)
+    if not news:
+        return None
+    return (
+        f"Пересчёт №{plan.id} не вступит в силу: день пошёл не по расчёту — "
+        f"{'; '.join(news)}. Пересчитайте план заново"
+    )
+
+
+async def draft_stale_reason(
+    session: AsyncSession, plan: Plan, current: list[int] | None = None
+) -> str | None:
+    """Почему черновик идущего дня уже не утвердить; None — можно (docs/algoV2.md, шаги 1 и 6).
+
+    Черновик посчитан на выезд в effective_at и до этого момента живёт: оператор смотрит
+    маршруты, подбирает окна, обзванивает клиентов. Дальше он не годится дважды:
+
+    - момент выезда прошёл — маршруты начинались бы в прошлом;
+    - за это время пришла или отменилась заявка — расчёт её не видел.
+
+    В обоих случаях день считают заново, с новыми вводными. Черновик будущего дня не
+    протухает: момента выезда у него нет.
+
+    current — заявки дня, уже прочитанные вызывающим: список планов сверяет по ним все
+    черновики дня разом.
+    """
+    effective_at = getattr(plan, "effective_at", None)
+    if effective_at is None or plan.approved_at is not None:
+        return None
+    now = clock.now()
+    if now > effective_at + timedelta(minutes=settings.replan_grace_minutes):
+        return (
+            f"Черновик №{plan.id} посчитан на выезд с {local_clock(effective_at)}, а сейчас уже "
+            f"{local_clock(now)}: бригады по нему опаздывают, ещё не выехав. Посчитайте день заново"
+        )
+    before = (plan.input_snapshot or {}).get("day_requests")
+    if before is not None:
+        news = await day_state.new_since(session, plan, before, current=current)
+        if news:
+            return (
+                f"Черновик №{plan.id} не утвердить: пока шли расчёт и обзвон, "
+                f"{'; '.join(news)}. Посчитайте день заново"
+            )
+    return None
 
 
 def replan_routes(assigned: list) -> dict[int, list]:
@@ -415,6 +814,28 @@ def started_as_planned(assignment, routes: dict[int, list], engineer_id: int | N
     return False
 
 
+async def retire_sibling_replans(
+    session: AsyncSession, parent: Plan, approved: Plan, now: datetime
+) -> list[int]:
+    """Соседние пересчёты заменённого плана: они считались от него, а его больше нет.
+
+    В свой момент такой пересчёт всё равно не вступил бы в силу — утверждение его не примет.
+    Помечаем сразу, чтобы оператор не ждал четверть часа и не читал «вступит в силу» о том,
+    что уже не вступит (docs/algoV2.md, шаг 6).
+    """
+    retired = []
+    for other in await plans_repository.pending_replans(session, parent.id):
+        if other.id == approved.id:
+            continue
+        other.voided_at = now
+        other.void_reason = (
+            f"Действующим стал пересчёт №{approved.id}, а этот считался от плана "
+            f"№{parent.id} — пересчитайте действующий план заново"
+        )
+        retired.append(other.id)
+    return retired
+
+
 async def approve_replan(
     session: AsyncSession, plan: Plan, *, user_id: int | None = None
 ) -> PlanSummary:
@@ -428,6 +849,16 @@ async def approve_replan(
     Если с момента пересчёта бригады что-то отметили по заявкам, которые он раскладывал, —
     пересчёт устарел: считаем заново на актуальных данных.
     """
+    # отозванный пересчёт не утверждают и руками: его отозвали не просто так — план
+    # пересчитали заново или день изменился (replan_autoapply)
+    if getattr(plan, "voided_at", None) is not None:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} уже не вступит в силу. "
+            f"{plan.void_reason or 'День изменился с его расчёта'}"
+        )
+    offered = await undecided_offers(session, plan)
+    if offered:
+        raise offers_error(plan.id, offered)
     parent = await plans_repository.get_plan(session, plan.parent_plan_id)
     current = await plans_repository.get_approved_plan(
         session, plan.plan_date, office_id=plan.office_id
@@ -451,9 +882,11 @@ async def approve_replan(
             )
 
     # заявки дня на момент расчёта: пересчёт раскладывал именно их. Появились новые вводные,
-    # пока считали и обзванивали, — план уже про другой день, нужен новый расчёт
+    # пока считали и обзванивали, — план уже про другой день, нужен новый расчёт.
+    # Пустой список — это день, в котором нечего было раскладывать, а не «снимка нет»:
+    # пришедшая после расчёта заявка такой пересчёт тоже отменяет
     before = (plan.input_snapshot or {}).get("day_requests")
-    if before:
+    if before is not None:
         news = await day_state.new_since(session, parent, before)
         if news:
             raise PlanInUseError(
@@ -482,6 +915,19 @@ async def approve_replan(
             f"выбились {', '.join(sorted(fresh_stuck))} — он считал, что они едут. "
             "Пересчитайте план заново"
         )
+    # применяют руками раньше момента: делать это на разъехавшемся дне не стоит
+    holding = await hold_reason(session, plan)
+    if holding:
+        raise PlanInUseError(f"Пересчёт №{plan.id} не применён. {holding}")
+
+    # расчёт исходил из того, что бригады освободятся к этому моменту: не сошлось — не его день
+    late = await late_brigades(session, plan)
+    if late:
+        raise PlanInUseError(
+            f"Пересчёт №{plan.id} не вступил в силу: {'; '.join(late)}. "
+            "Пересчитайте план заново"
+        )
+
     to_plan, rebind, stale = [], [], []
     for assignment in assigned:
         request = assignment.request
@@ -530,6 +976,7 @@ async def approve_replan(
 
     # сначала заменяем прежний план: утверждённым на день может быть только один
     parent.superseded_at = now
+    await retire_sibling_replans(session, parent, plan, now)
     await session.flush()
 
     for request in rebind + to_plan:
@@ -720,14 +1167,14 @@ async def save_solution(
                 "engineer_id": None,
                 "visit_order": None,
                 "planned_arrival_time": None,
-                "unassigned_reason": unassigned_reason(loaded, request_index),
+                "unassigned_reason": unassigned_reason(loaded, request_index, solution),
             },
         )
 
     await session.flush()
     assigned_count = len(assigned_request_indices)
     unassigned = [
-        unassigned_reason(loaded, index)
+        unassigned_reason(loaded, index, solution)
         for index in range(len(loaded.requests))
         if index not in assigned_request_indices
     ]
@@ -742,7 +1189,11 @@ async def save_solution(
     return plan
 
 
-def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
+def unassigned_reason(
+    loaded: LoadedDay,
+    request_index: int,
+    solution: cuopt_solver.DaySolution | None = None,
+) -> str:
     """Почему заявка не назначена — понятным диспетчеру языком.
 
     Для совместимых исполнителей различаем невозможный отдельный первый выезд и
@@ -750,6 +1201,23 @@ def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
     """
     candidates = loaded.instance.candidates(request_index)
     if candidates:
+        demand = loaded.instance.requests[request_index].equipment_demand
+        if demand and solution is not None:
+            has_remaining_stock = any(
+                loaded.instance.route_fits_equipment(
+                    engineer_index,
+                    [
+                        *(
+                            visit.request_index
+                            for visit in solution.routes.get(engineer_index, [])
+                        ),
+                        request_index,
+                    ],
+                )
+                for engineer_index in candidates
+            )
+            if not has_remaining_stock:
+                return equipment_shortage_reason(loaded, request_index, distributed=True)
         if any(can_serve_as_first_visit(loaded, request_index, index) for index in candidates):
             return SCHEDULE_REASON
         return TIME_REASON
@@ -764,10 +1232,35 @@ def unassigned_reason(loaded: LoadedDay, request_index: int) -> str:
     if not engineers_with_skill:
         return f"На этот день нет исполнителя с навыком «{skill_name}»"
 
-    if request.transport_id is None:
-        return SCHEDULE_REASON
-    transport_name = loaded.transport_names.get(request.transport_id, f"№{request.transport_id}")
-    return f"Исполнители с навыком «{skill_name}» есть, но ни у одного нет транспорта «{transport_name}»"
+    engineers_with_transport = [
+        engineer
+        for engineer in engineers_with_skill
+        if request.transport_id is None or engineer.transport_id == request.transport_id
+    ]
+    if not engineers_with_transport:
+        transport_name = loaded.transport_names.get(
+            request.transport_id, f"№{request.transport_id}"
+        )
+        return (
+            f"Исполнители с навыком «{skill_name}» есть, но ни у одного нет транспорта "
+            f"«{transport_name}»"
+        )
+    if loaded.instance.requests[request_index].equipment_demand:
+        return equipment_shortage_reason(loaded, request_index, distributed=False)
+    return SCHEDULE_REASON
+
+
+def equipment_shortage_reason(
+    loaded: LoadedDay, request_index: int, *, distributed: bool
+) -> str:
+    demand = loaded.instance.requests[request_index].equipment_demand
+    listed = ", ".join(
+        f"«{loaded.equipment_names.get(equipment_id, f'№{equipment_id}')}» × {quantity}"
+        for equipment_id, quantity in sorted(demand.items())
+    )
+    if distributed:
+        return f"Не хватает оборудования после распределения по плану: требуется {listed}"
+    return f"У подходящих исполнителей нет требуемого оборудования: {listed}"
 
 
 def can_serve_as_first_visit(loaded: LoadedDay, request_index: int, engineer_index: int) -> bool:
@@ -829,6 +1322,23 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
         for plan in plans
         if plan.plan_date is not None
     }
+    # заявки дня читаем один раз на день: по ним сверяются все неутверждённые расчёты —
+    # и черновики со своим моментом выезда, и пересчёты, ждущие вступления в силу
+    def checks_the_day(plan: Plan) -> bool:
+        if plan.plan_date is None or plan.approved_at is not None:
+            return False
+        if getattr(plan, "voided_at", None) is not None:
+            return False
+        return (
+            getattr(plan, "effective_at", None) is not None
+            or getattr(plan, "parent_plan_id", None) is not None
+        )
+
+    day_requests_by_day = {
+        plan.plan_date: await day_state.request_ids(session, plan.plan_date, plan.office_id)
+        for plan in plans
+        if checks_the_day(plan)
+    }
     summaries = []
     for plan in plans:
         engineers_used, assigned, unassigned = counts.get(plan.id, (0, 0, 0))
@@ -877,6 +1387,12 @@ async def summarize_plans(session: AsyncSession, plans: list[Plan]) -> list[Plan
                 ),
                 voided_replan_id=(voided.id if (voided := voided_replan.get(plan.id)) else None),
                 voided_replan_reason=(voided.void_reason if voided else None),
+                pending_offers=len(await undecided_offers(session, plan)),
+                hold_reason=await hold_reason(session, plan),
+                effective_at=getattr(plan, "effective_at", None),
+                stale_reason=await stale_reason(
+                    session, plan, day_requests_by_day.get(plan.plan_date)
+                ),
                 decisions_from_plan_id=getattr(plan, "decisions_from_plan_id", None),
                 decisions_count=getattr(plan, "decisions_count", None),
                 can_cancel_approval=(
@@ -1000,6 +1516,24 @@ def set_waiting(route: EngineerRoute, facts: dict, replan_next: dict[int, int] |
         # то же по частям: интерфейс собирает одну строку вместе с опозданием, без повторов
         route.waiting_since = next_visit.planned_arrival_time
         route.waiting_cause = departure_gate.REASON_CODE.get(check.reason)
+
+
+def set_free_at_estimate(route: EngineerRoute, facts: dict) -> None:
+    """Бригада сейчас на заявке: когда она освободится, если пересчитать день прямо сейчас.
+
+    Диалог пересчёта подставляет это время в «освободится в HH:MM»: названное оператором — как
+    есть, пока оно не прошло, иначе оценку с запасом. Тот же расчёт идёт и в самой задаче
+    (replan_service.brigade_positions), поэтому оставленное как есть поле ничего не меняет.
+    """
+    on_site = next(
+        (visit for visit in route.visits if visit.arrived_at and not visit.finished_at), None
+    )
+    if on_site is None:
+        return
+    at = clock.now() + timedelta(minutes=settings.replan_lead_minutes)
+    route.free_at_estimate = free_at_of(
+        facts.get(on_site.request_id), on_site.arrived_at, on_site.duration_minutes, at
+    )
 
 
 async def allow_departure(
@@ -1172,6 +1706,7 @@ async def get_plan_detail(session: AsyncSession, plan_id: int, *, office_id: int
                 visit.departed_at = fact.departed_at
                 visit.arrived_at = fact.arrived_at
                 visit.finished_at = fact.finished_at
+        set_free_at_estimate(route, facts)
 
     summary = (await summarize_plans(session, [plan]))[0]
     return PlanDetail(
@@ -1227,6 +1762,7 @@ async def plan_route_delays(
                     ),
                     arrived_at=arrived_at,
                     finished_at=fact.finished_at if fact else None,
+                    expected_free_at=fact.expected_free_at if fact else None,
                 )
             )
         result[engineer_id] = route_delay(visits, now)
@@ -1234,7 +1770,7 @@ async def plan_route_delays(
 
 
 def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
-    """Сколько исполнителей дня подходили под каждую заявку: навык и требуемый транспорт.
+    """Сколько исполнителей подходили по навыку, транспорту и запасу на одну заявку.
 
     Считается по снимку плана — тем данным, на которых план и строился.
     """
@@ -1244,6 +1780,7 @@ def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
     engineers = list(snapshot["engineers"].values())
     counts = {}
     for request in snapshot["requests"].values():
+        demand = {int(key): value for key, value in (request.get("equipment") or {}).items()}
         counts[request["id"]] = sum(
             1
             for engineer in engineers
@@ -1251,6 +1788,14 @@ def candidate_engineers_by_request(snapshot: dict | None) -> dict[int, int]:
             and (
                 request["transport_id"] is None
                 or request["transport_id"] == engineer["transport_id"]
+            )
+            and all(
+                quantity
+                <= {
+                    int(key): value
+                    for key, value in (engineer.get("equipment") or {}).items()
+                }.get(equipment_id, 0)
+                for equipment_id, quantity in demand.items()
             )
         )
     return counts
@@ -1501,6 +2046,7 @@ def to_plan_visit(
         window_end=request.window_end,
         duration_minutes=request.duration_minutes,
         priority_id=request.priority_id,
+        equipment=plan_visit_equipment(request),
         status_id=request.status_id,
         approved_plan_id=request.approved_plan_id,
         available_from=available_from,
@@ -1509,6 +2055,19 @@ def to_plan_visit(
         candidate_engineers=candidate_engineers,
         departure_allowed_at=getattr(request, "departure_allowed_at", None),
     )
+
+
+def plan_visit_equipment(request) -> list[RequestEquipmentItem]:
+    """Привести оборудование ORM-заявки и заявки из снимка решателя к одному виду."""
+    equipment = getattr(request, "equipment", None) or ()
+    if isinstance(equipment, dict):
+        return [
+            RequestEquipmentItem(equipment_id=int(equipment_id), quantity=quantity)
+            for equipment_id, quantity in sorted(
+                equipment.items(), key=lambda item: int(item[0])
+            )
+        ]
+    return [RequestEquipmentItem.model_validate(item) for item in equipment]
 
 
 def to_unassigned_request(assignment: AssignmentView) -> UnassignedRequest:
@@ -1538,6 +2097,7 @@ def snapshot_inputs(loaded: LoadedDay) -> dict:
             "skill_id": r.skill_id,
             "transport_id": r.transport_id,
             "is_urgent": loaded.instance.requests[index].is_urgent,
+            "equipment": getattr(loaded.instance.requests[index], "equipment_demand", {}),
         }
         for index, r in enumerate(loaded.requests)
     }
@@ -1551,8 +2111,13 @@ def snapshot_inputs(loaded: LoadedDay) -> dict:
             "shift_start": e.shift_start.isoformat(),
             "shift_end": e.shift_end.isoformat(),
             "skill_ids": [skill.id for skill in e.skills],
+            "equipment": getattr(
+                (getattr(loaded.instance, "engineers", []) or [None] * len(loaded.engineers))[index],
+                "equipment_capacity",
+                {},
+            ),
         }
-        for e in loaded.engineers
+        for index, e in enumerate(loaded.engineers)
     }
     return {
         "requests": requests,

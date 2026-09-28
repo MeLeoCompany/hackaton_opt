@@ -3,8 +3,15 @@
 // Только для администратора; данные приходят одним запросом и обновляются по кнопке.
 import { computed, onMounted, ref } from 'vue'
 
+import DataWipeDialog from '../components/DataWipeDialog.vue'
 import ErrorMessage from '../components/ErrorMessage.vue'
-import { clearTravelCache, fetchSolverParams, fetchTravelCache, saveSolverParams } from '../api/systemApi.js'
+import {
+  clearAllData,
+  clearTravelCache,
+  fetchSolverParams,
+  fetchTravelCache,
+  saveSolverParams,
+} from '../api/systemApi.js'
 import InfoHint from '../components/InfoHint.vue'
 import SolverParamRows from '../components/SolverParamRows.vue'
 import { limitFor, numericParams } from '../utils/solverParams.js'
@@ -123,6 +130,29 @@ async function resetTravelCache() {
     errorMessage.value = error.message
   } finally {
     clearingCache.value = false
+  }
+}
+
+// очистка перед показом: подтверждение спрашивает отдельное окно — действие
+// необратимое, и в строке настроек ему тесно
+const wipeOpen = ref(false)
+const wiping = ref(false)
+const wipeResult = ref('')
+
+async function runWipe(word) {
+  wiping.value = true
+  try {
+    const done = await clearAllData(word)
+    const rows = Object.entries(done.deleted).map(([name, count]) => `${name.toLowerCase()} ${count}`)
+    wipeResult.value = done.total
+      ? `Удалено записей ${done.total}: ${rows.join(', ')}`
+      : 'Удалять было нечего — рабочих данных нет'
+    wipeOpen.value = false
+    await load()
+  } catch (error) {
+    errorMessage.value = error.message
+  } finally {
+    wiping.value = false
   }
 }
 
@@ -322,15 +352,47 @@ onMounted(() => {
         </article>
       </div>
 
-      <p class="muted">
+      <!-- строка под счётчиками: обновить показания и убрать наработанное перед показом.
+           Очистка живёт здесь же, потому что это действие над теми же данными -->
+      <p class="muted data-actions">
         <button class="link" :disabled="loading" @click="load(); loadTravelCache()">{{ loading ? 'Обновляю…' : 'Обновить' }}</button>
+        <span class="sep">·</span>
+        <button type="button" class="link danger-link" @click="wipeOpen = true">Очистить все данные</button>
+        <InfoHint
+          text="Подготовка к показу: удалит заявки и факты по ним, планы с маршрутами и назначениями, журнал расчётов, отметки бригад и смены инженеров. Останутся справочники — офисы, бригады, оборудование, нормы, приоритеты — и учётные записи. Отменить нельзя."
+        />
       </p>
+      <p v-if="wipeResult" class="saved">{{ wipeResult }}</p>
     </template>
+
+    <DataWipeDialog
+      v-if="wipeOpen"
+      :counts="info?.data ?? {}"
+      :busy="wiping"
+      @wipe="runWipe"
+      @close="wipeOpen = false"
+    />
 
   </div>
 </template>
 
 <style scoped>
+/* очистка данных: та же строка, что «Обновить», — заметна цветом, но не давит блоком */
+.data-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.data-actions .sep {
+  color: #bbb;
+}
+
+.danger-link {
+  color: #c0392b;
+}
+
 .card-head {
   display: flex;
   gap: 12px;

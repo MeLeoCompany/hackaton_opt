@@ -54,6 +54,7 @@ from src.services.planner.objective_policy import (
     validate_objective_order,
 )
 from src.services.planner.planner_loader import EngineerStart
+from src.services.planner.planner_problem import round_ranks
 from src.services.planner.planning_service import PlanDataError, PlanInUseError
 from src.services.requests import request_status_service
 
@@ -188,13 +189,14 @@ async def preview_inside_run(
         unassigned = [a for a in assignments if a.engineer_id is None]
         async with run_log.step("Подбираю время для звонка клиентам (второй расчёт)", 80, 95):
             await run_log.note(f"не успеваем по заявкам: {len(unassigned)}")
-            suggestions = await window_suggestions.suggest_windows(
+            search = await window_suggestions.suggest_windows(
                 built.loaded,
                 solver,
                 validate_objective_order(objective_order),
                 {a.request_id for a in unassigned},
                 params=params,
             )
+            suggestions = search.suggestions
         tolerance = timedelta(minutes=settings.promise_tolerance_minutes)
         preview = ReplanPreview(
             assigned_count=sum(1 for a in assignments if a.engineer_id is not None),
@@ -231,6 +233,9 @@ async def build_for_approval(
     office_id: int,
     free_at: list[BrigadeFreeAt] | None = None,
     params: SolverParams | None = None,
+    kept_request_ids: set[int] | None = None,
+    widen_request_ids: set[int] | None = None,
+    fallback_plan_id: int | None = None,
 ) -> Plan:
     """Считает пересчёт и запоминает, каким день был, когда расчёт начался.
 
@@ -250,6 +255,9 @@ async def build_for_approval(
         office_id=office_id,
         free_at=free_at,
         params=params,
+        kept_request_ids=kept_request_ids,
+        widen_request_ids=widen_request_ids,
+        fallback_plan_id=fallback_plan_id,
     )
     # маршруты строятся один раз здесь и ложатся в кеш: открытие пересчёта возьмёт готовые
     async with run_log.step("Строю маршруты бригад и считаю пробег", 92, 99):
@@ -260,8 +268,26 @@ async def build_for_approval(
         **(built.plan.input_snapshot or {}),
         "day_requests": state,
         "stuck_brigades": sorted(stuck),
+        **({"widened_requests": sorted(widen_request_ids)} if widen_request_ids else {}),
     }
+    await retire_previous_replans(session, parent, built.plan)
     return built.plan
+
+
+async def retire_previous_replans(session: AsyncSession, parent: Plan, plan: Plan) -> list[int]:
+    """План пересчитали заново — прежние его пересчёты ждать своего момента больше не должны.
+
+    Иначе в этот момент вступило бы в силу несколько расчётов подряд, и бригады получили бы то
+    один маршрут, то другой. Действует последний посчитанный (docs/algoV2.md, шаг 6).
+    """
+    retired = []
+    for other in await plans_repository.pending_replans(session, parent.id):
+        if other.id == plan.id:
+            continue
+        other.voided_at = clock.now()
+        other.void_reason = f"Отменён пересчётом №{plan.id}: план пересчитали заново"
+        retired.append(other.id)
+    return retired
 
 
 async def replannable(
@@ -306,25 +332,44 @@ async def build_replan(
     office_id: int,
     free_at: list[BrigadeFreeAt] | None = None,
     params: SolverParams | None = None,
+    kept_request_ids: set[int] | None = None,
+    widen_request_ids: set[int] | None = None,
+    fallback_plan_id: int | None = None,
 ) -> ReplanResult:
     """Считает пересчёт и записывает его в сессию (без коммита).
 
     free_at — когда бригада освободится со слов оператора (docs/algoV2.md, шаг 10).
+    kept_request_ids — ярус B: заявки, которые влезли в первый расчёт круга. Третий расчёт,
+    после согласия клиентов на окна, не вправе их выкинуть (docs/algoV2.md, шаг 5).
     """
-    day = planner_loader.planning_day(parent.plan_date)
-    assignments = await plans_repository.list_plan_assignments(session, parent.id)
-    told = {item.engineer_id: item.free_at for item in free_at or []}
-    fixed, starts = await brigade_positions(session, parent, assignments, at, told)
-
-    loaded = await planner_loader.load_day(session, day, office_id, starts=starts, not_before=at)
-    # раскладывать может быть нечего: всё закрыто, начато или перенесено решениями оператора.
-    # Это не ошибка — пересчёт выйдет из одних закреплённых визитов, иначе решения откатятся
-    if loaded.instance.n_engineers == 0:
-        raise PlanDataError(["на этот момент ни у одной бригады не осталось смены"])
+    fixed, loaded, starts = await day_of_replan(
+        session, parent, at, office_id=office_id, free_at=free_at
+    )
+    if widen_request_ids:
+        loaded, kept_request_ids = planner_loader.widen_day(
+            loaded, widen_request_ids, not_before=at
+        )
+    await planner_loader.describe_equipment(loaded)
+    fallback_solution = (
+        await planning_service.solution_from_plan(session, loaded, fallback_plan_id)
+        if fallback_plan_id is not None
+        else None
+    )
 
     policy = validate_objective_order(objective_order)
     started = time.perf_counter()
-    solution = await planning_service.solve_with(solver, loaded, policy, params=params)
+    ranks = (
+        round_ranks(loaded.instance.requests, kept_request_ids) if kept_request_ids else None
+    )
+    solution = await planning_service.solve_with(
+        solver,
+        loaded,
+        policy,
+        ranks,
+        params=params,
+        kept_request_ids=kept_request_ids,
+        fallback_solution=fallback_solution,
+    )
     duration_ms = (time.perf_counter() - started) * 1000
 
     plan = await planning_service.save_solution(
@@ -339,8 +384,61 @@ async def build_replan(
     )
     plan.parent_plan_id = parent.id
     plan.replanned_at = at
+    # на что расчёт рассчитывал: когда освободится каждая бригада. Не сошлось к его моменту —
+    # значит день пошёл не по прогнозу, и в силу он не вступает (planning_service.late_brigades)
+    plan.input_snapshot = {
+        **(plan.input_snapshot or {}),
+        "free_from": {
+            str(engineer_id): start.available_from.isoformat()
+            for engineer_id, start in starts.items()
+        },
+    }
     await session.flush()
     return ReplanResult(plan=plan, loaded=loaded, solution=solution)
+
+
+async def day_of_replan(
+    session: AsyncSession,
+    parent: Plan,
+    at: datetime,
+    *,
+    office_id: int,
+    free_at: list[BrigadeFreeAt] | None = None,
+) -> tuple[dict[int, list[Assignment]], planner_loader.LoadedDay, dict[int, EngineerStart]]:
+    """День глазами пересчёта: что остаётся за бригадами и откуда каждая продолжает.
+
+    Тем же днём считает и подбор окон для невлезших заявок пересчёта: бригады в нём стоят там,
+    где они сейчас, и свободны не раньше момента пересчёта — иначе предложенное клиенту время
+    было бы не про этот день.
+    """
+    day = planner_loader.planning_day(parent.plan_date)
+    assignments = await plans_repository.list_plan_assignments(session, parent.id)
+    told = {item.engineer_id: item.free_at for item in free_at or []}
+    fixed, starts = await brigade_positions(session, parent, assignments, at, told)
+    loaded = await planner_loader.load_day(session, day, office_id, starts=starts, not_before=at)
+    loaded = planner_loader.consume_equipment(loaded, consumed_equipment(fixed))
+    # раскладывать может быть нечего: всё закрыто, начато или перенесено решениями оператора.
+    # Это не ошибка — пересчёт выйдет из одних закреплённых визитов, иначе решения откатятся
+    if loaded.instance.n_engineers == 0:
+        raise PlanDataError(["на этот момент ни у одной бригады не осталось смены"])
+    return fixed, loaded, starts
+
+
+def consumed_equipment(fixed: dict[int, list[Assignment]]) -> dict[int, dict[int, int]]:
+    """Что уже израсходовано или зарезервировано бригадами к моменту пересчёта.
+
+    Выполненная заявка оставила устройства у клиента, а для заявки в пути или в работе они
+    уже сняты со свободного запаса. Отменённая заявка оборудование не расходует.
+    """
+    result: dict[int, dict[int, int]] = {}
+    for engineer_id, assignments in fixed.items():
+        stock = result.setdefault(engineer_id, {})
+        for assignment in assignments:
+            if assignment.request.status_id == RequestStatusId.CANCELLED:
+                continue
+            for item in assignment.request.equipment:
+                stock[item.equipment_id] = stock.get(item.equipment_id, 0) + item.quantity
+    return result
 
 
 async def apply_decisions(
@@ -503,7 +601,9 @@ async def brigade_positions(
                 if fact and fact.arrived_at
                 else max(at, in_progress.planned_arrival_time)
             )
-            free_at = work_start + timedelta(minutes=request.duration_minutes)
+            free_at = planning_service.free_at_estimate(
+                work_start, request.duration_minutes, at
+            )
             point = (float(request.latitude), float(request.longitude))
         elif done:
             # стоит на последней выполненной
@@ -525,6 +625,16 @@ async def brigade_positions(
             in_progress is not None and in_progress.request.status_id == RequestStatusId.IN_PROGRESS
         )
         told = (free_at_by_engineer or {}).get(engineer_id) if on_site else None
+        if on_site:
+            # оператор звонит бригаде один раз: время живёт на заявке, пока работа не кончилась.
+            # Пробный пересчёт транзакцию откатывает, так что запоминает только настоящий
+            fact = facts.get(in_progress.request_id)
+            if fact is not None and told is not None:
+                fact.expected_free_at = told
+            elif fact is not None and told is None:
+                free_at = planning_service.free_at_of(
+                    fact, work_start, in_progress.request.duration_minutes, at
+                )
         starts[engineer_id] = EngineerStart(
             latitude=point[0],
             longitude=point[1],

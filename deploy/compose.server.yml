@@ -1,0 +1,99 @@
+# Серверный режим: поверх docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f deploy/compose.server.yml up -d --build
+#
+# Чем отличается от девелоперского:
+#   - наружу смотрит только nginx (80/443), остальные порты закрыты;
+#   - фронтенды собраны в статику и лежат в nginx, дев-серверы vite не запускаются;
+#   - бэкенд работает из образа, без перезагрузки по изменению файлов;
+#   - пароль базы и подпись токенов берутся из deploy.env, а не из значений по умолчанию;
+#   - видеокарта не требуется: cuOpt включается отдельным оверлеем compose.gpu.yml.
+services:
+  postgres:
+    ports: !override []
+    environment:
+      POSTGRES_DB: routing
+      POSTGRES_USER: routing
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?задайте DB_PASSWORD в deploy.env}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8"
+      TZ: UTC
+      PGTZ: UTC
+
+  valhalla:
+    ports: !override []
+
+  r5:
+    ports: !override []
+
+  backend:
+    ports: !override []
+    # исходники берём из образа: на сервере нечего перезагружать на лету
+    volumes: !override
+      - ./transit/generated:/app/transit:ro
+    command: !override ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # без видеокарты: решатель падает обратно на OR-Tools. С GPU — compose.gpu.yml
+    deploy: !override {}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://routing:${DB_PASSWORD:?}@postgres:5432/routing
+      VALHALLA_URL: http://valhalla:8002
+      R5_URL: http://r5:8003
+      R5_GTFS_PATH: /app/transit/moscow-pilot.gtfs.zip
+      AUTH_SECRET: ${AUTH_SECRET:?задайте AUTH_SECRET в deploy.env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      WALKING_SPEED_KMH: ${R5_WALKING_SPEED_KMH:-4.8}
+      R5_TIMEOUT_SECONDS: ${R5_TIMEOUT_SECONDS:-180}
+      R5_MATRIX_BLOCK_ORIGINS: ${R5_MATRIX_BLOCK_ORIGINS:-5}
+      R5_MATRIX_BLOCK_MAX_PAIRS: ${R5_MATRIX_BLOCK_MAX_PAIRS:-500}
+      R5_MATRIX_SINGLE_MAX_POINTS: ${R5_MATRIX_MAX_POINTS:-100}
+      CUOPT_TIME_LIMIT_SECONDS: ${CUOPT_TIME_LIMIT_SECONDS:-1.0}
+      CUOPT_MAX_TIME_LIMIT_SECONDS: ${CUOPT_MAX_TIME_LIMIT_SECONDS:-120.0}
+      CUOPT_DISTANCE_WEIGHT: ${CUOPT_DISTANCE_WEIGHT:-1.0}
+
+  # дев-серверы vite на сервере не нужны: их место занимает nginx со сборкой.
+  # Профиль, которого нет среди включённых, — способ выключить сервис в оверлее
+  frontend:
+    profiles: ["never"]
+  mobile:
+    profiles: ["never"]
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    image: routing-web
+    container_name: routing_web
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?задайте DOMAIN в deploy.env}
+      TLS: ${TLS:-true}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # обновление сертификата: раз в 12 часов, тихо. Первый выпуск делает deploy.sh
+  certbot:
+    image: certbot/certbot:latest
+    container_name: routing_certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: >-
+      sh -c 'trap exit TERM;
+      while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+      sleep 12h & wait $${!}; done'
+
+volumes:
+  certbot_certs:
+  certbot_www:

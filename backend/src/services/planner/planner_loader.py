@@ -9,19 +9,23 @@
 пешеходных и велосипедных поездок, R5 с данными Valhalla для общественного транспорта.
 """
 
+import copy
 import math
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 
 import httpx
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core import clock
+from src.core.config import settings
 from src.core.errors import ExternalServiceError
 from src.core.local_day import local_timezone
 from src.models import Engineer, Request
 from src.repositories.engineers import engineers_repository
+from src.repositories.equipment import equipment_repository
 from src.repositories.references import references_repository
 from src.repositories.requests import requests_repository
 from src.schemas.travel import Point, TransportKind
@@ -94,6 +98,7 @@ class LoadedDay:
     engineers: list[Engineer]  # в том же порядке, что instance.engineers, навыки загружены
     skill_names: dict[int, str]
     transport_names: dict[int, str]
+    equipment_names: dict[int, str] = field(default_factory=dict)
     start_points: list[Point] | None = None  # фактические старты при пересчёте
 
 
@@ -116,10 +121,13 @@ async def load_day(
     *,
     starts: dict[int, EngineerStart] | None = None,
     not_before: datetime | None = None,
+    use_transport_equipment_capacity: bool = False,
 ) -> LoadedDay:
     """starts — пересчёт с текущего момента: у бригады своя точка старта и время, с которого
     она свободна. В LoadedDay.engineers остаются сами бригады (для снимка и отображения
-    плана), подмена — только в задаче решателя."""
+    плана), подмена — только в задаче решателя. Первый расчёт может использовать физическую
+    вместимость транспорта до фактической выдачи оборудования; пересчёт использует запас
+    смены и затем вычитает уже израсходованное."""
     starts = starts or {}
     # not_before — момент пересчёта: раньше него не свободна ни одна бригада
     # офисы изолированы: бригады офиса берут только заявки своего офиса.
@@ -155,6 +163,12 @@ async def load_day(
     skills = await references_repository.list_skills(session)
     transports = await references_repository.list_transports(session)
     priorities = await references_repository.list_priorities(session)
+    equipment = await references_repository.list_equipment(session)
+    transport_equipment_capacity = (
+        await equipment_repository.capacity_map(session)
+        if use_transport_equipment_capacity
+        else None
+    )
     priority_levels = {priority.id: priority.level for priority in priorities}
     await describe_day(requests, engineers, priority_levels)
 
@@ -176,6 +190,9 @@ async def load_day(
                 transport_id=engineer.transport_id,
                 shift_start_min=day.to_minutes(free_from(engineer), round_up=True),
                 shift_end_min=day.to_minutes(engineer.shift_end),
+                equipment_capacity=_engineer_equipment_capacity(
+                    engineer, equipment, transport_equipment_capacity
+                ),
             )
             for engineer in engineers
         ],
@@ -191,6 +208,9 @@ async def load_day(
                 # отметки синхронизации: обещание клиенту и перенос с другого дня (036)
                 promised=request.promised_from is not None,
                 moved=request.moved_from is not None,
+                equipment_demand={
+                    item.equipment_id: item.quantity for item in request.equipment
+                },
             )
             for request in requests
         ],
@@ -209,8 +229,95 @@ async def load_day(
         engineers=engineers,
         skill_names={skill.id: skill.name for skill in skills},
         transport_names={transport.id: transport.name for transport in transports},
+        equipment_names={item.id: item.name for item in equipment},
         start_points=start_points,
     )
+
+
+def _engineer_equipment_capacity(
+    engineer: Engineer,
+    equipment: list,
+    transport_capacity: dict[tuple[int, int], int] | None,
+) -> dict[int, int]:
+    """Запас для первого расчёта берётся из вместимости, для пересчёта — из смены."""
+    if transport_capacity is None:
+        return {item.equipment_id: item.quantity for item in engineer.equipment_items}
+    return {
+        item.id: quantity
+        for item in equipment
+        if (quantity := transport_capacity.get((engineer.transport_id, item.id), 0)) > 0
+    }
+
+
+def consume_equipment(
+    loaded: LoadedDay, consumed_by_engineer: dict[int, dict[int, int]]
+) -> LoadedDay:
+    """Вычесть оборудование уже выполненных или начатых заявок при пересчёте дня."""
+    if not consumed_by_engineer:
+        return loaded
+    instance = copy.copy(loaded.instance)
+    # build_compatibility перезаписывает матрицу на месте. После copy.copy она всё ещё
+    # принадлежит исходной задаче, поэтому без отдельной копии пересчёт незаметно менял бы
+    # совместимость в loaded, переданном вызывающей стороне.
+    instance.compatible = loaded.instance.compatible.copy()
+    instance.engineers = [
+        replace(
+            engineer,
+            equipment_capacity={
+                equipment_id: max(
+                    0,
+                    quantity
+                    - consumed_by_engineer.get(engineer.engineer_id, {}).get(equipment_id, 0),
+                )
+                for equipment_id, quantity in engineer.equipment_capacity.items()
+            },
+        )
+        for engineer in instance.engineers
+    ]
+    adjusted = copy.copy(loaded)
+    adjusted.instance = instance
+    build_compatibility(
+        instance,
+        {engineer.id: {skill.id for skill in engineer.skills} for engineer in loaded.engineers},
+    )
+    return adjusted
+
+
+async def describe_equipment(loaded: LoadedDay) -> None:
+    """Показать в журнале доступный запас и суммарную потребность дня."""
+    engineers = getattr(loaded.instance, "engineers", [])
+    requests = getattr(loaded.instance, "requests", [])
+    equipment_ids = sorted(
+        {
+            equipment_id
+            for engineer in engineers
+            for equipment_id in getattr(engineer, "equipment_capacity", {})
+        }
+        | {
+            equipment_id
+            for request in requests
+            for equipment_id in getattr(request, "equipment_demand", {})
+        }
+    )
+    for equipment_id in equipment_ids:
+        available = sum(
+            getattr(engineer, "equipment_capacity", {}).get(equipment_id, 0)
+            for engineer in engineers
+        )
+        requested = sum(
+            getattr(request, "equipment_demand", {}).get(equipment_id, 0)
+            for request in requests
+        )
+        name = getattr(loaded, "equipment_names", {}).get(equipment_id, f"№{equipment_id}")
+        await run_log.note(
+            f"Оборудование «{name}»: доступно {available}, требуется заявкам {requested}",
+            level="warning" if requested > available else "info",
+            details={
+                "equipment_id": equipment_id,
+                "available": available,
+                "requested": requested,
+            },
+        )
 
 
 async def describe_day(
@@ -376,3 +483,53 @@ def replace_unreachable(values: list[list[float | None]], unreachable: float) ->
     matrix = np.array(values, dtype=float)
     matrix[~np.isfinite(matrix)] = unreachable
     return matrix
+
+
+def widen_day(
+    loaded: LoadedDay,
+    request_ids: set[int],
+    *,
+    not_before: datetime | None = None,
+) -> tuple[LoadedDay, set[int]]:
+    """День с раскрытым окном названных заявок: [max(t0; T); самый поздний конец смены].
+
+    T — момент, с которого считаем: сейчас плюс запас на расчёт и обзвон
+    (settings.replan_lead_minutes, docs/algoV2.md, шаг 2). Раньше него предлагать время
+    нельзя: эти минуты бригады ещё едут по прежнему плану, и обещание клиенту было бы
+    заведомо невыполнимым. Для будущего дня T лежит до начала дня и ничего не меняет.
+    В базе окна не трогаем — раскрытие живёт только внутри расчёта.
+
+    Возвращает день для решателя и заявки, окна которых не трогали: это ярус B — тех,
+    кто влез в первый расчёт, раскрытая заявка вытеснять не вправе.
+    """
+    indices = {
+        index
+        for index, request in enumerate(loaded.instance.requests)
+        if request.request_id in request_ids
+    }
+    kept = {
+        request.request_id
+        for index, request in enumerate(loaded.instance.requests)
+        if index not in indices
+    }
+    if not indices:
+        return loaded, kept
+
+    instance = copy.copy(loaded.instance)
+    latest_shift_end = max(engineer.shift_end_min for engineer in instance.engineers)
+    earliest_start = loaded.day.to_minutes(
+        not_before or clock.now() + timedelta(minutes=settings.replan_lead_minutes), round_up=True
+    )
+    instance.requests = [
+        replace(
+            request,
+            window_start_min=max(request.window_start_min, earliest_start),
+            window_end_min=max(request.window_end_min, latest_shift_end),
+        )
+        if index in indices
+        else request
+        for index, request in enumerate(instance.requests)
+    ]
+    widened = copy.copy(loaded)
+    widened.instance = instance
+    return widened, kept

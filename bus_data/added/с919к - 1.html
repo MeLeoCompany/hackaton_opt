@@ -1,0 +1,1245 @@
+<div class="ajax-content map_cont_line" data-bundle="App" data-controller="V2_ScheduleV2Controller"
+    data-action="detail">
+
+    <div class="pos_rel">
+        <div class="h4fs mb10">
+            <span id="schedule-route-header">
+                <span>Чертаново Южное - Варшавское шоссе, 261</span>
+                <a class="filter-link" data-for="#mgt_schedule_direction" data-value="0">
+                    <i class="ic ic-change-a-b"></i>
+                </a>
+            </span>
+        </div>
+        <div class="h4fs h4mb">
+            <span id="schedule-route-worktime">
+                с 07:07 по 20:26 </span>
+        </div>
+
+        <div id="schedule-form">
+            <form name="mgt_schedule" method="get" class=" needs-validation" id="mgt_schedule_form">
+                <div class="empty-field-list"></div>
+                <input type="hidden" id="mgt_schedule_isNight" name="mgt_schedule[isNight]">
+                <div class="form-group">
+                    <div>
+                        <div class="pos_rel d-inline-block">
+                            <input type="text" id="mgt_schedule_date" name="mgt_schedule[date]" required="required"
+                                class="ajax-change datepicker form-control flatpickr-input" autocomplete="off"
+                                data-type="schedule" data-toggle="datepicker" data-target="#mgt_schedule_date"
+                                value="28.09.2026">
+                            <label class="icon-Calendar cal_ico" for="mgt_schedule_date"></label>
+                        </div>
+                    </div>
+                </div><input type="hidden" id="mgt_schedule_route" name="mgt_schedule[route]" value="1440">
+                <div class="form-group">
+                    <legend class="d-none col-form-label required">Direction</legend>
+                    <div id="mgt_schedule_direction" class="ajax-change d-none" data-type="schedule" autocomplete="off">
+
+                        <div class="form-check"> <label class="label_input"><input type="radio"
+                                    id="mgt_schedule_direction_0" name="mgt_schedule[direction]" required="required"
+                                    class="ajax-change d-none form-check-input" data-type="schedule" autocomplete="off"
+                                    value="0" checked="checked"><span class="sp_all"></span><span>Прямой</span></label>
+                        </div>
+                        <div class="form-check"> <label class="label_input"><input type="radio"
+                                    id="mgt_schedule_direction_1" name="mgt_schedule[direction]" required="required"
+                                    class="ajax-change d-none form-check-input" data-type="schedule" autocomplete="off"
+                                    value="1"><span class="sp_all"></span><span>Обратный</span></label>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+        </div>
+
+        <div class="row mb72m">
+            <div class="col-md-4 col-xl-3 order-2 order-md-1">
+                <div id="schedule-table">
+                    <div class="schedule-route clearfix schedule-route--ru"
+                        data-coords="{&quot;type&quot;:&quot;FeatureCollection&quot;,&quot;features&quot;:[{&quot;id&quot;:2713,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.58956,55.595608]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0427\u0435\u0440\u0442\u0430\u043d\u043e\u0432\u043e \u042e\u0436\u043d\u043e\u0435&quot;,&quot;balloonContentHeader&quot;:&quot;\u0427\u0435\u0440\u0442\u0430\u043d\u043e\u0432\u043e \u042e\u0436\u043d\u043e\u0435&quot;}},{&quot;id&quot;:2715,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.594315,55.59557]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041a\u0438\u0440\u043e\u0432\u043e\u0433\u0440\u0430\u0434\u0441\u043a\u0430\u044f \u0443\u043b.&quot;,&quot;balloonContentHeader&quot;:&quot;\u041a\u0438\u0440\u043e\u0432\u043e\u0433\u0440\u0430\u0434\u0441\u043a\u0430\u044f \u0443\u043b.&quot;}},{&quot;id&quot;:10404,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.600266,55.593918]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u0423\u043b\u0438\u0446\u0430 \u0410\u043a\u0430\u0434\u0435\u043c\u0438\u043a\u0430 \u042f\u043d\u0433\u0435\u043b\u044f\&quot;&quot;,&quot;balloonContentHeader&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u0423\u043b\u0438\u0446\u0430 \u0410\u043a\u0430\u0434\u0435\u043c\u0438\u043a\u0430 \u042f\u043d\u0433\u0435\u043b\u044f\&quot;&quot;}},{&quot;id&quot;:2218,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.599022,55.589268]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0423\u043b. \u041a\u0438\u0440\u043f\u0438\u0447\u043d\u044b\u0435 \u0412\u044b\u0435\u043c\u043a\u0438&quot;,&quot;balloonContentHeader&quot;:&quot;\u0423\u043b. \u041a\u0438\u0440\u043f\u0438\u0447\u043d\u044b\u0435 \u0412\u044b\u0435\u043c\u043a\u0438&quot;}},{&quot;id&quot;:10610,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.59743,55.58428]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u0410\u043d\u043d\u0438\u043d\u043e\&quot;&quot;,&quot;balloonContentHeader&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u0410\u043d\u043d\u0438\u043d\u043e\&quot;&quot;}},{&quot;id&quot;:1000457,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.597023,55.583015]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u0410\u043d\u043d\u0438\u043d\u043e\&quot; (\u044e\u0436\u043d\u044b\u0439 \u0432\u0445\u043e\u0434)&quot;,&quot;balloonContentHeader&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u0410\u043d\u043d\u0438\u043d\u043e\&quot; (\u044e\u0436\u043d\u044b\u0439 \u0432\u0445\u043e\u0434)&quot;}},{&quot;id&quot;:2221,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.596745,55.57413]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0412\u0430\u0440\u0448\u0430\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435 (\u041c\u041a\u0410\u0414)&quot;,&quot;balloonContentHeader&quot;:&quot;\u0412\u0430\u0440\u0448\u0430\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435 (\u041c\u041a\u0410\u0414)&quot;}},{&quot;id&quot;:9880,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.597317,55.5676]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0421\u0435\u0432\u0435\u0440\u043d\u043e\u0435 \u0411\u0443\u0442\u043e\u0432\u043e&quot;,&quot;balloonContentHeader&quot;:&quot;\u0421\u0435\u0432\u0435\u0440\u043d\u043e\u0435 \u0411\u0443\u0442\u043e\u0432\u043e&quot;}},{&quot;id&quot;:9066,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.5965,55.565506]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0411\u043e\u0442\u0430\u043d\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0441\u0430\u0434&quot;,&quot;balloonContentHeader&quot;:&quot;\u0411\u043e\u0442\u0430\u043d\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0441\u0430\u0434&quot;}},{&quot;id&quot;:9396,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.586525,55.550705]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0412\u0430\u0440\u0448\u0430\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435, 190&quot;,&quot;balloonContentHeader&quot;:&quot;\u0412\u0430\u0440\u0448\u0430\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435, 190&quot;}},{&quot;id&quot;:9399,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.5852,55.54692]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0411\u043e\u043b\u044c\u0448\u0430\u044f \u0411\u0443\u0442\u043e\u0432\u0441\u043a\u0430\u044f \u0443\u043b\u0438\u0446\u0430&quot;,&quot;balloonContentHeader&quot;:&quot;\u0411\u043e\u043b\u044c\u0448\u0430\u044f \u0411\u0443\u0442\u043e\u0432\u0441\u043a\u0430\u044f \u0443\u043b\u0438\u0446\u0430&quot;}},{&quot;id&quot;:10474,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.583508,55.541313]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;1-\u044f \u041c\u0435\u043b\u0438\u0442\u043e\u043f\u043e\u043b\u044c\u0441\u043a\u0430\u044f \u0443\u043b\u0438\u0446\u0430&quot;,&quot;balloonContentHeader&quot;:&quot;1-\u044f \u041c\u0435\u043b\u0438\u0442\u043e\u043f\u043e\u043b\u044c\u0441\u043a\u0430\u044f \u0443\u043b\u0438\u0446\u0430&quot;}},{&quot;id&quot;:9718,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.581257,55.533165]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041d\u043e\u0432\u043e\u043d\u0438\u043a\u043e\u043b\u044c\u0441\u043a\u043e\u0435&quot;,&quot;balloonContentHeader&quot;:&quot;\u041d\u043e\u0432\u043e\u043d\u0438\u043a\u043e\u043b\u044c\u0441\u043a\u043e\u0435&quot;}},{&quot;id&quot;:9947,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.57988,55.528606]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0412\u0430\u0440\u0448\u0430\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435, 261&quot;,&quot;balloonContentHeader&quot;:&quot;\u0412\u0430\u0440\u0448\u0430\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435, 261&quot;}},{&quot;id&quot;:2039968,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;LineString&quot;,&quot;coordinates&quot;:[[37.5874454,55.595955],[37.5870612,55.595675],[37.5869176,55.5955765],[37.5869034,55.5955659],[37.5868906,55.5955547],[37.5868795,55.595543],[37.58687,55.5955308],[37.5868622,55.5955183],[37.5868562,55.5955054],[37.586852,55.5954923],[37.5868496,55.595479],[37.5868491,55.5954657],[37.5868504,55.5954524],[37.5868535,55.5954392],[37.5868585,55.5954262],[37.5868652,55.5954135],[37.5868738,55.5954011],[37.5868839,55.5953891],[37.5868958,55.5953776],[37.5869092,55.5953666],[37.586924,55.5953563],[37.5869402,55.5953467],[37.5869578,55.5953378],[37.5869765,55.5953297],[37.5869962,55.5953225],[37.5870169,55.5953162],[37.5870384,55.5953108],[37.5870606,55.5953064],[37.5870834,55.595303],[37.5871065,55.5953006],[37.5871299,55.5952993],[37.587138,55.5952991],[37.5873376,55.5952934],[37.5879057,55.5952871],[37.588193,55.5952872],[37.5882192,55.5952878],[37.5882454,55.5952896],[37.5882712,55.5952925],[37.5882965,55.5952965],[37.5883212,55.5953017],[37.588345,55.5953079],[37.588368,55.5953152],[37.5883898,55.5953235],[37.5884105,55.5953327],[37.5884298,55.5953428],[37.5884476,55.5953538],[37.5884639,55.5953655],[37.5884785,55.5953779],[37.5884914,55.5953909],[37.5885024,55.5954044],[37.5885115,55.5954184],[37.5885186,55.5954327],[37.5885237,55.5954473],[37.5885268,55.5954621],[37.5885278,55.595477],[37.5885278,55.5954803],[37.5885334,55.5955573],[37.5885334,55.5955573],[37.5885359,55.5955601],[37.588545,55.5955815],[37.588551,55.5955932],[37.5885589,55.5956045],[37.5885687,55.5956153],[37.5885803,55.5956255],[37.5885936,55.595635],[37.5886084,55.5956438],[37.5886247,55.5956517],[37.5886422,55.5956587],[37.5886608,55.5956648],[37.5886804,55.5956697],[37.5887007,55.5956736],[37.5887216,55.5956764],[37.5887428,55.5956781],[37.5887566,55.5956785],[37.58883,55.5956782],[37.58883,55.5956782],[37.5946124,55.5956222],[37.5949672,55.5956194],[37.595149,55.5956152],[37.5952104,55.5956137],[37.5953252,55.595611],[37.5954163,55.5956087],[37.595451,55.5956071],[37.595451,55.5956071],[37.5954667,55.5956064],[37.5955165,55.5956017],[37.5955656,55.5955949],[37.5956136,55.595586],[37.5956602,55.5955749],[37.5957022,55.5955627],[37.5959703,55.5954848],[37.5964534,55.5953376],[37.5965687,55.5953024],[37.5966759,55.5952711],[37.5967408,55.5952539],[37.5968766,55.5952285],[37.5969782,55.5952178],[37.5971991,55.5952072],[37.5971991,55.5952072],[37.5979452,55.5951985],[37.5984769,55.595195],[37.5988188,55.595191],[37.5988188,55.595191],[37.5990805,55.5951393],[37.5993822,55.5950793],[37.5995504,55.5950455],[37.5997694,55.5950098],[37.5999422,55.594988],[37.5999422,55.594988],[37.6005098,55.5949022],[37.6005098,55.5949022],[37.6006244,55.5948834],[37.6006422,55.59488],[37.6006594,55.5948759],[37.600676,55.5948711],[37.6006918,55.5948655],[37.6007069,55.5948592],[37.600721,55.5948523],[37.6007341,55.5948447],[37.6007462,55.5948366],[37.600757,55.594828],[37.6007667,55.594819],[37.600775,55.5948095],[37.6007821,55.5947997],[37.6007877,55.5947896],[37.600792,55.5947793],[37.6007948,55.5947689],[37.6007961,55.5947583],[37.600796,55.5947477],[37.6007944,55.5947372],[37.6007703,55.5946539],[37.6007703,55.5946539],[37.6005936,55.5942471],[37.6004431,55.5938887],[37.6002309,55.5934396],[37.599922,55.5927727],[37.5997138,55.5923299],[37.5997138,55.5923299],[37.599678,55.5921648],[37.5996689,55.5920628],[37.5996739,55.5919607],[37.599693,55.5918591],[37.5997092,55.5918047],[37.5997992,55.5914643],[37.599814,55.5913876],[37.5998182,55.5913105],[37.5998117,55.5912335],[37.5997945,55.591157],[37.5997536,55.5909838],[37.5997536,55.5909838],[37.5996872,55.5908284],[37.5995911,55.5906082],[37.5992936,55.5897105],[37.5988288,55.5883408],[37.5984704,55.5872819],[37.5984704,55.5872819],[37.598342,55.5868155],[37.5982768,55.5865789],[37.5981206,55.5860708],[37.5972001,55.5832063],[37.5968448,55.582072],[37.5967612,55.5817699],[37.5967234,55.581582],[37.5967097,55.5813574],[37.5966712,55.580983],[37.5966495,55.5808453],[37.596601,55.5806805],[37.5965107,55.580413],[37.5964557,55.5802253],[37.5963563,55.5799104],[37.5962812,55.5796728],[37.5962191,55.5794727],[37.5961554,55.5792637],[37.5961344,55.5791949],[37.5960741,55.5788764],[37.5960741,55.5788764],[37.5960577,55.5787895],[37.5960031,55.5783934],[37.5959854,55.5781713],[37.5959854,55.5781713],[37.595969,55.5780047],[37.5959635,55.5778887],[37.5959757,55.5777156],[37.5960123,55.5773858],[37.5960334,55.5772472],[37.5960859,55.5769001],[37.5961662,55.5765147],[37.5962283,55.5762848],[37.5963625,55.5757949],[37.5965274,55.5752792],[37.5965274,55.5752792],[37.596645,55.5749115],[37.5970292,55.5737075],[37.5970292,55.5737075],[37.5970688,55.5735834],[37.597217,55.5729963],[37.597217,55.5729963],[37.5972513,55.572829],[37.5973146,55.5721253],[37.5974077,55.5709906],[37.5974365,55.5702985],[37.5974489,55.5700065],[37.5974321,55.5689968],[37.5974379,55.5686688],[37.5974512,55.5685256],[37.5974512,55.5685256],[37.5974971,55.5680328],[37.597501,55.567716],[37.597501,55.567716],[37.5975044,55.5674466],[37.5975081,55.5673607],[37.5975081,55.5673607],[37.5975241,55.5669942],[37.5975195,55.5669662],[37.5975195,55.5669662],[37.5974652,55.5666393],[37.5974065,55.566467],[37.5973297,55.5663115],[37.5972516,55.5661782],[37.5971716,55.5660689],[37.5970097,55.565867],[37.5966669,55.5654941],[37.5962064,55.5649823],[37.5943398,55.5630216],[37.5930088,55.561605],[37.5926916,55.5612854],[37.5925487,55.56115],[37.592284,55.5609102],[37.5920337,55.5607028],[37.5920337,55.5607028],[37.5915026,55.5603094],[37.5912212,55.5601219],[37.5912212,55.5601219],[37.5900523,55.5593584],[37.5894926,55.5589857],[37.5892805,55.5588421],[37.5891571,55.5587557],[37.5890852,55.5587035],[37.5889529,55.5585999],[37.5887515,55.5584314],[37.588638,55.5583246],[37.588638,55.5583246],[37.5885306,55.558216],[37.5884822,55.558165],[37.5884339,55.5581068],[37.5883666,55.5580189],[37.5883182,55.55795],[37.5882758,55.5578925],[37.5882456,55.557847],[37.5882184,55.557802],[37.5881048,55.5576024],[37.5880492,55.5574956],[37.5880419,55.5574789],[37.5880419,55.5574789],[37.5878688,55.5570868],[37.5876944,55.5566151],[37.5874361,55.5557692],[37.5873071,55.5552963],[37.5872155,55.554919],[37.5871906,55.5547986],[37.5871664,55.5546487],[37.587146,55.55448],[37.5870945,55.5539774],[37.5869869,55.552713],[37.5869229,55.5522116],[37.5868694,55.5516863],[37.5868056,55.5512782],[37.5867185,55.5507506],[37.5866147,55.5502628],[37.5865054,55.5497665],[37.5865054,55.5497665],[37.5864394,55.5496472],[37.5864161,55.5496086],[37.5863893,55.5495708],[37.586359,55.5495339],[37.5863357,55.5495085],[37.5863103,55.549479],[37.5862877,55.5494488],[37.586268,55.5494179],[37.5862511,55.5493866],[37.5862371,55.5493547],[37.5862336,55.5493454],[37.5861306,55.54906],[37.5861306,55.54906],[37.5861089,55.5489975],[37.5859924,55.5486872],[37.5857336,55.5480396],[37.5855486,55.5475626],[37.5849714,55.5460231],[37.5849257,55.5458857],[37.5849257,55.5458857],[37.5848767,55.5457459],[37.5847096,55.5452579],[37.5847096,55.5452579],[37.584657,55.5451286],[37.5846331,55.5450758],[37.5846294,55.5450684],[37.5846249,55.545061],[37.5846198,55.5450538],[37.584614,55.5450467],[37.5846076,55.5450398],[37.5846005,55.5450332],[37.5845929,55.5450267],[37.5845846,55.5450205],[37.5845758,55.5450145],[37.5845665,55.5450088],[37.5845566,55.5450034],[37.5845462,55.5449983],[37.5845354,55.5449935],[37.5845269,55.54499],[37.5843147,55.5449031],[37.5842889,55.5448919],[37.5842642,55.54488],[37.5842407,55.5448674],[37.5842183,55.5448541],[37.5841972,55.5448402],[37.5841774,55.5448257],[37.584159,55.5448106],[37.584142,55.5447949],[37.5841265,55.5447788],[37.5841125,55.5447622],[37.5841,55.5447453],[37.5840891,55.544728],[37.5840798,55.5447104],[37.5840722,55.5446925],[37.5840662,55.5446745],[37.5840619,55.5446563],[37.5840592,55.544638],[37.5840583,55.5446196],[37.5840591,55.5446012],[37.5840609,55.5445868],[37.5840649,55.5445353],[37.5840642,55.5444838],[37.5840587,55.5444324],[37.5840484,55.5443813],[37.5840431,55.5443611],[37.5839233,55.5440017],[37.5839085,55.5439499],[37.5838985,55.5438977],[37.5838933,55.5438452],[37.583893,55.5437927],[37.5838968,55.5436971],[37.5839095,55.5436018],[37.5839309,55.5435069],[37.5839438,55.5434632],[37.5840189,55.5431785],[37.5840705,55.5430104],[37.5840788,55.5429783],[37.5840842,55.5429461],[37.5840865,55.5429137],[37.5840859,55.5428813],[37.5840823,55.5428489],[37.5840788,55.5428301],[37.5840387,55.5426449],[37.5840387,55.5426449],[37.584017,55.5425713],[37.5838243,55.5419756],[37.5834613,55.5407887],[37.5832694,55.5402124],[37.5831109,55.5396148],[37.5828764,55.5387236],[37.5828764,55.5387236],[37.5826731,55.537944],[37.5826731,55.537944],[37.5823677,55.536728],[37.5823677,55.536728],[37.582056,55.5355607],[37.5818788,55.5349429],[37.5818788,55.5349429],[37.5818191,55.5347571],[37.5817725,55.5345792],[37.5817447,55.5344836],[37.5817447,55.5344836],[37.5815668,55.533863],[37.5815058,55.5336502],[37.5815058,55.5336502],[37.5811365,55.532362],[37.5811291,55.5323383],[37.5811291,55.5323383],[37.5809732,55.5317182],[37.5809732,55.5317182],[37.5808254,55.5312096],[37.5802771,55.5294559],[37.5798384,55.5280373],[37.5792732,55.5261695],[37.5789907,55.5252736],[37.578803,55.5247541],[37.5779038,55.5222819]]},&quot;properties&quot;:{&quot;id&quot;:2039968}}],&quot;commonOptions&quot;:{&quot;strokeColor&quot;:&quot;#666666&quot;,&quot;strokeWidth&quot;:6,&quot;iconLayout&quot;:&quot;default#image&quot;,&quot;iconImageHref&quot;:&quot;\/build\/iconsf\/ico_blue.svg&quot;,&quot;iconImageSize&quot;:[20,22],&quot;iconImageOffset&quot;:[-10,-11]}}">
+                        <span></span>
+                        <ul>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="2"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Чертаново Южное</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">08</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">43</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">04</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">01</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="3"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Кировоградская ул.</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">09</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">44</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">05</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">19</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">02</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="4"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Метро "Улица Академика Янгеля"</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">11</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">46</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">07</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">21</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">04</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="5"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Ул. Кирпичные Выемки</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">13</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">48</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">09</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">06</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="6"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Метро "Аннино"</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">15</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">50</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">11</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">08</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="7"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Метро "Аннино" (южный вход)</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">51</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">12</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">09</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="8"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Варшавское шоссе (МКАД)</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">53</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">11</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="9"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Северное Бутово</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">20</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">13</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="10"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Ботанический сад</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">21</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">56</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">17</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">31</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="11"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Варшавское шоссе, 190</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">00</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">21</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">35</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="12"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Большая Бутовская улица</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">27</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">02</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">38</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">21</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="13"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">1-я Мелитопольская улица</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">29</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">04</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">40</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="14"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Новоникольское</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">31</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">06</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">27</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">42</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="0" data-route="1440" data-date="2026-09-28" data-stop="15"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Варшавское шоссе, 261</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">32</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">07</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">43</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8 col-xl-9 order-1 order-md-2 mb20">
+                <div class="map-wr">
+                    <div id="map" class="schedule_map" data-toggle="yandex-map" data-module="schedule" data-type="stops"
+                        style="">
+                        <ymaps class="ymaps-2-1-79-map" style="width: 1052px; height: 500px;">
+                            <ymaps
+                                class="ymaps-2-1-79-map ymaps-2-1-79-i-ua_js_yes ymaps-2-1-79-map-bg ymaps-2-1-79-islets_map-lang-ru"
+                                style="width: 1052px; height: 500px;">
+                                <ymaps class="ymaps-2-1-79-inner-panes">
+                                    <ymaps class="ymaps-2-1-79-events-pane ymaps-2-1-79-user-selection-none"
+                                        style="height: 100%; width: 100%; top: 0px; left: 0px; position: absolute; z-index: 3000; cursor: url(&quot;https://yastatic.net/s3/front-maps-static/maps-front-jsapi-v2-1/2.1.79-19906405/out/release/images/cursor/grab.cur&quot;) 16 16, url(&quot;https://yastatic.net/s3/front-maps-static/maps-front-jsapi-v2-1/2.1.79-19906405/out/release/images/cursor/grab.cur&quot;), move;"
+                                        unselectable="on"></ymaps>
+                                    <ymaps style="top: 0px; left: 0px; position: absolute; z-index: 601;"
+                                        class="ymaps-2-1-79-ground-pane">
+                                        <ymaps style="z-index: 150; position: absolute;">
+                                            <ymaps style="position: absolute; left: 0px; top: 0px;">
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(607px, 252px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2476&amp;y=1288&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(351px, 252px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2475&amp;y=1288&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(863px, 252px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2477&amp;y=1288&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(351px, -4px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2475&amp;y=1287&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(351px, 508px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2475&amp;y=1289&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(607px, -4px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2476&amp;y=1287&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(607px, 508px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2476&amp;y=1289&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(863px, -4px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2477&amp;y=1287&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(863px, 508px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2477&amp;y=1289&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(95px, -4px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2474&amp;y=1287&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(95px, 252px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2474&amp;y=1288&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(95px, 508px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2474&amp;y=1289&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1119px, -4px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2478&amp;y=1287&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1119px, 252px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2478&amp;y=1288&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1119px, 508px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2478&amp;y=1289&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-161px, -4px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2473&amp;y=1287&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-161px, 252px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2473&amp;y=1288&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-161px, 508px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2473&amp;y=1289&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-161px, -260px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2473&amp;y=1286&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(95px, -260px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2474&amp;y=1286&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(351px, -260px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2475&amp;y=1286&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(607px, -260px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2476&amp;y=1286&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(863px, -260px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2477&amp;y=1286&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="opacity: 1; transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1119px, -260px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1~b:260910150900~ia:26.08.12-0~ib:26.09.26-4&amp;x=2478&amp;y=1286&amp;z=12&amp;scale=1.5&amp;lang=ru_RU&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                    <ymaps style="height: 0px; inset: auto 0px 0px; position: absolute; z-index: 6002;"
+                                        class="ymaps-2-1-79-copyrights-pane">
+                                        <ymaps>
+                                            <ymaps class="ymaps-2-1-79-copyright" style="top: -29px;">
+                                                <ymaps class="ymaps-2-1-79-copyright__fog">…</ymaps>
+                                                <ymaps class="ymaps-2-1-79-copyright__wrap">
+                                                    <ymaps class="ymaps-2-1-79-copyright__layout">
+                                                        <ymaps class="ymaps-2-1-79-copyright__content-cell">
+                                                            <ymaps class="ymaps-2-1-79-copyright__content">
+                                                                <ymaps class="ymaps-2-1-79-copyright__text">© Яндекс
+                                                                </ymaps>
+                                                                <ymaps class="ymaps-2-1-79-copyright__agreement">
+                                                                    &nbsp;<a class="ymaps-2-1-79-copyright__link"
+                                                                        target="_blank"
+                                                                        href="https://yandex.ru/legal/maps_termsofuse/?lang=ru"
+                                                                        rel="noopener">Условия использования</a></ymaps>
+                                                            </ymaps>
+                                                        </ymaps>
+                                                        <ymaps class="ymaps-2-1-79-copyright__logo-cell"><a
+                                                                class="ymaps-2-1-79-copyright__logo" href=""
+                                                                target="_blank"></a></ymaps>
+                                                    </ymaps>
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-map-copyrights-promo">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-gotoymaps" title="Открыть в Яндекс Картах">
+                                                    <ymaps class="ymaps-2-1-79-gotoymaps__container">
+                                                        <ymaps class="ymaps-2-1-79-gotoymaps__pin"></ymaps>
+                                                        <ymaps class="ymaps-2-1-79-gotoymaps__text-container">
+                                                            <ymaps class="ymaps-2-1-79-gotoymaps__text">Открыть в Яндекс
+                                                                Картах</ymaps>
+                                                        </ymaps>
+                                                    </ymaps>
+                                                </ymaps>
+                                                <ymaps class="ymaps-2-1-79-gototaxi" style="display: none;"
+                                                    title="Доехать на такси">
+                                                    <ymaps class="ymaps-2-1-79-gototaxi__container">
+                                                        <ymaps class="ymaps-2-1-79-gototaxi__pin"></ymaps>
+                                                        <ymaps class="ymaps-2-1-79-gototaxi__text-container">
+                                                            <ymaps class="ymaps-2-1-79-gototaxi__text"></ymaps>
+                                                        </ymaps>
+                                                    </ymaps>
+                                                </ymaps><a class="ymaps-2-1-79-gototech" target="_blank"
+                                                    href="https://tech.yandex.ru/maps/mapsapi/?from=api-maps ">Создать
+                                                    свою карту</a>
+                                            </ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                    <ymaps style="width: 100%; top: 0px; left: 0px; position: absolute; z-index: 5403;"
+                                        class="ymaps-2-1-79-controls-pane">
+                                        <ymaps class="ymaps-2-1-79-controls__toolbar" style="margin-top: 10px;">
+                                            <ymaps class="ymaps-2-1-79-controls__toolbar_left"></ymaps>
+                                            <ymaps class="ymaps-2-1-79-controls__toolbar_right"></ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-controls__bottom" style="top: 500px;"></ymaps>
+                                    </ymaps>
+                                    <ymaps style="top: 0px; left: 0px; position: absolute; z-index: 2404;"
+                                        class="ymaps-2-1-79-places-pane">
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 498px; top: 407px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 502px; top: 383px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 509px; top: 341px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 514px; top: 312px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 518px; top: 293px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 527px; top: 62px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 540px; top: 62px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 547px; top: 217px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 547px; top: 173px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 548px; top: 127px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 549px; top: 206px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 549px; top: 120px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 554px; top: 95px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 558px; top: 71px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                    <ymaps style="top: 0px; left: 0px; position: absolute; z-index: 1205;"
+                                        class="ymaps-2-1-79-areas-pane">
+                                        <ymaps class="ymaps-2-1-79-node-pane ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 0; top: 0px; left: 0px; position: absolute;"
+                                            unselectable="on">
+                                            <ymaps class="ymaps-2-1-79-graphics-SVG"
+                                                style="top: 0px; left: 0px; transform: translateZ(0px); position: absolute; z-index: 650;">
+                                                <svg
+                                                    style="transform: translateZ(0px); will-change: transform; position: absolute; z-index: 650; width: 80px; height: 393px; left: 486px; top: 53px;">
+                                                    <g transform="translate(0 0)">
+                                                        <path name="path" style="opacity: 1;" fill="none"
+                                                            stroke-dasharray="" stroke-width="6px"
+                                                            stroke="rgba(102,102,102,1)" stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                            d="M34.4,7.4 L32.7,9.7 L33.2,10.8 L36.9,10.8 L38.1,8.8 L57.6,9.2 L61.8,11.2 L67.5,11.3 L73.2,13.5 L70.1,26.1 L70.2,33.0 L61.7,78.8 L59.3,97.7 L59.8,107.4 L62.9,126.3 L63.7,156.3 L62.2,162.1 L50.6,184.0 L47.7,188.7 L38.2,200.3 L35.6,207.3 L33.6,219.0 L31.6,244.9 L26.2,269.0 L24.5,271.0 L24.4,281.5 L15.1,340.2 L6.6,386.0">
+                                                        </path>
+                                                    </g>
+                                                </svg></ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                </ymaps>
+                            </ymaps>
+                        </ymaps>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="schedule-loader" class="loader_abs d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only"></span>
+            </div>
+        </div>
+    </div>
+
+
+</div>

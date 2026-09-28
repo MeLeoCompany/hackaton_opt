@@ -5,6 +5,8 @@ import vue from '@vitejs/plugin-vue'
 // Бэкенд тот же: относительный /api проксирует vite.
 export default defineConfig({
   plugins: [vue()],
+  // на сервере приложение отдаётся по /mobile/, локально — из корня dev-сервера
+  base: process.env.VITE_BASE || '/',
   server: {
     port: 5175,
     proxy: {

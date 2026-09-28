@@ -176,21 +176,31 @@ export function usePlans() {
     }
   }
 
-  // перед утверждением оператор обзвонил клиентов невлезших заявок: решения применяются,
-  // день считается заново — новый черновик смотрят и утверждают отдельно
-  async function decideApproval(summary, params) {
+  // решения по невлезшим заявкам перед утверждением. approveAfter — режим «Утвердить»:
+  // перенос и отмена только убирают работу из дня, расчёта нет, и план тем же действием
+  // утверждается. Без него это «Подобрать окна»: согласие на время добавляет работу, день
+  // считается заново — новый черновик смотрят и утверждают отдельно
+  async function decideApproval(summary, params, { approveAfter = false } = {}) {
     if (building.value) return
+    // обещания клиентам расчёт не удержал: сорвать их можно только с ведома оператора
+    if (approveAfter && summary.broken_promises?.length && !window.confirm(promiseQuestion(summary))) {
+      return
+    }
     const day = selectedDay.value
     building.value = true
     clearMessages()
     try {
       const result = await decideApprovalRequest(summary.id, params)
+      if (approveAfter) await approvePlan(result.id)
       if (day !== selectedDay.value) return
       await refreshDay()
       showNotice(
-        `Черновик №${result.id} посчитан с решениями из №${summary.id}: назначено ` +
-          `${result.assigned_count}, не назначено ${result.unassigned_count}. ` +
-          `${decisionsText(params.decisions)}Посмотрите его и утвердите`,
+        approveAfter
+          ? `План №${result.id} утверждён как есть, без пересчёта: ` +
+            `${decisionsText(params.decisions)}его заявки закреплены за этим днём`
+          : `Решения учтены в расчёте №${result.id}: назначено ${result.assigned_count}, ` +
+            `не назначено ${result.unassigned_count}. ${decisionsText(params.decisions)}` +
+            'Пересчёта не было — посмотрите расчёт и утвердите',
       )
     } catch (error) {
       showError(error)
@@ -244,8 +254,11 @@ export function usePlans() {
     if (
       summary.parent_plan_id &&
       !window.confirm(
-        `Утвердить пересчёт №${summary.id}? Он заменит план №${summary.parent_plan_id}: бригады ` +
-          'увидят новый маршрут, а заявки, которым не нашлось места, вернутся в «Новые».',
+        `Применить пересчёт №${summary.id} прямо сейчас, не дожидаясь ` +
+          `${moscowTimeOf(summary.replanned_at)}? Он заменит план №${summary.parent_plan_id}: ` +
+          'бригады увидят новый маршрут, а заявки, которым не нашлось места, вернутся в «Новые». ' +
+          'Маршруты от этого не сдвинутся — они посчитаны на выезд с ' +
+          `${moscowTimeOf(summary.replanned_at)}.`,
       )
     ) {
       return
@@ -257,7 +270,7 @@ export function usePlans() {
       await refreshDay()
       showNotice(
         summary.parent_plan_id
-          ? `Пересчёт №${summary.id} утверждён и заменил план №${summary.parent_plan_id}`
+          ? `Пересчёт №${summary.id} применён и заменил план №${summary.parent_plan_id}`
           : `План №${summary.id} утверждён: его заявки закреплены за этим днём`,
       )
     } catch (error) {
@@ -356,6 +369,7 @@ export function usePlans() {
     errorMessage,
     errorDetails,
     noticeMessage,
+    showNotice,
     load,
     loadPlans,
     selectPlan,

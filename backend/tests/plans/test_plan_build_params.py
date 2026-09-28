@@ -1,5 +1,6 @@
 """Параметры расчёта: план строится тем решателем, который выбрал диспетчер."""
 
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -11,11 +12,15 @@ from src.services.planner import planning_service
 from src.services.planner.cuopt_solver import DaySolution
 from src.services.planner.objective_policy import DEFAULT_OBJECTIVE_ORDER, ObjectiveCriterion
 
+DAY = date(2026, 8, 17)
+
 
 def patched_service(loaded, saved_plan):
     """Всё вокруг решателя подменено: проверяем только выбор решателя и что пишется в план."""
     return (
         patch.object(planning_service, "load_planning_day", AsyncMock(return_value=loaded)),
+        # заявки дня для проверки «день изменился с расчёта» читает отдельный запрос
+        patch.object(planning_service.day_state, "request_ids", AsyncMock(return_value=[])),
         patch.object(planning_service, "save_solution", AsyncMock(return_value=saved_plan)),
         # маршруты бригад строит общий построитель с кешем — здесь он не нужен
         patch.object(planning_service, "plan_routes", AsyncMock(return_value=([], False))),
@@ -27,12 +32,13 @@ def patched_service(loaded, saved_plan):
 async def test_cuopt_is_used_by_default():
     instance = SimpleNamespace(travel_min={})
     loaded = SimpleNamespace(instance=instance)
-    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None, input_snapshot=None)
     session = SimpleNamespace(commit=AsyncMock())
-    load, save, distance, summarize = patched_service(loaded, plan)
+    load, day, save, distance, summarize = patched_service(loaded, plan)
 
     with (
         load,
+        day,
         save as save_solution,
         distance,
         summarize,
@@ -41,7 +47,7 @@ async def test_cuopt_is_used_by_default():
         ) as cuopt,
         patch.object(planning_service.baseline_solver, "solve_day") as baseline,
     ):
-        await planning_service.build_plan_for_day(session, "2026-08-17", office_id=1)
+        await planning_service.build_plan_for_day(session, DAY, office_id=1)
 
     cuopt.assert_awaited_once_with(
         instance, objective_order=DEFAULT_OBJECTIVE_ORDER, ranks=None, params=SolverParams()
@@ -55,12 +61,13 @@ async def test_cuopt_is_used_by_default():
 @pytest.mark.asyncio
 async def test_baseline_is_used_when_chosen():
     loaded = SimpleNamespace(instance="задача дня")
-    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None, input_snapshot=None)
     session = SimpleNamespace(commit=AsyncMock())
-    load, save, distance, summarize = patched_service(loaded, plan)
+    load, day, save, distance, summarize = patched_service(loaded, plan)
 
     with (
         load,
+        day,
         save as save_solution,
         distance,
         summarize,
@@ -70,7 +77,7 @@ async def test_baseline_is_used_when_chosen():
         ) as baseline,
     ):
         await planning_service.build_plan_for_day(
-            session, "2026-08-17", SolverName.BASELINE, office_id=1
+            session, DAY, SolverName.BASELINE, office_id=1
         )
 
     baseline.assert_called_once_with("задача дня")
@@ -84,9 +91,9 @@ async def test_baseline_is_used_when_chosen():
 async def test_custom_objective_order_is_forwarded_and_saved():
     instance = SimpleNamespace(travel_min={})
     loaded = SimpleNamespace(instance=instance)
-    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None, input_snapshot=None)
     session = SimpleNamespace(commit=AsyncMock())
-    load, save, distance, summarize = patched_service(loaded, plan)
+    load, day, save, distance, summarize = patched_service(loaded, plan)
     order = [
         ObjectiveCriterion.URGENT_REQUESTS,
         ObjectiveCriterion.TRAVEL_DISTANCE,
@@ -96,6 +103,7 @@ async def test_custom_objective_order_is_forwarded_and_saved():
 
     with (
         load,
+        day,
         save as save_solution,
         distance,
         summarize,
@@ -106,7 +114,7 @@ async def test_custom_objective_order_is_forwarded_and_saved():
         ) as cuopt,
     ):
         await planning_service.build_plan_for_day(
-            session, "2026-08-17", SolverName.CUOPT, order, office_id=1
+            session, DAY, SolverName.CUOPT, order, office_id=1
         )
 
     expected = tuple(order)
@@ -120,12 +128,13 @@ async def test_custom_objective_order_is_forwarded_and_saved():
 async def test_single_plan_without_pair():
     """Пары планов расчёт больше не создаёт: сравнить можно любые два готовых плана."""
     loaded = SimpleNamespace(instance=SimpleNamespace(travel_min={}))
-    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None)
+    plan = SimpleNamespace(id=7, total_distance_km=None, distance_provider=None, input_snapshot=None)
     session = SimpleNamespace(commit=AsyncMock())
-    load, save, distance, summarize = patched_service(loaded, plan)
+    load, day, save, distance, summarize = patched_service(loaded, plan)
 
     with (
         load,
+        day,
         save as save_solution,
         distance,
         summarize,
@@ -133,7 +142,7 @@ async def test_single_plan_without_pair():
             planning_service.cuopt_solver, "solve_day", AsyncMock(return_value=DaySolution())
         ),
     ):
-        await planning_service.build_plan_for_day(session, "2026-08-17", office_id=1)
+        await planning_service.build_plan_for_day(session, DAY, office_id=1)
 
     assert save_solution.await_count == 1
     assert "comparison_id" not in save_solution.await_args.kwargs

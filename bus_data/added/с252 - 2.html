@@ -1,0 +1,1663 @@
+<div class="ajax-content map_cont_line" data-bundle="App" data-controller="V2_ScheduleV2Controller"
+    data-action="detail">
+
+    <div class="pos_rel">
+        <div class="h4fs mb10">
+            <span id="schedule-route-header">
+                <span>Озёрная улица (МКАД) - Метро "Озёрная"</span>
+                <a class="filter-link" data-for="#mgt_schedule_direction" data-value="1">
+                    <i class="ic ic-change-a-b"></i>
+                </a>
+            </span>
+        </div>
+        <div class="h4fs h4mb">
+            <span id="schedule-route-worktime">
+                с 06:53 по 23:33 </span>
+        </div>
+
+        <div id="schedule-form">
+            <form name="mgt_schedule" method="get" class=" needs-validation" id="mgt_schedule_form">
+                <div class="empty-field-list"></div>
+                <input type="hidden" id="mgt_schedule_isNight" name="mgt_schedule[isNight]">
+                <div class="form-group">
+                    <div>
+                        <div class="pos_rel d-inline-block">
+                            <input type="text" id="mgt_schedule_date" name="mgt_schedule[date]" required="required"
+                                class="ajax-change datepicker form-control flatpickr-input" autocomplete="off"
+                                data-type="schedule" data-toggle="datepicker" data-target="#mgt_schedule_date"
+                                value="28.09.2026">
+                            <label class="icon-Calendar cal_ico" for="mgt_schedule_date"></label>
+                        </div>
+                    </div>
+                </div><input type="hidden" id="mgt_schedule_route" name="mgt_schedule[route]" value="1375">
+                <div class="form-group">
+                    <legend class="d-none col-form-label required">Direction</legend>
+                    <div id="mgt_schedule_direction" class="ajax-change d-none" data-type="schedule" autocomplete="off">
+
+                        <div class="form-check"> <label class="label_input"><input type="radio"
+                                    id="mgt_schedule_direction_0" name="mgt_schedule[direction]" required="required"
+                                    class="ajax-change d-none form-check-input" data-type="schedule" autocomplete="off"
+                                    value="0"><span class="sp_all"></span><span>Прямой</span></label>
+                        </div>
+                        <div class="form-check"> <label class="label_input"><input type="radio"
+                                    id="mgt_schedule_direction_1" name="mgt_schedule[direction]" required="required"
+                                    class="ajax-change d-none form-check-input" data-type="schedule" autocomplete="off"
+                                    value="1" checked="checked"><span
+                                    class="sp_all"></span><span>Обратный</span></label>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+        </div>
+
+        <div class="row mb72m">
+            <div class="col-md-4 col-xl-3 order-2 order-md-1">
+                <div id="schedule-table">
+                    <div class="schedule-route clearfix schedule-route--ru"
+                        data-coords="{&quot;type&quot;:&quot;FeatureCollection&quot;,&quot;features&quot;:[{&quot;id&quot;:22039,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.437542,55.66192]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041e\u0437\u0451\u0440\u043d\u0430\u044f \u0443\u043b\u0438\u0446\u0430 (\u041c\u041a\u0410\u0414)&quot;,&quot;balloonContentHeader&quot;:&quot;\u041e\u0437\u0451\u0440\u043d\u0430\u044f \u0443\u043b\u0438\u0446\u0430 (\u041c\u041a\u0410\u0414)&quot;}},{&quot;id&quot;:22040,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.44406,55.66174]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0412\u043e\u0441\u0442\u0440\u044f\u043a\u043e\u0432\u0441\u043a\u043e\u0435 \u043a\u043b\u0430\u0434\u0431\u0438\u0449\u0435&quot;,&quot;balloonContentHeader&quot;:&quot;\u0412\u043e\u0441\u0442\u0440\u044f\u043a\u043e\u0432\u0441\u043a\u043e\u0435 \u043a\u043b\u0430\u0434\u0431\u0438\u0449\u0435&quot;}},{&quot;id&quot;:22041,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.45269,55.661938]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0412\u043e\u0441\u0442\u0440\u044f\u043a\u043e\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435&quot;,&quot;balloonContentHeader&quot;:&quot;\u0412\u043e\u0441\u0442\u0440\u044f\u043a\u043e\u0432\u0441\u043a\u043e\u0435 \u0448\u043e\u0441\u0441\u0435&quot;}},{&quot;id&quot;:22038,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.457676,55.66672]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u0428\u043a\u043e\u043b\u0430&quot;,&quot;balloonContentHeader&quot;:&quot;\u0428\u043a\u043e\u043b\u0430&quot;}},{&quot;id&quot;:8740,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.45604,55.66895]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041f\u0430\u0440\u043a \u0428\u043a\u043e\u043b\u044c\u043d\u0438\u043a\u043e\u0432&quot;,&quot;balloonContentHeader&quot;:&quot;\u041f\u0430\u0440\u043a \u0428\u043a\u043e\u043b\u044c\u043d\u0438\u043a\u043e\u0432&quot;}},{&quot;id&quot;:15205,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;Point&quot;,&quot;coordinates&quot;:[37.448982,55.670418]},&quot;properties&quot;:{&quot;hintContent&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u041e\u0437\u0451\u0440\u043d\u0430\u044f\&quot;&quot;,&quot;balloonContentHeader&quot;:&quot;\u041c\u0435\u0442\u0440\u043e \&quot;\u041e\u0437\u0451\u0440\u043d\u0430\u044f\&quot;&quot;}},{&quot;id&quot;:2037144,&quot;type&quot;:&quot;Feature&quot;,&quot;geometry&quot;:{&quot;type&quot;:&quot;LineString&quot;,&quot;coordinates&quot;:[[37.4539152,55.6621881],[37.4535432,55.662147],[37.4524388,55.6620521],[37.4512761,55.6619521],[37.45092,55.6619232],[37.4504574,55.6618972],[37.4497893,55.66187],[37.4487715,55.6618524],[37.4477038,55.6618519],[37.4461414,55.6618464],[37.4452538,55.6618509],[37.4436241,55.6618538],[37.4418642,55.6618604],[37.4400608,55.661857],[37.4381143,55.6618561],[37.4372788,55.6618581],[37.4372788,55.6618581],[37.437179,55.6618605],[37.4371597,55.6618612],[37.4371423,55.6618625],[37.4371423,55.6618625],[37.4370857,55.6618666],[37.4370325,55.6618727],[37.4370267,55.6618733],[37.4370208,55.6618737],[37.4370149,55.6618739],[37.437009,55.661874],[37.4370031,55.6618738],[37.4369972,55.6618736],[37.4369913,55.6618731],[37.4369855,55.6618724],[37.4369798,55.6618716],[37.4369741,55.6618707],[37.4369686,55.6618695],[37.4369631,55.6618682],[37.4369578,55.6618668],[37.4369526,55.6618651],[37.4369479,55.6618634],[37.4369324,55.6618577],[37.4369175,55.6618515],[37.4369032,55.6618448],[37.4368872,55.6618364],[37.4368848,55.6618351],[37.4368825,55.6618337],[37.4368804,55.6618323],[37.4368783,55.6618308],[37.4368765,55.6618292],[37.4368748,55.6618276],[37.4368732,55.6618259],[37.4368718,55.6618242],[37.4368706,55.6618224],[37.4368695,55.6618206],[37.4368686,55.6618188],[37.4368678,55.6618169],[37.4368672,55.6618151],[37.4368669,55.6618132],[37.4368666,55.6618113],[37.4368666,55.6618094],[37.4368668,55.6618017],[37.4368676,55.6617939],[37.4368692,55.6617862],[37.4368716,55.6617785],[37.4368746,55.661771],[37.4368783,55.6617635],[37.4368827,55.6617561],[37.4368884,55.6617481],[37.4368908,55.6617449],[37.4368936,55.6617418],[37.4368966,55.6617387],[37.4368999,55.6617358],[37.4369035,55.6617329],[37.4369073,55.6617302],[37.4369114,55.6617276],[37.4369157,55.6617251],[37.4369203,55.6617227],[37.436925,55.6617205],[37.43693,55.6617184],[37.4369351,55.6617165],[37.4369404,55.6617147],[37.4369459,55.6617131],[37.4369515,55.6617116],[37.4369572,55.6617103],[37.4369631,55.6617092],[37.4369691,55.6617083],[37.4369751,55.6617075],[37.4369796,55.6617071],[37.4370859,55.6616973],[37.4370885,55.6616971],[37.437091,55.661697],[37.4370936,55.6616969],[37.4370962,55.661697],[37.4370987,55.6616971],[37.4371013,55.6616973],[37.4371038,55.6616975],[37.4371063,55.6616979],[37.4371088,55.6616983],[37.4371112,55.6616988],[37.4371136,55.6616993],[37.4371159,55.6616999],[37.4371182,55.6617006],[37.4371204,55.6617014],[37.4371225,55.6617022],[37.4371245,55.6617031],[37.4371265,55.661704],[37.4371284,55.661705],[37.4371302,55.661706],[37.4371318,55.6617071],[37.4371334,55.6617083],[37.4371348,55.6617095],[37.4371362,55.6617107],[37.4371369,55.6617114],[37.4372062,55.6617918],[37.4372181,55.6618084],[37.4372187,55.6618091],[37.4372193,55.6618098],[37.43722,55.6618105],[37.4372207,55.6618111],[37.4372215,55.6618118],[37.4372224,55.6618124],[37.4372233,55.6618129],[37.4372243,55.6618135],[37.4372253,55.661814],[37.4372263,55.6618145],[37.4372274,55.661815],[37.4372286,55.6618154],[37.4372298,55.6618158],[37.437231,55.6618161],[37.4372322,55.6618165],[37.4372335,55.6618168],[37.4372348,55.661817],[37.4372361,55.6618172],[37.4372375,55.6618174],[37.4372388,55.6618175],[37.4372402,55.6618176],[37.4372416,55.6618176],[37.437243,55.6618176],[37.4372442,55.6618176],[37.4373104,55.661817],[37.4373104,55.661817],[37.4378854,55.661813],[37.4389618,55.6618123],[37.4402204,55.6618093],[37.4411991,55.6618122],[37.4422277,55.6618127],[37.4437902,55.6618085],[37.445038,55.6618054],[37.4463313,55.6618011],[37.4481064,55.6618067],[37.4489831,55.661812],[37.449352,55.6618183],[37.4497057,55.6618233],[37.4502222,55.6618383],[37.4506627,55.6618605],[37.4512789,55.6619025],[37.4520319,55.6619629],[37.4528499,55.6620344],[37.4537027,55.6621034],[37.4538828,55.6621243],[37.4539435,55.6621304],[37.4539435,55.6621304],[37.453997,55.6621382],[37.4540157,55.6621413],[37.454034,55.6621448],[37.454052,55.662149],[37.4540696,55.6621536],[37.4540868,55.6621587],[37.4541035,55.6621644],[37.4541196,55.6621705],[37.4541351,55.6621771],[37.45415,55.6621842],[37.4541642,55.6621916],[37.4541777,55.6621995],[37.4541905,55.6622078],[37.4542024,55.6622165],[37.4542136,55.6622254],[37.4542239,55.6622348],[37.4542333,55.6622444],[37.4542418,55.6622542],[37.4542494,55.6622643],[37.4542561,55.6622746],[37.4542618,55.6622851],[37.4542666,55.6622962],[37.4542775,55.6623268],[37.4542775,55.6623268],[37.4543359,55.6625011],[37.4544374,55.6628814],[37.4545259,55.6633218],[37.4546272,55.6638959],[37.4546833,55.6641474],[37.4547222,55.6643032],[37.4547492,55.664394],[37.4547845,55.6644839],[37.4548456,55.66461],[37.4549452,55.6648001],[37.4550199,55.6649302],[37.4551066,55.6650579],[37.455205,55.6651829],[37.4553148,55.6653048],[37.4554111,55.6654002],[37.4555483,55.6655282],[37.4556972,55.6656521],[37.4558573,55.6657713],[37.4560283,55.6658857],[37.4560941,55.6659267],[37.4568121,55.6663342],[37.4583412,55.6672167],[37.4583412,55.6672167],[37.4584887,55.6673063],[37.4584957,55.6673108],[37.4585022,55.6673155],[37.4585084,55.6673203],[37.458514,55.6673254],[37.4585192,55.6673306],[37.4585239,55.6673359],[37.4585281,55.6673414],[37.4585318,55.667347],[37.458535,55.6673527],[37.4585376,55.6673585],[37.4585397,55.6673643],[37.4585412,55.6673702],[37.4585422,55.6673762],[37.4585427,55.6673821],[37.4585426,55.6673881],[37.4585419,55.667394],[37.4585407,55.6674],[37.458539,55.6674059],[37.4585367,55.6674117],[37.4585338,55.6674174],[37.4585305,55.6674231],[37.4585266,55.6674286],[37.4585222,55.6674341],[37.4585173,55.6674394],[37.4585119,55.6674445],[37.4585061,55.6674495],[37.4584998,55.6674543],[37.4584983,55.6674554],[37.4583998,55.6675214],[37.4583998,55.6675214],[37.4583591,55.6675446],[37.4579551,55.6677766],[37.4573515,55.6681292],[37.456778,55.6684607],[37.4565904,55.6685692],[37.4559551,55.6689082],[37.4550082,55.6693772],[37.4541076,55.6698266],[37.4531391,55.670299],[37.4531391,55.670299],[37.4530816,55.670327],[37.4529221,55.6704037],[37.4529221,55.6704037],[37.4526588,55.6705303],[37.4520741,55.6708355],[37.4520741,55.6708355],[37.4518856,55.6709086],[37.4518378,55.6709256],[37.4517877,55.6709405],[37.4517357,55.6709531],[37.4516821,55.6709634],[37.4516272,55.6709712],[37.4515715,55.6709766],[37.4515151,55.6709795],[37.4514585,55.6709799],[37.4514021,55.6709778],[37.4513461,55.6709732],[37.4512909,55.6709661],[37.4512369,55.6709566],[37.4511802,55.6709437],[37.4511061,55.6709278],[37.4511061,55.6709278],[37.4491879,55.670359],[37.4485812,55.6701846],[37.4478482,55.6699437],[37.4473215,55.6697567],[37.4464174,55.6694027],[37.4464174,55.6694027],[37.4462511,55.6693534],[37.4462223,55.6693469],[37.4461926,55.6693418],[37.4461624,55.669338],[37.4461317,55.6693355],[37.4461008,55.6693345],[37.4460698,55.6693348],[37.446039,55.6693364],[37.4459944,55.6693407],[37.4459795,55.669342],[37.4459578,55.669345],[37.4459578,55.669345],[37.4459516,55.6693458],[37.4459242,55.6693508],[37.4458976,55.669357],[37.445872,55.6693643],[37.4458475,55.6693728],[37.4458242,55.6693823],[37.4458023,55.6693929],[37.4457829,55.669403],[37.4457704,55.6694091],[37.4457527,55.6694191],[37.4457364,55.6694298],[37.4457216,55.6694412],[37.4457085,55.6694532],[37.4456971,55.6694658],[37.4456874,55.6694788],[37.4456796,55.6694922],[37.4456737,55.6695059],[37.4456697,55.6695199],[37.4456677,55.669534],[37.4456676,55.6695481],[37.4456695,55.6695622],[37.4456733,55.6695761],[37.445679,55.6695899],[37.4456867,55.6696033],[37.4456962,55.6696164],[37.4457074,55.669629],[37.4457393,55.6696615],[37.4457393,55.6696615],[37.4458164,55.6697399],[37.4460338,55.6699414],[37.4460338,55.6699414],[37.4460464,55.6699531],[37.4462643,55.6701471],[37.4463342,55.6702065],[37.4463342,55.6702065],[37.4464368,55.6702745],[37.4464408,55.670277],[37.4464451,55.6702794],[37.4464496,55.6702817],[37.4464543,55.6702839],[37.4464592,55.6702859],[37.4464643,55.6702878],[37.4464695,55.6702895],[37.4464749,55.670291],[37.4464804,55.6702924],[37.4464861,55.6702936],[37.4464918,55.6702947],[37.4464977,55.6702956],[37.4465011,55.670296],[37.4465011,55.670296],[37.4465036,55.6702963],[37.4465096,55.6702968],[37.4465132,55.6702971],[37.4469912,55.6703424],[37.4470675,55.6703508],[37.4471429,55.6703615],[37.4472172,55.6703743],[37.4472902,55.6703894],[37.4473617,55.6704066],[37.4474315,55.6704258],[37.4474995,55.6704471],[37.4475547,55.6704665],[37.4476745,55.6705109],[37.4477901,55.6705589],[37.447901,55.6706102],[37.448007,55.6706646],[37.4480816,55.6707066],[37.4481938,55.6707732],[37.4482997,55.670843],[37.448399,55.6709158],[37.4484783,55.6709802],[37.4486903,55.6711712],[37.4487179,55.6711975],[37.448743,55.6712246],[37.4487655,55.6712524],[37.4487854,55.6712809],[37.4488027,55.6713099],[37.4488172,55.6713394],[37.4488291,55.6713692],[37.4488361,55.6713918],[37.4489134,55.6716382],[37.4489186,55.6716526],[37.4489251,55.6716668],[37.4489329,55.6716808],[37.448942,55.6716945],[37.4489524,55.671708],[37.448964,55.6717211],[37.4489768,55.6717338],[37.4489908,55.6717462],[37.4490034,55.6717562],[37.4490809,55.6718214],[37.4490842,55.6718241],[37.4490878,55.6718266],[37.4490917,55.6718291],[37.4490957,55.6718314],[37.4491,55.6718336],[37.4491044,55.6718357],[37.4491091,55.6718377],[37.4491139,55.6718395],[37.4491189,55.6718411],[37.449124,55.6718426],[37.4491293,55.671844],[37.4491346,55.6718452],[37.4491401,55.6718463],[37.4491457,55.6718472],[37.4491514,55.6718479],[37.4491571,55.6718484],[37.4491628,55.6718488],[37.4491686,55.671849],[37.4491744,55.671849],[37.4491801,55.6718489],[37.4491859,55.6718486],[37.4491916,55.6718481],[37.4491973,55.6718474],[37.4492029,55.6718466],[37.4492084,55.6718456],[37.4492138,55.6718445],[37.4492192,55.6718432],[37.4492237,55.671842]]},&quot;properties&quot;:{&quot;id&quot;:2037144}}],&quot;commonOptions&quot;:{&quot;strokeColor&quot;:&quot;#666666&quot;,&quot;strokeWidth&quot;:6,&quot;iconLayout&quot;:&quot;default#image&quot;,&quot;iconImageHref&quot;:&quot;\/build\/iconsf\/ico_blue.svg&quot;,&quot;iconImageSize&quot;:[20,22],&quot;iconImageOffset&quot;:[-10,-11]}}">
+                        <span></span>
+                        <ul>
+                            <li class="" data-direction="1" data-route="1375" data-date="2026-09-28" data-stop="1"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Озёрная улица (МКАД)</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>06:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">53</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">54</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">54</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>09:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">54</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>11:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">54</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>12:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">54</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>13:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">54</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>14:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>15:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">44</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>16:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">44</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>17:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">44</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>18:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">39</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">09</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">39</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>21:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">08</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">38</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>22:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">08</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">38</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>23:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="1" data-route="1375" data-date="2026-09-28" data-stop="2"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Востряковское кладбище</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>06:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">54</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>09:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>11:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>12:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>13:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>14:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>15:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">15</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">45</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>16:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">15</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">45</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>17:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">15</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">45</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>18:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">15</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">40</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">10</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">40</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>21:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">09</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">39</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>22:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">09</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">39</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>23:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">24</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="1" data-route="1375" data-date="2026-09-28" data-stop="3"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Востряковское шоссе</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>06:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">55</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">56</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">56</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>09:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">56</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>11:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">56</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>12:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">56</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>13:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">56</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>14:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">26</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>15:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">46</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>16:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">46</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>17:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">46</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>18:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">41</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">11</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">41</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>21:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">10</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">40</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>22:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">10</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">40</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>23:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">25</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="1" data-route="1375" data-date="2026-09-28" data-stop="4"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Школа</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>06:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">57</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">58</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">58</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>09:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">58</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>11:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">58</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>12:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">58</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>13:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">58</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>14:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">28</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>15:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">48</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>16:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">48</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>17:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">48</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>18:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">43</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">13</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">43</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>21:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">12</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">42</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>22:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">12</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">42</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>23:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">27</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="1" data-route="1375" data-date="2026-09-28" data-stop="5"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Парк Школьников</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>06:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">59</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">00</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>09:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">00</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>10:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">00</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>11:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>12:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">00</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>13:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">00</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>14:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">00</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">30</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>15:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">20</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">50</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>16:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">20</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">50</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>17:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">20</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">50</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>18:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">20</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">45</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">15</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">45</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>21:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">44</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>22:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">14</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">44</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>23:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">29</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="" data-direction="1" data-route="1375" data-date="2026-09-28" data-stop="6"
+                                data-lang="">
+                                <div class="sl_a">
+                                    <div class="krug_tochka krug_blue"></div>
+                                    <div>
+                                        <div class="a_dotted d-inline">Метро "Озёрная"</div>
+                                    </div>
+                                </div>
+                                <div class="sl_collapse collapse">
+                                    <div class="schedule_list_raspisanie">
+                                        <div class="raspisanie_data dt_thead">
+                                            <div class="dt1">ч</div>
+                                            <div class="dt2">мин</div>
+                                        </div>
+                                        <div class="raspisanie_hover">
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>07:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">01</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">33</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>08:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">03</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">33</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>09:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">03</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">33</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>10:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">03</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>11:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">33</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>12:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">03</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">33</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>13:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">03</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">33</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>14:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">03</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">33</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>15:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">53</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>16:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">53</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>17:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">53</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data  active-time ">
+                                                <div class="dt1"><strong>18:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">23</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>19:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">48</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>20:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">18</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">48</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>21:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">46</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>22:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">16</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="div10">46</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="raspisanie_data ">
+                                                <div class="dt1"><strong>23:</strong></div>
+                                                <div class="dt2">
+                                                    <div class="raspisanie_data2">
+                                                        <div>
+                                                            <div class="div10">31</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8 col-xl-9 order-1 order-md-2 mb20">
+                <div class="map-wr">
+                    <div id="map" class="schedule_map" data-toggle="yandex-map" data-module="schedule" data-type="stops"
+                        style="">
+                        <ymaps class="ymaps-2-1-79-map" style="width: 1052px; height: 500px;">
+                            <ymaps
+                                class="ymaps-2-1-79-map ymaps-2-1-79-i-ua_js_yes ymaps-2-1-79-map-bg ymaps-2-1-79-islets_map-lang-ru"
+                                style="width: 1052px; height: 500px;">
+                                <ymaps class="ymaps-2-1-79-inner-panes">
+                                    <ymaps class="ymaps-2-1-79-events-pane ymaps-2-1-79-user-selection-none"
+                                        style="height: 100%; width: 100%; top: 0px; left: 0px; position: absolute; z-index: 3000; cursor: url(&quot;https://yastatic.net/s3/front-maps-static/maps-front-jsapi-v2-1/2.1.79-19906405/out/release/images/cursor/grab.cur&quot;) 16 16, url(&quot;https://yastatic.net/s3/front-maps-static/maps-front-jsapi-v2-1/2.1.79-19906405/out/release/images/cursor/grab.cur&quot;), move;"
+                                        unselectable="on"></ymaps>
+                                    <ymaps style="top: 0px; left: 0px; position: absolute; z-index: 601;"
+                                        class="ymaps-2-1-79-ground-pane">
+                                        <ymaps style="z-index: 150; position: absolute;">
+                                            <ymaps style="position: absolute; left: 0px; top: 0px;">
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(635px, 348px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19793&amp;y=10287&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(379px, 348px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19792&amp;y=10287&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(891px, 348px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19794&amp;y=10287&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(379px, 92px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19792&amp;y=10286&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(379px, 604px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19792&amp;y=10288&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(635px, 92px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19793&amp;y=10286&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(635px, 604px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19793&amp;y=10288&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(891px, 92px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19794&amp;y=10286&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(891px, 604px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19794&amp;y=10288&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(123px, 92px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19791&amp;y=10286&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(123px, 348px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19791&amp;y=10287&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(123px, 604px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19791&amp;y=10288&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1147px, 92px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19795&amp;y=10286&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1147px, 348px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19795&amp;y=10287&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1147px, 604px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19795&amp;y=10288&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-133px, 92px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19790&amp;y=10286&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-133px, 348px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19790&amp;y=10287&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-133px, 604px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19790&amp;y=10288&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(-133px, -164px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19790&amp;y=10285&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(123px, -164px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19791&amp;y=10285&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(379px, -164px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19792&amp;y=10285&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(635px, -164px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19793&amp;y=10285&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(891px, -164px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19794&amp;y=10285&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                                <ymaps
+                                                    style="transform-origin: 0px 0px 0px; position: absolute; transform: translate3d(1147px, -164px, 0px) scale(1); background-repeat: no-repeat; background-size: 100% 100%; background-image: url(&quot;https://core-renderer-tiles.maps.yandex.net/tiles?l=map&amp;v=26.09.23-1&amp;x=19795&amp;y=10285&amp;z=15&amp;scale=1.5&amp;lang=ru_RU&amp;experimental_dataprestable=1&amp;apikey=f1d03e63-82b9-4586-8be2-5723669ef7eb&quot;); width: 256px; height: 256px;"
+                                                    unselectable="on" class="ymaps-2-1-79-user-selection-none"></ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                    <ymaps style="height: 0px; inset: auto 0px 0px; position: absolute; z-index: 6002;"
+                                        class="ymaps-2-1-79-copyrights-pane">
+                                        <ymaps>
+                                            <ymaps class="ymaps-2-1-79-copyright" style="top: -29px;">
+                                                <ymaps class="ymaps-2-1-79-copyright__fog">…</ymaps>
+                                                <ymaps class="ymaps-2-1-79-copyright__wrap">
+                                                    <ymaps class="ymaps-2-1-79-copyright__layout">
+                                                        <ymaps class="ymaps-2-1-79-copyright__content-cell">
+                                                            <ymaps class="ymaps-2-1-79-copyright__content">
+                                                                <ymaps class="ymaps-2-1-79-copyright__text">© Яндекс
+                                                                </ymaps>
+                                                                <ymaps class="ymaps-2-1-79-copyright__agreement">
+                                                                    &nbsp;<a class="ymaps-2-1-79-copyright__link"
+                                                                        target="_blank"
+                                                                        href="https://yandex.ru/legal/maps_termsofuse/?lang=ru"
+                                                                        rel="noopener">Условия использования</a></ymaps>
+                                                            </ymaps>
+                                                        </ymaps>
+                                                        <ymaps class="ymaps-2-1-79-copyright__logo-cell"><a
+                                                                class="ymaps-2-1-79-copyright__logo" href=""
+                                                                target="_blank"></a></ymaps>
+                                                    </ymaps>
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-map-copyrights-promo">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-gotoymaps" title="Открыть в Яндекс Картах">
+                                                    <ymaps class="ymaps-2-1-79-gotoymaps__container">
+                                                        <ymaps class="ymaps-2-1-79-gotoymaps__pin"></ymaps>
+                                                        <ymaps class="ymaps-2-1-79-gotoymaps__text-container">
+                                                            <ymaps class="ymaps-2-1-79-gotoymaps__text">Открыть в Яндекс
+                                                                Картах</ymaps>
+                                                        </ymaps>
+                                                    </ymaps>
+                                                </ymaps>
+                                                <ymaps class="ymaps-2-1-79-gototaxi" style="display: none;"
+                                                    title="Доехать на такси">
+                                                    <ymaps class="ymaps-2-1-79-gototaxi__container">
+                                                        <ymaps class="ymaps-2-1-79-gototaxi__pin"></ymaps>
+                                                        <ymaps class="ymaps-2-1-79-gototaxi__text-container">
+                                                            <ymaps class="ymaps-2-1-79-gototaxi__text"></ymaps>
+                                                        </ymaps>
+                                                    </ymaps>
+                                                </ymaps><a class="ymaps-2-1-79-gototech" target="_blank"
+                                                    href="https://tech.yandex.ru/maps/mapsapi/?from=api-maps ">Создать
+                                                    свою карту</a>
+                                            </ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                    <ymaps style="width: 100%; top: 0px; left: 0px; position: absolute; z-index: 5403;"
+                                        class="ymaps-2-1-79-controls-pane">
+                                        <ymaps class="ymaps-2-1-79-controls__toolbar" style="margin-top: 10px;">
+                                            <ymaps class="ymaps-2-1-79-controls__toolbar_left"></ymaps>
+                                            <ymaps class="ymaps-2-1-79-controls__toolbar_right"></ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-controls__bottom" style="top: 500px;"></ymaps>
+                                    </ymaps>
+                                    <ymaps style="top: 0px; left: 0px; position: absolute; z-index: 2404;"
+                                        class="ymaps-2-1-79-places-pane">
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 289px; top: 450px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 441px; top: 458px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 556px; top: 100px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 642px; top: 450px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 720px; top: 161px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                        <ymaps class="ymaps-2-1-79-placemark-overlay ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 650; height: 0px; width: 0px; position: absolute; left: 758px; top: 253px;"
+                                            unselectable="on">
+                                            <ymaps>
+                                                <ymaps class="ymaps-2-1-79-image "
+                                                    style="position: absolute; left: -10px; top: -11px; width: 20px; height: 22px; opacity: 1; background-position: 0px 0px; background-size: 20px 22px; background-image: url(&quot;https://transport.mos.ru/build/iconsf/ico_blue.svg&quot;);">
+                                                </ymaps>
+                                            </ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                    <ymaps style="top: 0px; left: 0px; position: absolute; z-index: 1205;"
+                                        class="ymaps-2-1-79-areas-pane">
+                                        <ymaps class="ymaps-2-1-79-node-pane ymaps-2-1-79-user-selection-none"
+                                            style="z-index: 0; top: 0px; left: 0px; position: absolute;"
+                                            unselectable="on">
+                                            <ymaps class="ymaps-2-1-79-graphics-SVG"
+                                                style="top: 0px; left: 0px; transform: translateZ(0px); position: absolute; z-index: 650;">
+                                                <svg
+                                                    style="transform: translateZ(0px); will-change: transform; position: absolute; z-index: 650; width: 519px; height: 433px; left: 266px; top: 34px;">
+                                                    <g transform="translate(0 0)">
+                                                        <path name="path" style="opacity: 1;" fill="none"
+                                                            stroke-dasharray="" stroke-width="6px"
+                                                            stroke="rgba(102,102,102,1)" stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                            d="M404.5,405.4 L334.7,416.3 L308.3,418.5 L223.3,419.5 L16.8,419.0 L10.5,418.4 L7.5,420.1 L7.4,422.6 L8.9,424.9 L12.5,425.7 L15.9,420.7 L227.8,421.4 L306.4,420.4 L343.0,417.2 L399.5,408.9 L407.7,407.0 L411.4,403.9 L412.9,399.7 L416.6,376.8 L423.9,314.5 L430.2,292.4 L434.5,282.0 L442.5,267.7 L449.7,257.7 L511.0,194.4 L512.2,192.3 L512.1,189.8 L509.0,185.5 L484.6,160.5 L452.0,128.4 L361.6,48.9 L352.4,43.6 L345.9,43.0 L339.0,45.1 L280.2,75.7 L250.8,93.4 L225.9,110.0 L221.0,110.7 L215.9,108.8 L212.8,104.8 L212.7,99.7 L227.8,74.8 L231.4,71.3 L244.9,68.9 L253.4,65.8 L261.8,60.3 L268.5,54.2 L275.9,45.6 L283.4,34.0 L285.7,28.1 L288.8,12.9 L292.3,7.8 L295.2,7.4">
+                                                        </path>
+                                                    </g>
+                                                </svg></ymaps>
+                                        </ymaps>
+                                    </ymaps>
+                                </ymaps>
+                            </ymaps>
+                        </ymaps>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="schedule-loader" class="loader_abs d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only"></span>
+            </div>
+        </div>
+    </div>
+
+
+</div>

@@ -48,7 +48,37 @@ def _load_datasets(inputs: list[Path]) -> list[dict[str, Any]]:
     datasets = []
     for path in inputs:
         dataset = read_json(path)
-        if dataset["kind"] != "bus_weekly":
+        if dataset["kind"] not in {"bus_weekly", "scheduled_service"}:
+            datasets.append(dataset)
+            continue
+        if dataset["kind"] == "scheduled_service":
+            service = dataset["service"]
+            start = date.fromisoformat(service["start_date"])
+            end = date.fromisoformat(service["end_date"])
+            weekdays = service["weekdays"]
+            if (
+                start > end
+                or not weekdays
+                or len(set(weekdays)) != len(weekdays)
+                or any(
+                    not isinstance(day, int)
+                    or isinstance(day, bool)
+                    or not 0 <= day <= 6
+                    for day in weekdays
+                )
+            ):
+                raise ValueError(f"некорректный календарь транспорта: {path}")
+            for pattern in dataset["patterns"]:
+                stop_count = len(pattern["stops"])
+                if stop_count < 2 or any(
+                    len(trip) != stop_count for trip in pattern["trips"]
+                ):
+                    raise ValueError(f"некорректные рейсы транспорта: {path}")
+                if any(
+                    any(right < left for left, right in pairwise(trip))
+                    for trip in pattern["trips"]
+                ):
+                    raise ValueError(f"время рейса идёт назад: {path}")
             datasets.append(dataset)
             continue
         service = dataset["service"]
@@ -100,7 +130,23 @@ def _load_datasets(inputs: list[Path]) -> list[dict[str, Any]]:
                 and right["service"]["start_date"] <= left["service"]["end_date"]
             ):
                 raise ValueError("пересекаются недельные календари одного автобуса")
-    return datasets
+
+    # Для пилотных автобусов один будний снимок намеренно действует каждый день.
+    # Точные выходные снимки храним как исходные данные, но не добавляем в GTFS:
+    # иначе отдельный service_id снова включит выходное расписание поверх шаблона.
+    weekday_daily = {
+        dataset["route"]["source_route_id"]: dataset["source"]["template_date"]
+        for dataset in weekly
+        if dataset["source"].get("calendar_policy") == "weekday_daily"
+    }
+    return [
+        dataset
+        for dataset in datasets
+        if dataset["kind"] != "bus_exact"
+        or dataset["route"]["source_route_id"] not in weekday_daily
+        or dataset["source"]["service_date"]
+        == weekday_daily[dataset["route"]["source_route_id"]]
+    ]
 
 
 def _distributed_offsets(stops: list[dict[str, Any]], duration: int) -> list[int]:
@@ -133,9 +179,14 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                 dataset["service"]["start_date"],
                 dataset["service"]["end_date"],
             )
-        else:
+        elif dataset["kind"] == "metro_frequency":
             start, end = (
                 _metro_service_start(dataset["service"]),
+                dataset["service"]["end_date"],
+            )
+        else:
+            start, end = (
+                dataset["service"]["start_date"],
                 dataset["service"]["end_date"],
             )
         service_starts.append(start)
@@ -389,6 +440,52 @@ def build_gtfs(inputs: list[Path], output: Path) -> None:
                                     sequence,
                                 ]
                             )
+        elif dataset["kind"] == "scheduled_service":
+            service = dataset["service"]
+            service_id = f"scheduled-{route_id}-weekly"
+            tables["calendar.txt"].append(
+                [
+                    service_id,
+                    *(int(day in service["weekdays"]) for day in range(7)),
+                    _date(service["start_date"]),
+                    _date(service["end_date"]),
+                ]
+            )
+            for pattern in dataset["patterns"]:
+                pattern_id = pattern.get("pattern_id", pattern["direction_id"])
+                shape_id = f"{route_id}-{pattern_id}"
+                shape = pattern.get("shape") or [
+                    [stop["lon"], stop["lat"]] for stop in pattern["stops"]
+                ]
+                if shape_id not in shape_seen:
+                    for sequence, (lon, lat) in enumerate(shape, start=1):
+                        tables["shapes.txt"].append([shape_id, lat, lon, sequence])
+                    shape_seen.add(shape_id)
+                for stop in pattern["stops"]:
+                    stop_id = stop["source_stop_id"]
+                    if stop_id not in stop_seen:
+                        tables["stops.txt"].append(
+                            [stop_id, stop["name"], stop["lat"], stop["lon"], 0, ""]
+                        )
+                        stop_seen.add(stop_id)
+                for trip_index, trip in enumerate(pattern["trips"], start=1):
+                    trip_id = f"{shape_id}-{service_id}-{trip_index}"
+                    tables["trips.txt"].append(
+                        [
+                            route_id,
+                            service_id,
+                            trip_id,
+                            pattern["direction_id"],
+                            shape_id,
+                        ]
+                    )
+                    for sequence, (stop, value) in enumerate(
+                        zip(pattern["stops"], trip, strict=True), start=1
+                    ):
+                        parsed = gtfs_time(value)
+                        tables["stop_times.txt"].append(
+                            [trip_id, parsed, parsed, stop["source_stop_id"], sequence]
+                        )
         else:
             raise ValueError(f"неподдерживаемый вид набора данных: {dataset['kind']}")
 

@@ -216,12 +216,13 @@ def _closed_shape(coordinates: list[list[float]]) -> bool:
     return (lon1 - lon2) ** 2 + (lat1 - lat2) ** 2 < 0.01**2
 
 
-def _align_circular_departures(stops: list[dict[str, Any]]) -> None:
-    """Сопоставить рейсы кольца после сброса расписания на контрольной остановке.
+def _align_trip_departures(stops: list[dict[str, Any]]) -> None:
+    """Сопоставить рейсы между последовательными остановками.
 
     На Б/Бк портал в середине кольца снова нумерует отправления с первого рейса.
-    Сдвигаем список на следующий рейс; перенесённые через конец значения относятся
-    к следующим суткам. Для линейных маршрутов такая коррекция не применяется.
+    У линейного маршрута последний рейс может прибыть ровно после границы сервисного
+    дня и оказаться в начале отсортированного списка. Сдвигаем список до первого
+    согласованного рейса; перенесённые через конец значения относятся к следующим суткам.
     """
     previous = stops[0]["departures"]
     for stop in stops[1:]:
@@ -236,7 +237,7 @@ def _align_circular_departures(stops: list[dict[str, Any]]) -> None:
                 aligned = candidate
                 break
         if aligned is None:
-            raise ScheduleParseError("не удалось сопоставить рейсы кольцевого маршрута")
+            raise ScheduleParseError("не удалось сопоставить рейсы между остановками")
         stop["departures"] = aligned
         previous = aligned
 
@@ -290,8 +291,7 @@ def parse_route_page(
     trip_count = len(stops[0]["departures"])
     if any(len(stop["departures"]) != trip_count for stop in stops):
         raise ScheduleParseError("число отправлений различается между остановками")
-    if _closed_shape(lines[0]["geometry"]["coordinates"]):
-        _align_circular_departures(stops)
+    _align_trip_departures(stops)
     for trip_index in range(trip_count):
         trip_times = [stop["departures"][trip_index] for stop in stops]
         if trip_times != sorted(trip_times):

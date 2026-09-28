@@ -10,9 +10,6 @@ import 'leaflet/dist/leaflet.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { formatMoscowWindow } from '../utils/moscowTime.js'
-import { useCoverage } from '../composables/useCoverage.js'
-import { createCoverageLayer } from '../utils/coverageLayer.js'
-import CoverageToggle from './CoverageToggle.vue'
 import { isUrgent, referenceName } from '../utils/referenceNames.js'
 import { orderedStatuses, statusCode, statusPlannable } from '../utils/requestStatuses.js'
 
@@ -52,22 +49,6 @@ const legend = computed(() => [
   })),
   { label: 'авария', ring: URGENT_COLOR },
 ])
-// зона покрытия: слой включается ползунком в углу карты
-const { shown: coverageShown } = useCoverage()
-let coverageLayer = null
-
-function syncCoverage() {
-  if (!map) return
-  if (coverageShown.value && !coverageLayer) {
-    coverageLayer = createCoverageLayer().addTo(map)
-    // зона — подложка: маршруты и точки остаются поверх неё
-    coverageLayer.eachLayer((shape) => shape.bringToBack())
-  } else if (!coverageShown.value && coverageLayer) {
-    map.removeLayer(coverageLayer)
-    coverageLayer = null
-  }
-}
-
 const container = ref(null)
 let map = null
 let markerLayer = null
@@ -188,14 +169,11 @@ onMounted(async () => {
   map.invalidateSize()
   drawMarkers()
   drawHalos()
-  syncCoverage()
   // заявку выбрали в таблице до переключения на карту — сразу показываем её
   highlightSelected()
 })
 
 onBeforeUnmount(() => map?.remove())
-
-watch(coverageShown, syncCoverage)
 
 // другой набор заявок (фильтр, загрузка, правка) — перерисовываем;
 // смена сортировки или страницы набор не меняет, поэтому карта не дёргается
@@ -211,7 +189,6 @@ watch(() => props.checkedIds, redrawChecked)
 <template>
   <div class="map-frame">
     <div ref="container" class="map"></div>
-    <CoverageToggle />
     <div class="map-legend">
       <span v-for="item in legend" :key="item.label">
         <i

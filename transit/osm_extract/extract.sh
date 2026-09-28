@@ -6,14 +6,24 @@ output_path=${R5_OSM_OUTPUT:-/output/moscow-region.osm.pbf}
 bbox=${R5_OSM_BBOX:-35.0,54.1,41.0,57.0}
 wait_seconds=${R5_SOURCE_WAIT_SECONDS:-900}
 
+# Файл кладёт valhalla, и на свежем сервере он качается несколько минут. Ждём не просто
+# появления файла, а целого PBF: у недокачанного osmium честно скажет «unexpected EOF»
 elapsed=0
-while [ ! -s "$source_path" ]; do
+while ! osmium fileinfo "$source_path" > /dev/null 2>&1; do
     if [ "$elapsed" -ge "$wait_seconds" ]; then
-        echo "Не найден исходный PBF: $source_path" >&2
+        if [ -s "$source_path" ]; then
+            echo "Исходный PBF так и не докачался за ${wait_seconds} с: $source_path" >&2
+            echo "Это файл valhalla — смотрите docker compose logs valhalla" >&2
+        else
+            echo "Не найден исходный PBF: $source_path" >&2
+        fi
         exit 1
     fi
-    sleep 2
-    elapsed=$((elapsed + 2))
+    if [ $((elapsed % 60)) -eq 0 ]; then
+        echo "Жду исходный PBF (качает valhalla), прошло ${elapsed} с из ${wait_seconds}"
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
 done
 
 if [ -s "$output_path" ]; then

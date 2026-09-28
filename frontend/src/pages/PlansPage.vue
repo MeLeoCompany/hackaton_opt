@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import ErrorMessage from '../components/ErrorMessage.vue'
 import DayPanel from '../components/DayPanel.vue'
 import IconButton from '../components/IconButton.vue'
+import EquipmentIssueDialog from '../components/EquipmentIssueDialog.vue'
 import PlanApprovalDialog from '../components/PlanApprovalDialog.vue'
 import PlanBuildDialog from '../components/PlanBuildDialog.vue'
 import PlanMap from '../components/PlanMap.vue'
@@ -19,7 +20,7 @@ import { useSystemTime } from '../composables/useSystemTime.js'
 import { usePlans } from '../composables/usePlans.js'
 import { formatDay, moscowTimeOf } from '../utils/moscowTime.js'
 import { planChain } from '../utils/planChain.js'
-import { approvalWindow } from '../utils/planWindow.js'
+import { planWindowOf } from '../utils/planWindow.js'
 
 const {
   selectedDay,
@@ -34,6 +35,7 @@ const {
   errorMessage,
   errorDetails,
   noticeMessage,
+  showNotice,
   load,
   loadPlans,
   selectPlan,
@@ -107,24 +109,56 @@ watch(planRun, async (value) => {
   await load()
 })
 
-// утверждение черновика, в который вошли не все заявки: сначала предлагаем подобрать окна
+// черновик с невлезшими заявками: «Утвердить» просит по каждой решение (перенос или отмена)
+// и утверждает план как есть, «Подобрать окна» — второй расчёт с раскрытыми окнами
 const approvalTarget = ref(null)
+const approvalMode = ref('approve')
 
 function requestApproval(summary) {
-  if (!summary.parent_plan_id && summary.unassigned_count > 0) approvalTarget.value = summary
-  else approve(summary)
+  // решать не по кому — утверждаем сразу; иначе спрашиваем по каждой невлезшей.
+  // У пересчёта то же самое: он вступит в силу в свой момент, и висящих без решения не оставляем
+  if (summary.unassigned_count === 0) {
+    approve(summary)
+    return
+  }
+  approvalMode.value = 'approve'
+  approvalTarget.value = summary
 }
 
-function approveAsIs() {
-  const summary = approvalTarget.value
+function pickWindows(summary) {
+  approvalMode.value = 'windows'
+  approvalTarget.value = summary
+}
+
+// после подбора окон в дне появился новый расчёт: список нужно перечитать, даже если
+// оператор просто закрыл окно, не приняв решений
+function closeApproval(result) {
+  approvalTarget.value = null
+  if (result?.planned) loadPlans()
+}
+
+// решать не по кому: утверждаем тот расчёт, который смотрели — у подбора окон это новый
+function approveAsIs(planId) {
+  const summary = plans.value.find((item) => item.id === planId) ?? {
+    ...approvalTarget.value,
+    id: planId,
+  }
   approvalTarget.value = null
   approve(summary)
 }
 
-async function startDecisions(params) {
-  const summary = approvalTarget.value
+async function startDecisions({ planId, decisions }) {
+  // решения принимаются по тому расчёту, который на экране: подбор окон дал новый. Его может
+  // ещё не быть в списке — тогда берём номер как есть, иначе решения уйдут исходному плану
+  const summary = plans.value.find((item) => item.id === planId) ?? {
+    ...approvalTarget.value,
+    id: planId,
+  }
+  // «Утвердить»: решения только убирают работу из дня — план утверждается тем же действием
+  const approveAfter = approvalMode.value === 'approve'
   approvalTarget.value = null
-  await withRunLog(params, () => decideApproval(summary, params))
+  const params = { decisions }
+  await withRunLog(params, () => decideApproval(summary, params, { approveAfter }))
 }
 
 // пришли из сравнения планов: открываем нужный план; из заявки — ещё и её точку на карте
@@ -141,6 +175,13 @@ async function startBuild(params) {
 }
 
 // «Маршруты» — таблица маршрутов, «Карта» — те же маршруты линиями на карте и карточками рядом
+// выдача оборудования под открытый план: рекомендацию диспетчер правит и утверждает
+const issuePlanId = ref(null)
+function equipmentIssued(done) {
+  issuePlanId.value = null
+  showNotice(`Оборудование выдано: бригад ${done.brigades}, штук ${done.items}`)
+}
+
 const viewMode = ref('details')
 
 // Страница в двух состояниях: список планов дня или маршруты одного плана.
@@ -152,7 +193,7 @@ const openedSummary = computed(() => plans.value.find((summary) => summary.id ==
 // режим демонстрации: у действующего утверждённого плана маршруты можно привести к плану
 const { demoMode, now } = useSystemTime()
 // открыт неутверждённый пересчёт: когда он вступит в силу и сколько осталось на утверждение
-const effectWindow = computed(() => approvalWindow(openedSummary.value, now.value))
+const effectWindow = computed(() => planWindowOf(openedSummary.value, now.value))
 const syncable = computed(
   () => demoMode.value && Boolean(openedSummary.value?.approved_at) && !openedSummary.value?.superseded_at,
 )
@@ -189,6 +230,9 @@ function backToPlans() {
   closePlan()
   focusedRequestId.value = null
   viewMode.value = 'details'
+  // пока смотрели план, бригады могли отметиться или отстать: список должен показать «!»
+  // сразу, а не после того, как оператор нажмёт «Обновить»
+  loadPlans()
 }
 
 function routeOfRequest(requestId) {
@@ -397,6 +441,7 @@ onMounted(async () => {
           @select="openPlan"
           @remove="removePlan"
           @approve="requestApproval"
+          @pick-windows="pickWindows"
           @cancel-approval="cancelApproval"
           @replan-info="replanPlanId = $event"
           @replan="replanTarget = $event"
@@ -468,6 +513,13 @@ onMounted(async () => {
             {{ syncing ? 'Синхронизирую…' : `По плану${syncSelected.length ? ` (${syncSelected.length})` : ''}` }}
           </button>
           <button
+            class="issue-button"
+            title="Сколько оборудования выдать бригадам под этот план: нужное по плану плюс запас, но не больше, чем увезёт транспорт"
+            @click="issuePlanId = plan.id"
+          >
+            Оборудование
+          </button>
+          <button
             v-if="openedSummary?.approved_at && !openedSummary?.superseded_at"
             :class="['primary', 'replan-button', {
               'attention-pulse':
@@ -528,13 +580,21 @@ onMounted(async () => {
       @build="startReplan"
       @close="replanTarget = null"
     />
+    <EquipmentIssueDialog
+      v-if="issuePlanId"
+      :plan-id="issuePlanId"
+      @issued="equipmentIssued"
+      @close="issuePlanId = null"
+    />
     <PlanApprovalDialog
       v-if="approvalTarget"
       :summary="approvalTarget"
       :building="building"
+      :mode="approvalMode"
       @approve="approveAsIs"
       @decide="startDecisions"
-      @close="approvalTarget = null"
+      @searched="loadPlans"
+      @close="closeApproval"
     />
     <PlanBuildDialog
       v-if="buildDialogOpen"

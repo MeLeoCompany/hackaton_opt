@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+
 from gtfs_pipeline.bus_weekly import prepare_bus
 from gtfs_pipeline.gtfs import build_gtfs
 from gtfs_pipeline.local_bus import _route_type, import_bus_html
@@ -21,7 +22,7 @@ from gtfs_pipeline.night_weekly import generate_night_weekly
 from gtfs_pipeline.osm_metro import MetroDataError, normalize_line
 from gtfs_pipeline.transport_mos import (
     ScheduleParseError,
-    _align_circular_departures,
+    _align_trip_departures,
     collect_bus_route,
     parse_catalog_page,
     parse_route_page,
@@ -91,7 +92,7 @@ def test_transport_mos_parser_preserves_service_day_order() -> None:
     assert result["stops"][1]["name"] == "Конец"
 
 
-def test_circular_bus_parser_aligns_trips_after_control_stop_reset() -> None:
+def test_bus_parser_aligns_trips_after_control_stop_reset() -> None:
     stops = [
         {"departures": [180, 195, 210, 225]},
         {"departures": [194, 209, 224, 239]},
@@ -99,9 +100,20 @@ def test_circular_bus_parser_aligns_trips_after_control_stop_reset() -> None:
         {"departures": [180, 195, 210, 225]},
     ]
 
-    _align_circular_departures(stops)
+    _align_trip_departures(stops)
 
     assert stops[2]["departures"] == [195, 210, 225, 1620]
+
+
+def test_bus_parser_aligns_trip_ending_after_service_day_boundary() -> None:
+    stops = [
+        {"departures": [308, 314, 320, 1608]},
+        {"departures": [180, 310, 316, 322]},
+    ]
+
+    _align_trip_departures(stops)
+
+    assert stops[1]["departures"] == [310, 316, 322, 1620]
 
 
 def test_night_bus_parser_keeps_morning_departures_on_next_day() -> None:
@@ -230,6 +242,72 @@ def test_prepare_bus_accepts_one_closed_circular_direction(tmp_path: Path) -> No
     assert created.is_file()
 
 
+def test_scheduled_service_builds_explicit_regional_trips(tmp_path: Path) -> None:
+    dataset = {
+        "schema_version": 1,
+        "kind": "scheduled_service",
+        "source": {"quality": "test"},
+        "route": {
+            "source_route_id": "regional-test",
+            "short_name": "Т",
+            "long_name": "Тестовый пригородный маршрут",
+            "route_type": 2,
+        },
+        "service": {
+            "start_date": "2026-08-01",
+            "end_date": "2026-12-31",
+            "weekdays": list(range(7)),
+        },
+        "patterns": [
+            {
+                "direction_id": 0,
+                "stops": [
+                    {
+                        "source_stop_id": "regional-a",
+                        "name": "А",
+                        "lat": 55.0,
+                        "lon": 37.0,
+                    },
+                    {
+                        "source_stop_id": "regional-b",
+                        "name": "Б",
+                        "lat": 55.1,
+                        "lon": 37.1,
+                    },
+                ],
+                "trips": [[360, 390], [420, 450]],
+            }
+        ],
+    }
+    source = tmp_path / "regional.json"
+    source.write_text(json.dumps(dataset), encoding="utf-8")
+    output = tmp_path / "regional.zip"
+
+    build_gtfs([source], output)
+
+    validate_gtfs(output)
+    with zipfile.ZipFile(output) as archive:
+        routes = archive.read("routes.txt").decode("utf-8-sig")
+        trips = archive.read("trips.txt").decode("utf-8-sig")
+        stop_times = archive.read("stop_times.txt").decode("utf-8-sig")
+        assert "regional-test" in routes
+        assert len(list(csv.DictReader(io.StringIO(trips)))) == 2
+        assert "06:30:00" in stop_times
+
+
+def test_scheduled_service_rejects_time_travel(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+    source = json.loads(
+        (root / "transit/data/regional/rail-paveletsky-kashira.json").read_text()
+    )
+    source["patterns"][0]["trips"] = [[600, 590] + [600] * 29]
+    path = tmp_path / "broken.json"
+    path.write_text(json.dumps(source), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="время рейса идёт назад"):
+        build_gtfs([path], tmp_path / "broken.zip")
+
+
 def test_import_bus_html_creates_schedule_and_archives_sources(tmp_path: Path) -> None:
     incoming = tmp_path / "new"
     archive = tmp_path / "added"
@@ -275,6 +353,73 @@ def test_import_bus_html_creates_schedule_and_archives_sources(tmp_path: Path) -
     ]
     assert not list(incoming.iterdir())
     assert inventory.read_text(encoding="utf-8") == "А\nт1\n"
+
+
+def test_import_bus_html_accepts_one_closed_circular_direction(tmp_path: Path) -> None:
+    incoming = tmp_path / "new"
+    archive = tmp_path / "added"
+    output = tmp_path / "data"
+    incoming.mkdir()
+    page = _page().replace(
+        'data-direction="0" data-stop="1"',
+        'data-direction="0" data-route="42" data-date="2026-09-22" data-stop="1"',
+    )
+    page = page.replace(
+        '[[37.1, 55.1], [37.2, 55.2]]',
+        '[[37.1, 55.1], [37.2, 55.2], [37.1, 55.1]]',
+    )
+    (incoming / "т1 - 1.html").write_text(page, encoding="utf-8")
+    catalog = tmp_path / "catalog.json"
+    # Ручной перечень подтверждает актуальное имя, если снимок каталога устарел.
+    catalog.write_text(
+        json.dumps({"routes": [{"source_route_id": "42", "short_name": "старое"}]}),
+        encoding="utf-8",
+    )
+    inventory = tmp_path / "bus_names.txt"
+    inventory.write_text("т1\n", encoding="utf-8")
+
+    imported = import_bus_html(
+        incoming,
+        archive,
+        catalog,
+        output,
+        date(2026, 8, 1),
+        date(2026, 12, 31),
+        inventory,
+    )
+
+    assert imported == ["т1"]
+    exact = json.loads((output / "route-42-2026-09-22.json").read_text(encoding="utf-8"))
+    assert [pattern["direction_id"] for pattern in exact["patterns"]] == [0]
+
+
+def test_import_bus_html_rejects_missing_reverse_of_non_circular_route(
+    tmp_path: Path,
+) -> None:
+    incoming = tmp_path / "new"
+    incoming.mkdir()
+    page = _page().replace(
+        'data-direction="0" data-stop="1"',
+        'data-direction="0" data-route="42" data-date="2026-09-22" data-stop="1"',
+    )
+    (incoming / "т1 - 1.html").write_text(page, encoding="utf-8")
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(
+        json.dumps(
+            {"routes": [{"source_route_id": "42", "short_name": "т1", "mode": "bus"}]}
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="отсутствует второе направление"):
+        import_bus_html(
+            incoming,
+            tmp_path / "added",
+            catalog,
+            tmp_path / "data",
+            date(2026, 8, 1),
+            date(2026, 12, 31),
+        )
 
 
 def test_local_html_import_classifies_river_routes_as_ferries() -> None:
@@ -376,7 +521,7 @@ def test_multiple_dates_of_same_bus_route_do_not_duplicate_route_or_shape(
     assert counts["shapes.txt"] == 1899
 
 
-def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
+def test_weekday_bus_calendar_is_used_daily_and_ignores_weekend_snapshots(
     tmp_path: Path,
 ) -> None:
     root = Path(__file__).parents[2]
@@ -388,7 +533,6 @@ def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
             bus / "route-1054-2026-09-19.json",
             bus / "route-1054-2026-09-20.json",
             bus / "e10-weekday-weekly.json",
-            bus / "e10-weekend-weekly.json",
         ],
         output,
     )
@@ -402,14 +546,19 @@ def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
             )
 
         calendars = rows("calendar.txt")
-        assert len(calendars) == 2
-        assert {
-            tuple(row[day] for day in ("monday", "friday", "saturday", "sunday"))
-            for row in calendars
-        } == {
-            ("1", "1", "0", "0"),
-            ("0", "0", "1", "1"),
-        }
+        assert len(calendars) == 1
+        assert all(
+            calendars[0][day] == "1"
+            for day in (
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            )
+        )
         assert {row["end_date"] for row in calendars} == {"20261231"}
         assert {row["start_date"] for row in calendars} == {"20260801"}
         assert any(
@@ -417,8 +566,9 @@ def test_weekly_bus_calendar_keeps_exact_days_and_repeats_until_expiry(
             for row in calendars
         )
         exceptions = rows("calendar_dates.txt")
-        assert len(exceptions) == 6
-        assert Counter(row["exception_type"] for row in exceptions) == {"1": 3, "2": 3}
+        assert len(exceptions) == 2
+        assert Counter(row["exception_type"] for row in exceptions) == {"1": 1, "2": 1}
+        assert {row["date"] for row in exceptions} == {"20260918"}
         trips = rows("trips.txt")
         assert len({row["trip_id"] for row in trips}) == len(trips)
 
@@ -470,9 +620,9 @@ def test_backdated_bus_calendar_requires_explicit_retrospective_mark(
 def test_weekly_bus_rejects_different_control_day(tmp_path: Path) -> None:
     root = Path(__file__).parents[2]
     bus = root / "transit/data/bus"
-    manifest = json.loads((bus / "e10-weekend-weekly.json").read_text(encoding="utf-8"))
-    manifest["template"] = str(bus / "route-1054-2026-09-19.json")
-    manifest["matching_examples"] = [str(bus / "e10-2026-09-18.json")]
+    manifest = json.loads((bus / "e10-weekday-weekly.json").read_text(encoding="utf-8"))
+    manifest["template"] = str(bus / "e10-2026-09-18.json")
+    manifest["matching_examples"] = [str(bus / "route-1054-2026-09-19.json")]
     path = tmp_path / "weekly.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
 

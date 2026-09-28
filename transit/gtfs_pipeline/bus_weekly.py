@@ -59,6 +59,7 @@ def prepare_bus(
             },
             "source": {
                 "template_date": weekday_date.isoformat(),
+                "calendar_policy": "weekday_daily",
                 "quality": "приближение",
                 "retrospective": retrospective,
                 "note": (

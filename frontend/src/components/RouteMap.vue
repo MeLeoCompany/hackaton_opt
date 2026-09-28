@@ -5,31 +5,12 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { TRAVEL_MODES } from '../api/travelApi.js'
 import { decodePolyline } from '../utils/polyline.js'
-import { useCoverage } from '../composables/useCoverage.js'
-import { createCoverageLayer } from '../utils/coverageLayer.js'
-import CoverageToggle from './CoverageToggle.vue'
 
 const props = defineProps({
   points: { type: Array, required: true },
   route: { type: Object, default: null },
 })
 const emit = defineEmits(['add-point'])
-
-// зона покрытия: слой включается ползунком в углу карты
-const { shown: coverageShown } = useCoverage()
-let coverageLayer = null
-
-function syncCoverage() {
-  if (!map) return
-  if (coverageShown.value && !coverageLayer) {
-    coverageLayer = createCoverageLayer().addTo(map)
-    // зона — подложка: маршруты и точки остаются поверх неё
-    coverageLayer.eachLayer((shape) => shape.bringToBack())
-  } else if (!coverageShown.value && coverageLayer) {
-    map.removeLayer(coverageLayer)
-    coverageLayer = null
-  }
-}
 
 const container = ref(null)
 let map = null
@@ -104,7 +85,6 @@ onMounted(() => {
     attribution: '&copy; OpenStreetMap',
     maxZoom: 19,
   }).addTo(map)
-  syncCoverage()
 
   markerLayer = L.layerGroup().addTo(map)
   // featureGroup, а не layerGroup: только у него есть getBounds для подгонки масштаба
@@ -115,8 +95,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => map?.remove())
 
-watch(coverageShown, syncCoverage)
-
 watch(() => props.points, drawMarkers, { deep: true })
 watch(() => props.route, drawRoute)
 </script>
@@ -125,7 +103,7 @@ watch(() => props.route, drawRoute)
   <!-- карта тянется на всю высоту блока, ползунок покрытия — поверх неё в углу -->
   <div class="map-frame">
     <div ref="container" class="map"></div>
-    <CoverageToggle />
+    <!-- часы демонстрации висят ровно над этим углом карты: опускаем ползунок под них -->
   </div>
 </template>
 

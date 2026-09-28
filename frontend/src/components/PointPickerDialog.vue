@@ -21,25 +21,6 @@ const emit = defineEmits(['pick', 'close'])
 
 const MOSCOW_CENTER = [55.751244, 37.618423]
 const COORDINATE_DIGITS = 6
-import { useCoverage } from '../composables/useCoverage.js'
-import { createCoverageLayer } from '../utils/coverageLayer.js'
-import CoverageToggle from './CoverageToggle.vue'
-
-// зона покрытия: слой включается ползунком в углу карты
-const { shown: coverageShown } = useCoverage()
-let coverageLayer = null
-
-function syncCoverage() {
-  if (!map) return
-  if (coverageShown.value && !coverageLayer) {
-    coverageLayer = createCoverageLayer().addTo(map)
-    // зона — подложка: маршруты и точки остаются поверх неё
-    coverageLayer.eachLayer((shape) => shape.bringToBack())
-  } else if (!coverageShown.value && coverageLayer) {
-    map.removeLayer(coverageLayer)
-    coverageLayer = null
-  }
-}
 
 const container = ref(null)
 const picked = ref(validCoordinates(props.latitude, props.longitude))
@@ -130,7 +111,6 @@ onMounted(async () => {
     maxZoom: 19,
   }).addTo(map)
 
-  syncCoverage()
   drawContext()
   drawLandmarks()
 
@@ -152,8 +132,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => map?.remove())
 
-watch(coverageShown, syncCoverage)
-
 function confirm() {
   if (picked.value) emit('pick', picked.value.latitude, picked.value.longitude)
 }
@@ -172,7 +150,6 @@ function confirm() {
 
       <div class="picker-frame">
         <div ref="container" class="picker-map"></div>
-        <CoverageToggle />
       </div>
 
       <footer>

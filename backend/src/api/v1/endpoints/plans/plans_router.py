@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import current_office_id, current_user
 from src.db.session import get_db
 from src.models import AppUser
+from src.schemas.equipment import IssueDone, IssuePreview, IssueWrite
 from src.schemas.plans import (
     PlanApprovalReviewRequest,
     PlanBuildRequest,
@@ -24,6 +25,7 @@ from src.schemas.plans import (
     PlanSyncRequest,
     ReplanPreview,
 )
+from src.services.equipment import equipment_issue
 from src.services.planner import approval_review, plan_sync, planning_service, replan_service
 from src.services.system import system_service
 
@@ -187,7 +189,7 @@ async def preview_approval(
     office_id: int = Depends(current_office_id),
     user: AppUser = Depends(current_user),
 ):
-    """Второй расчёт с раскрытыми окнами, ничего не сохраняется (docs/algoV2.md, шаги 2-3)."""
+    """Список заявок, по которым нужно решение. Расчёт запускает отдельный `/windows`."""
     return await approval_review.preview_approval(
         session,
         plan_id,
@@ -199,10 +201,53 @@ async def preview_approval(
 
 
 @router.post(
+    "/{plan_id}/windows",
+    response_model=ReplanPreview,
+    status_code=status.HTTP_201_CREATED,
+    summary="Подобрать окна невлезшим заявкам: второй расчёт с раскрытыми окнами",
+)
+async def pick_windows(
+    plan_id: int,
+    payload: PlanApprovalReviewRequest,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    """Получается новый расчёт дня: в нём невлезшие стоят на предложенное клиенту время.
+
+    Клиент согласился — заявка остаётся там же, отказался — её вычёркивают. Пересчитывать
+    день ещё раз не нужно (docs/algoV2.md, шаги 2-5).
+    """
+    return await approval_review.pick_windows(
+        session,
+        plan_id,
+        office_id=office_id,
+        user_id=user.id,
+        run_id=payload.run_id,
+        params=payload.solver_params or await system_service.read_solver_params(session),
+    )
+
+
+@router.delete(
+    "/{plan_id}/windows",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Отказаться от подбора окон: убрать его расчёт и вернуть прежний",
+)
+async def drop_windows(
+    plan_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+    user: AppUser = Depends(current_user),
+):
+    """Предложенные времена не годятся: расчёт подбора удаляется, прежний снова в игре."""
+    await approval_review.drop_windows(session, plan_id, office_id=office_id)
+
+
+@router.post(
     "/{plan_id}/approval/decisions",
     response_model=PlanSummary,
     status_code=status.HTTP_201_CREATED,
-    summary="Учесть решения по невлезшим заявкам и посчитать день заново",
+    summary="Учесть решения по невлезшим заявкам",
 )
 async def decide_approval(
     plan_id: int,
@@ -211,7 +256,11 @@ async def decide_approval(
     office_id: int = Depends(current_office_id),
     user: AppUser = Depends(current_user),
 ):
-    """Получается новый черновик: его смотрят и утверждают отдельно."""
+    """Применить ответы клиентов без нового расчёта.
+
+    Согласованная заявка остаётся в маршруте, полученном подбором окон; перенос и отмена
+    удаляют её из этого расчёта (docs/algoV2.md, шаг 5).
+    """
     return await approval_review.decide_approval(
         session,
         plan_id,
@@ -233,6 +282,35 @@ async def cancel_plan_approval(
     return await planning_service.cancel_plan_approval(
         session, plan_id, office_id=office_id, user_id=user.id
     )
+
+
+@router.get(
+    "/{plan_id}/equipment",
+    response_model=IssuePreview,
+    summary="Рекомендуемая выдача оборудования по плану",
+)
+async def preview_equipment(
+    plan_id: int,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    """Сколько чего нужно бригадам по этому плану и сколько предлагается выдать."""
+    return await equipment_issue.preview(session, plan_id, office_id=office_id)
+
+
+@router.post(
+    "/{plan_id}/equipment",
+    response_model=IssueDone,
+    summary="Утвердить выдачу оборудования бригадам",
+)
+async def issue_equipment(
+    plan_id: int,
+    payload: IssueWrite,
+    session: AsyncSession = Depends(get_db),
+    office_id: int = Depends(current_office_id),
+):
+    """Записывает утверждённые количества в запас смен: пересчёты считают уже от него."""
+    return await equipment_issue.apply(session, plan_id, payload.brigades, office_id=office_id)
 
 
 @router.get("/{plan_id}", response_model=PlanDetail, summary="План с маршрутами исполнителей")

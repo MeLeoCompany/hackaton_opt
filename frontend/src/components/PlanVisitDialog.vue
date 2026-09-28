@@ -107,6 +107,17 @@ async function changeStatus(statusId) {
           </dd>
         </div>
         <div>
+          <dt>Оборудование</dt>
+          <dd>
+            <span v-if="!visit.equipment?.length" class="muted">не требуется</span>
+            <span v-else class="equipment-list">
+              <span v-for="item in visit.equipment" :key="item.equipment_id" class="equipment-badge">
+                ⚙ {{ referenceName(references, 'equipment', item.equipment_id) }} × {{ item.quantity }}
+              </span>
+            </span>
+          </dd>
+        </div>
+        <div>
           <dt>Окно заявки</dt>
           <dd>
             {{ moscowTimeOf(visit.window_start) }}–{{ moscowTimeOf(visit.window_end) }}
@@ -197,6 +208,21 @@ dt {
 
 dd {
   margin: 0;
+}
+
+.equipment-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.equipment-list .equipment-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  margin-top: 0;
+  vertical-align: middle;
 }
 
 .status-error {

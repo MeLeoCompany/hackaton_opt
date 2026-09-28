@@ -6,3 +6,7 @@ venv/
 *.egg-info/
 transit/.venv/
 transit/cache/
+
+# настройки развёртывания с паролями — только локально
+deploy/deploy.env
+deploy/logs/

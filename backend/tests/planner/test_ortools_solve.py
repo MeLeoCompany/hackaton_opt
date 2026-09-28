@@ -99,6 +99,24 @@ def test_request_nobody_is_qualified_for_stays_unassigned():
     assert assigned_request_ids(instance, solution) == [10]
 
 
+def test_equipment_capacity_limits_the_whole_route():
+    skills = {1: {1}}
+    instance = make_instance(
+        engineers=[engineer(1, equipment={7: 2})],
+        requests=[
+            request(10, skill=1, window=("09:00", "12:00"), equipment={7: 1}),
+            request(11, skill=1, window=("12:00", "15:00"), equipment={7: 1}),
+            request(12, skill=1, window=("15:00", "18:00"), equipment={7: 1}),
+        ],
+        skills=skills,
+    )
+
+    solution = solve(instance)
+
+    assert constraint_violations(instance, skills, solution) == []
+    assert len(assigned_request_ids(instance, solution)) == 2
+
+
 def test_work_must_finish_before_shift_end():
     skills = {1: {1}}
     instance = make_instance(

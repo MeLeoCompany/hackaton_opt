@@ -3,20 +3,16 @@
 // значениями по умолчанию — можно сразу нажать «Рассчитать».
 // С replanOf — пересчёт утверждённого плана с текущего момента: выполненные и начатые заявки
 // остаются за бригадами, бригады стартуют оттуда, где они сейчас, остальное раскладывается заново.
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 
-import { previewReplan } from '../api/plansApi.js'
+import { getPlan } from '../api/plansApi.js'
 import { fetchSolverParams } from '../api/systemApi.js'
 import { limitHint, numericParams } from '../utils/solverParams.js'
 import { formatDay, fromMoscowInputValue, moscowTimeOf } from '../utils/moscowTime.js'
 import { objectiveOrder } from '../utils/planningPriorities.js'
 import InfoHint from './InfoHint.vue'
-import PlanRunProgress from './PlanRunProgress.vue'
 import SolverParamRows from './SolverParamRows.vue'
 import TimeInput from './TimeInput.vue'
-import UnassignedDecisions from './UnassignedDecisions.vue'
-import { usePlanRun } from '../composables/usePlanRun.js'
-import { useUnassignedDecisions } from '../composables/useUnassignedDecisions.js'
 
 const props = defineProps({
   planDate: { type: String, required: true },
@@ -105,69 +101,66 @@ function basePayload() {
   return payload
 }
 
-// ---- пересчёт: сначала пробный, чтобы до пересчёта обзвонить клиентов заявок,
-// на которые не успеваем: второй расчёт подбирает время, оператор решает по каждой
-// (docs/algoV2.md, шаги 3-4) ----
+// ---- пересчёт: первый расчёт круга и только он. По заявкам, которые в него не вошли,
+// оператор решает отдельно — кнопками «Подобрать окна» и «Утвердить» у самого пересчёта
+// (docs/algoV2.md, шаги 2-5) ----
 
-const previewing = ref(false)
-const previewError = ref('')
-// пробный пересчёт на большом дне идёт минутами — показываем его ход и даём прервать
-const { run: previewRun, newRunId, watch: watchRun, cancel: cancelRun, stop: stopRun } = usePlanRun()
-
-// закрыли окно посреди пробного пересчёта — расчёт на сервере больше не нужен
-async function close() {
-  if (previewing.value) await cancelRun()
+function close() {
   emit('close')
 }
 
-onBeforeUnmount(() => {
-  if (previewing.value) cancelRun()
-})
-// решения по невлезшим заявкам — общие с утверждением черновика
-const { preview, decisions, problems, tolerance, setPreview, decisionsReady, payload: decisionsPayload } =
-  useUnassignedDecisions(() => props.planDate)
 // со слов бригады: когда она освободится, если застряла на заявке (шаг 10)
 const freeAt = reactive({})
-
-// поменяли решатель или время «освободится в» — прошлая проверка уже не про этот расчёт
-watch([params, freeAt], () => {
-  preview.value = null
-  previewError.value = ''
-})
 
 // где бригада сейчас на месте: отметила «На месте», но ещё не «Выполнено»
 function onSiteVisit(route) {
   return route.visits.find((visit) => visit.arrived_at && !visit.finished_at) ?? null
 }
 
+// План перечитываем при открытии диалога: из списка маршрутов у страницы нет, а сводка в
+// списке могла устареть — пересчёт, который она считает ждущим своего момента, к этой минуте
+// мог стать недействительным
+const loadedPlan = ref(null)
+const planRoutes = computed(() => (props.routes.length ? props.routes : loadedPlan.value?.routes ?? []))
+// какой пересчёт этого плана сейчас ждёт своего момента; null — ни одного
+const pendingReplanId = computed(
+  () => (loadedPlan.value ?? props.replanOf)?.pending_replan_id ?? null,
+)
+
+onMounted(async () => {
+  if (!props.replanOf) return
+  try {
+    loadedPlan.value = await getPlan(props.replanOf.id)
+  } catch {
+    // не прочитали — диалог работает как раньше, время бригады можно вписать при пересчёте
+  }
+})
+
 // застряли на заявке: бригада на месте и отстаёт — ей звонят и уточняют, когда освободится.
 // Закончившая или уже выехавшая свободна по своим отметкам — спрашивать нечего
 const waitingRoutes = computed(() =>
-  props.routes.filter((route) => onSiteVisit(route) && (route.waiting_reason || route.delay_minutes > 0)),
+  planRoutes.value.filter((route) => onSiteVisit(route) && (route.waiting_reason || route.delay_minutes > 0)),
+)
+
+// поле «освободится в» заполняем оценкой с сервера: по нормативу, а если он уже прошёл —
+// с запасом от момента пересчёта. Пустое поле означало бы «свободна прямо сейчас», и
+// застрявшая бригада снова не выехала бы — день крутился бы в пересчётах (шаг 10)
+watch(
+  waitingRoutes,
+  (routes) => {
+    routes.forEach((route) => {
+      if (freeAt[route.engineer_id] === undefined && route.free_at_estimate) {
+        freeAt[route.engineer_id] = moscowTimeOf(route.free_at_estimate)
+      }
+    })
+  },
+  { immediate: true },
 )
 
 function stuckText(route) {
   const visit = onSiteVisit(route)
   const late = route.delay_minutes > 0 ? ` · отстаёт на ${route.delay_minutes} мин` : ''
   return `на месте №${visit.request_id} с ${moscowTimeOf(visit.arrived_at)}${late}`
-}
-
-async function checkReplan() {
-  previewing.value = true
-  previewError.value = ''
-  const runId = newRunId()
-  watchRun(runId)
-  try {
-    const result = await previewReplan(props.replanOf.id, { ...basePayload(), run_id: runId })
-    setPreview(result)
-    return result
-  } catch (error) {
-    previewError.value = [error.message, ...(error.details ?? [])].join(': ')
-    return null
-  } finally {
-    stopRun()
-    previewing.value = false
-  }
 }
 
 function freeAtPayload() {
@@ -179,25 +172,14 @@ function freeAtPayload() {
     }))
 }
 
-async function submit() {
-  if (!props.replanOf) {
-    emit('build', basePayload())
-    return
-  }
-  // первый шаг — пробный пересчёт; не на что решать — сразу пересчитываем
-  if (preview.value === null) {
-    const result = await checkReplan()
-    if (!result || result.unassigned.length) return
-  }
-  const payload = basePayload()
-  payload.decisions = decisionsPayload()
-  emit('build', payload)
+function submit() {
+  emit('build', basePayload())
 }
 </script>
 
 <template>
   <div class="dialog-backdrop" @click.self="close">
-    <div class="dialog" :class="{ wide: problems.length }" role="dialog" aria-label="Параметры расчёта плана">
+    <div class="dialog" role="dialog" aria-label="Параметры расчёта плана">
       <header>
         <strong v-if="replanOf">Пересчёт плана №{{ replanOf.id }} · {{ formatDay(planDate) }}</strong>
         <strong v-else>Параметры расчёта · {{ formatDay(planDate) }}</strong>
@@ -270,7 +252,7 @@ async function submit() {
               <SolverParamRows
                 :values="solverParams"
                 :baseline="systemParams"
-                :disabled="building || previewing"
+                :disabled="building"
                 @update="(key, value) => (solverParams = { ...solverParams, [key]: value })"
               />
             </tbody>
@@ -290,10 +272,10 @@ async function submit() {
       </section>
 
       <!-- один пересчёт уже посчитан и не утверждён: пока он есть, часть бригад стоит -->
-      <p v-if="replanOf?.pending_replan_id" class="warning">
+      <p v-if="pendingReplanId" class="warning">
         <span class="mark">!</span>
         <span>
-          Пересчёт №{{ replanOf.pending_replan_id }} уже посчитан и вступит в силу сам, в момент,
+          Пересчёт №{{ pendingReplanId }} уже посчитан и вступит в силу сам, в момент,
           на который посчитан. Пока этот момент не настал, бригады выезжают только туда, куда
           ведёт и он, а остальные стоят. Лучше закрыть это окно и дождаться его — или удалить,
           если он не нужен. Новый расчёт добавит ещё один пересчёт.
@@ -311,15 +293,13 @@ async function submit() {
         </span>
       </p>
 
-      <PlanRunProgress v-if="previewing" :run="previewRun" @cancel="cancelRun" />
-      <p v-if="previewError" class="problem-error">{{ previewError }}</p>
-
       <!-- пересчёт: бригады, выбившиеся из плана, — оператор уточняет по телефону время -->
       <section v-if="replanOf && waitingRoutes.length" class="waiting">
         <h4>Застряли на заявке: {{ waitingRoutes.length }}</h4>
         <p class="hint">
-          Застрявшая бригада не уложится в норматив: укажите время со слов бригады, и пересчёт
-          посчитает её свободной с него, а не с планового конца работы.
+          Застрявшая бригада не уложится в норматив. Время подставлено с запасом — уточните его
+          по телефону и поправьте: пересчёт посчитает бригаду свободной с него, а не с планового
+          конца работы.
         </p>
         <article v-for="route in waitingRoutes" :key="route.engineer_id" class="waiting-row">
           <strong>{{ route.engineer_name }}</strong>
@@ -335,37 +315,19 @@ async function submit() {
         </article>
       </section>
 
-      <!-- пересчёт: заявки, на которые не успеваем, — решение по каждой до пересчёта -->
-      <UnassignedDecisions
-        v-if="problems.length"
-        :title="`Не успеваем: ${problems.length} — обзвоните клиентов`"
-        :problems="problems"
-        :decisions="decisions"
-        :tolerance="tolerance"
-        :disabled="building"
-      >
-        Пробный расчёт разложил {{ preview.assigned_count }} заявок. По остальным второй расчёт
-        с раскрытыми окнами подобрал время, которое можно предложить клиенту. Решение нужно по
-        каждой: либо согласованное окно, либо завтра, либо отмена. Применятся вместе с пересчётом.
-      </UnassignedDecisions>
+      <!-- заявки, которым не нашлось места, останутся невлезшими: по ним оператор решает
+           отдельно — «Подобрать окна» или «Утвердить» у самого пересчёта -->
+      <p v-if="replanOf" class="hint">
+        Заявки, которым в пересчёте не найдётся места, останутся за ним невлезшими. По ним
+        решают отдельно: «Подобрать окна» — второй расчёт с раскрытыми окнами, «Утвердить» —
+        перенос на другой день или отмена.
+      </p>
 
       <footer>
         <span class="hint">Заявки и смены берутся на {{ formatDay(planDate) }}</span>
         <div class="dialog-actions">
-          <button
-            class="primary"
-            :disabled="building || previewing || !decisionsReady"
-            @click="submit"
-          >
-            {{
-              building || previewing
-                ? 'Считаю…'
-                : !replanOf
-                  ? 'Рассчитать'
-                  : problems.length
-                    ? 'Применить и пересчитать'
-                    : 'Пересчитать'
-            }}
+          <button class="primary" :disabled="building" @click="submit">
+            {{ building ? 'Считаю…' : replanOf ? 'Пересчитать' : 'Рассчитать' }}
           </button>
           <button :disabled="building" @click="close">Отмена</button>
         </div>

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.schemas.requests import RequestEquipmentItem
 from src.schemas.system import SolverParams
 from src.schemas.travel import TravelLeg
 from src.services.planner.objective_policy import (
@@ -93,15 +94,20 @@ class ReplanProblem(BaseModel):
 
 
 class ReplanPreview(BaseModel):
-    """Пробный пересчёт без сохранения: сколько разложится и на какие заявки не успеваем.
+    """По каким заявкам расчёта нужно решение оператора и что можно предложить клиенту.
 
-    По невлезшим заявкам второй расчёт подбирает время, которое оператор называет клиенту.
+    Подобранное окно — это время, на которое расчёт сам поставил заявку: клиент соглашается,
+    и заявка остаётся там же. Кому и такого времени не нашлось — перенос или отмена.
     """
 
+    # расчёт, к которому относятся решения: подбор окон даёт новый, и решают уже по нему
+    plan_id: int | None = None
     assigned_count: int
     unassigned: list[ReplanProblem] = []
     # ширина обещанного окна: предложенное время плюс этот допуск
     promise_tolerance_minutes: int = 30
+    # пояснение к результату подбора: например, почему безопасных новых окон не нашлось
+    notice: str | None = None
 
 
 class BrigadeFreeAt(BaseModel):
@@ -123,13 +129,15 @@ class BrigadeFreeAt(BaseModel):
 
 
 class PlanApprovalReviewRequest(BaseModel):
-    """Перед утверждением черновика: подобрать окна невлезшим заявкам или учесть решения.
+    """Перед утверждением черновика: посмотреть невлезших или учесть решения.
 
-    decisions пусто — пробный второй расчёт (что предложить клиентам); иначе решения
-    применяются и день считается заново тем же решателем и с той же целью.
+    Сам подбор выполняет отдельный `/windows`: просмотр не должен неожиданно запускать
+    тяжёлый расчёт. `suggest` оставлен для совместимости со старыми клиентами и не влияет
+    на результат этого запроса.
     """
 
-    decisions: list[ReplanDecision] = []
+    decisions: list[ReplanDecision] = Field(default_factory=list)
+    suggest: bool = False
     run_id: UUID | None = None
     solver_params: SolverParams | None = None
 
@@ -144,9 +152,9 @@ class PlanReplanRequest(BaseModel):
     # на какой момент пересчитать: бригады свободны не раньше него. Пусто — текущее время
     at: datetime | None = None
     # решения по заявкам, на которые не успеваем (из пробного пересчёта): применяются до расчёта
-    decisions: list[ReplanDecision] = []
+    decisions: list[ReplanDecision] = Field(default_factory=list)
     # когда бригады освободятся — со слов бригады, если она застряла
-    free_at: list[BrigadeFreeAt] = []
+    free_at: list[BrigadeFreeAt] = Field(default_factory=list)
     # номер запуска: по нему интерфейс показывает ход пересчёта
     run_id: UUID | None = None
     # параметры решателя на этот пересчёт; пусто — системные
@@ -228,6 +236,16 @@ class PlanSummary(BaseModel):
     voided_replan_reason: str | None = None
     # черновик уже не утвердить: на его день действует другой план. Это история расчётов
     outdated: bool = False
+    # черновик идущего дня посчитан на выезд в этот момент («сейчас плюс запас»): до него его
+    # и утверждают. stale_reason — почему уже поздно или что изменилось в дне с расчёта
+    effective_at: datetime | None = None
+    stale_reason: str | None = None
+    # почему пересчёт не стоит применять прямо сейчас, не дожидаясь его момента: день уже
+    # разошёлся с расчётом. В свой момент он проверится сам
+    hold_reason: str | None = None
+    # подбор окон: по скольким заявкам ждут ответа клиента. Пока их больше нуля, расчёт
+    # не утверждают и сам в силу он не вступает — время с клиентами не согласовано
+    pending_offers: int = 0
     # черновик посчитан после решений оператора по невлезшим заявкам другого черновика
     decisions_from_plan_id: int | None = None
     decisions_count: int | None = None
@@ -278,6 +296,7 @@ class PlanVisit(BaseModel):
     window_end: datetime
     duration_minutes: int
     priority_id: int
+    equipment: list[RequestEquipmentItem] = Field(default_factory=list)
     # статус заявки сейчас: по нему видно, какие визиты маршрута уже закрыты
     status_id: int
     # за каким утверждённым планом заявка закреплена сейчас; у утверждённого плана визит,
@@ -322,6 +341,9 @@ class EngineerRoute(BaseModel):
     # replan_pending — идёт пересчёт, not_departed — не выехала, at_risk — к окну не успеть
     waiting_since: datetime | None = None
     waiting_cause: str | None = None
+    # бригада сейчас на заявке: когда она освободится, если пересчитать день сейчас. Диалог
+    # пересчёта подставляет это время в «освободится в» (docs/algoV2.md, шаг 10)
+    free_at_estimate: datetime | None = None
     shift_start: datetime
     shift_end: datetime
     visits: list[PlanVisit]

@@ -20,6 +20,8 @@ class EngineerSpec:
     transport_id: int
     shift_start_min: int  # начало смены, минуты от начала дня
     shift_end_min: int  # конец смены, минуты от начала дня
+    # сколько единиц каждого оборудования доступно бригаде на остаток смены
+    equipment_capacity: dict[int, int] = field(default_factory=dict)
 
 
 # уровни приоритета: 1 — авария, 2 — подключение, 3 — ремонт и дозаказ (db/init/032)
@@ -41,6 +43,27 @@ RANK_NORMAL = 6  # P3 — базовый ярус, отдельной ступе
 WIDENED_RANK_SHIFT = 10
 
 
+def round_ranks(requests, kept_request_ids: set[int]) -> dict[int, int]:
+    """Ярусы второго и третьего расчётов круга (docs/algoV2.md, шаги 3 и 5).
+
+    A — аварии, откуда бы ни были: авария вправе подвинуть обычную заявку;
+    B — все, кто влез в первый расчёт;
+    C — раскрытые, то есть те, по кому звонили.
+    Внутри ярусов порядок обычный (обещание, перенос, приоритет), поэтому согласованная
+    заявка идёт первой среди раскрытых. Ярусы считаются на каждый запуск и не сохраняются:
+    следующий круг снова начинается с настоящих приоритетов.
+    """
+    ranks = {}
+    for index, request in enumerate(requests):
+        if request.priority_level == TOP_PRIORITY_LEVEL:
+            ranks[index] = RANK_EMERGENCY
+        elif request.request_id in kept_request_ids:
+            ranks[index] = request.objective_rank
+        else:
+            ranks[index] = request.objective_rank + WIDENED_RANK_SHIFT
+    return ranks
+
+
 @dataclass(frozen=True)
 class RequestSpec:
     request_id: int
@@ -55,6 +78,8 @@ class RequestSpec:
     # отметки заявки: обещана клиенту по телефону и переносилась с другого дня
     promised: bool = False
     moved: bool = False
+    # сколько единиц каждого оборудования останется у клиента после выполнения заявки
+    equipment_demand: dict[int, int] = field(default_factory=dict)
 
     @property
     def is_urgent(self) -> bool:
@@ -110,8 +135,23 @@ class ProblemInstance:
         return self.n_engineers + request_index
 
     def candidates(self, request_index: int) -> list[int]:
-        """Номера исполнителей, которым эту заявку можно отдать (навык и транспорт подходят)."""
+        """Номера исполнителей, которым подходит заявка по статическим ограничениям."""
         return np.flatnonzero(self.compatible[request_index]).tolist()
+
+    def route_equipment_usage(self, request_indices: list[int]) -> dict[int, int]:
+        """Суммарный расход оборудования заявками одного маршрута."""
+        usage: dict[int, int] = {}
+        for request_index in request_indices:
+            for equipment_id, quantity in self.requests[request_index].equipment_demand.items():
+                usage[equipment_id] = usage.get(equipment_id, 0) + quantity
+        return usage
+
+    def route_fits_equipment(self, engineer_index: int, request_indices: list[int]) -> bool:
+        capacity = self.engineers[engineer_index].equipment_capacity
+        return all(
+            quantity <= capacity.get(equipment_id, 0)
+            for equipment_id, quantity in self.route_equipment_usage(request_indices).items()
+        )
 
 
 def build_compatibility(instance: ProblemInstance, engineer_skills: dict[int, set[int]]) -> None:
@@ -129,4 +169,10 @@ def build_compatibility(instance: ProblemInstance, engineer_skills: dict[int, se
                 request.required_transport_id is None
                 or request.required_transport_id == engineer.transport_id
             )
-            instance.compatible[request_index, engineer_index] = has_skill and has_transport
+            has_equipment = all(
+                quantity <= engineer.equipment_capacity.get(equipment_id, 0)
+                for equipment_id, quantity in request.equipment_demand.items()
+            )
+            instance.compatible[request_index, engineer_index] = (
+                has_skill and has_transport and has_equipment
+            )

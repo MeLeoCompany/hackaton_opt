@@ -1,4 +1,6 @@
 from src.schemas.system.system_schema import (
+    DataWipeDone,
+    DataWipeWrite,
     DemoModeWrite,
     PlanRunEventRead,
     PlanRunRead,
@@ -13,6 +15,8 @@ from src.schemas.system.system_schema import (
 )
 
 __all__ = [
+    "DataWipeDone",
+    "DataWipeWrite",
     "DemoModeWrite",
     "PlanRunEventRead",
     "PlanRunRead",

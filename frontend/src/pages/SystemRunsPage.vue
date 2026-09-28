@@ -15,9 +15,15 @@ const KIND_NAMES = {
   replan: 'пересчёт',
   preview: 'пробный пересчёт',
   approval_preview: 'подбор окон',
+  windows: 'подбор окон',
+  decisions: 'решения по заявкам',
 }
 // полное название — в подсказке: в колонке короткое, чтобы не наезжать на «День»
-const KIND_TITLES = { approval_preview: 'подбор окон перед утверждением черновика' }
+const KIND_TITLES = {
+  windows: 'второй расчёт: невлезшим заявкам раскрыты окна',
+  approval_preview: 'подбор окон перед утверждением черновика',
+  decisions: 'перенос и отмена невлезших заявок — без пересчёта',
+}
 const STATUS_NAMES = { running: 'идёт', done: 'готов', failed: 'ошибка', cancelled: 'прерван' }
 
 const runs = ref([])

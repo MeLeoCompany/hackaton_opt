@@ -17,11 +17,11 @@ export function useUnassignedDecisions(planDate) {
   const problems = computed(() => preview.value?.unassigned ?? [])
   const tolerance = computed(() => preview.value?.promise_tolerance_minutes ?? 30)
 
-  function setPreview(result) {
+  function setPreview(result, { allowAgree = true } = {}) {
     for (const problem of result?.unassigned ?? []) {
       // есть предложение из второго расчёта — начинаем разговор с него, иначе — на завтра
       decisions[problem.request_id] = {
-        action: problem.suggested_start ? 'agree' : 'move',
+        action: allowAgree && problem.suggested_start ? 'agree' : 'move',
         date: nextDay(planDate()),
         from: moscowTimeOf(problem.window_start),
         to: moscowTimeOf(problem.window_end),

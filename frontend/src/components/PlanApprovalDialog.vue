@@ -1,12 +1,16 @@
 <script setup>
-// Утверждение черновика, в который вошли не все заявки (docs/algoV2.md, шаги 2-5).
-// Невлезшую заявку «Новой» без решения не оставляем: второй расчёт с раскрытыми окнами
-// говорит, когда бригада сможет приехать, оператор обзванивает клиентов и по каждой решает —
-// согласованное время, перенос на другой день или отмена. По решениям день считается заново —
-// новым черновиком, который утверждают отдельно. Сервер без решений черновик не утвердит.
+// Что делать с заявками, которые не вошли в план (docs/algoV2.md, шаги 2-5).
+// Два режима:
+//   approve — «Утвердить»: оператор переносит невлезшие на другой день или отменяет,
+//     работы в дне становится меньше, маршруты не меняются;
+//   windows — «Подобрать окна»: идёт второй расчёт с раскрытыми окнами, и получается новый
+//     расчёт дня. Решения принимаются сразу по нему: клиент согласился — заявка остаётся
+//     ровно там, куда её поставил расчёт, отказался — её вычёркивают.
+// Ни в том, ни в другом случае день заново не считается: выпадать некому.
+// Невлезшую заявку «Новой» без решения не оставляем: сервер без решений расчёт не утвердит.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-import { previewApproval } from '../api/plansApi.js'
+import { dropWindows, pickWindows, previewApproval } from '../api/plansApi.js'
 import { usePlanRun } from '../composables/usePlanRun.js'
 import { useUnassignedDecisions } from '../composables/useUnassignedDecisions.js'
 import { formatDay } from '../utils/moscowTime.js'
@@ -16,14 +20,31 @@ import UnassignedDecisions from './UnassignedDecisions.vue'
 const props = defineProps({
   summary: { type: Object, required: true }, // сводка утверждаемого черновика
   building: { type: Boolean, required: true },
+  // approve — утверждаем без расчёта, windows — подбираем окна вторым расчётом
+  mode: { type: String, default: 'approve' },
 })
-const emit = defineEmits(['approve', 'decide', 'close'])
+
+const windowsMode = computed(() => props.mode === 'windows')
+const emit = defineEmits(['approve', 'decide', 'close', 'searched'])
 
 const { preview, decisions, problems, tolerance, setPreview, decisionsReady, payload } =
   useUnassignedDecisions(() => props.summary.plan_date)
 
+// подбор окон даёт новый расчёт дня: решения дальше принимаются уже по нему
+const decidedPlanId = ref(props.summary.id)
+
+// после подбора окон счёт идёт по новому расчёту: в исходном невлезших было больше, часть
+// из них подбор разместил, и решать по ним уже нечего
+const waiting = computed(() =>
+  preview.value ? problems.value.length : props.summary.unassigned_count,
+)
+
 // невлезшие, по которым звонить не нужно: их уже забрал другой план или сняли
-const skipped = computed(() => Math.max(0, props.summary.unassigned_count - problems.value.length))
+const skipped = computed(() =>
+  windowsMode.value || !preview.value
+    ? 0
+    : Math.max(0, props.summary.unassigned_count - problems.value.length),
+)
 
 // второй расчёт идёт минутами на большом дне — показываем его ход и даём прервать
 const { run, newRunId, watch: watchRun, cancel: cancelRun, stop: stopRun } = usePlanRun()
@@ -34,9 +55,16 @@ async function searchWindows() {
   searching.value = true
   searchError.value = ''
   const runId = newRunId()
-  watchRun(runId)
+  // расчёт идёт только при подборе окон: при утверждении мы просто спрашиваем список
+  if (windowsMode.value) watchRun(runId)
   try {
-    setPreview(await previewApproval(props.summary.id, { run_id: runId }))
+    const result = windowsMode.value
+      ? await pickWindows(props.summary.id, { run_id: runId })
+      : await previewApproval(props.summary.id, { run_id: runId })
+    decidedPlanId.value = result.plan_id ?? props.summary.id
+    setPreview(result, { allowAgree: windowsMode.value })
+    // подбор дал новый расчёт дня: он должен появиться в списке под окном
+    if (decidedPlanId.value !== props.summary.id) emit('searched')
   } catch (error) {
     searchError.value = [error.message, ...(error.details ?? [])].join(': ')
   } finally {
@@ -45,13 +73,31 @@ async function searchWindows() {
   }
 }
 
-// закрыли окно посреди подбора — расчёт на сервере больше не нужен
+// подбор окон уже дал новый расчёт дня; пока решения не применены, его можно выбросить
+const picked = computed(() => windowsMode.value && decidedPlanId.value !== props.summary.id)
+const dropping = ref(false)
+
+// Отмена подбора: предложенные времена не годятся — расчёт выбрасываем и возвращаемся
+// к исходному плану. Его утверждают как обычно: перенести, отменить или «не дозвонились».
+// Крестик и клик мимо окна делают то же самое: подбор — дело добровольное
 async function close() {
   if (searching.value) await cancelRun()
-  emit('close')
+  if (!picked.value) {
+    emit('close', {})
+    return
+  }
+  dropping.value = true
+  try {
+    await dropWindows(decidedPlanId.value)
+  } catch {
+    // решения уже применены — расчёт остаётся, его видно в списке планов
+  } finally {
+    dropping.value = false
+    emit('close', { planned: true })
+  }
 }
 
-// окна подбираем сразу: без решений по невлезшим утвердить всё равно нельзя
+// список невлезших нужен сразу в обоих режимах: без решений по ним утвердить нельзя
 onMounted(searchWindows)
 
 onBeforeUnmount(() => {
@@ -63,17 +109,28 @@ onBeforeUnmount(() => {
   <div class="dialog-backdrop" @click.self="close">
     <div class="dialog" :class="{ wide: problems.length }" role="dialog" aria-label="Утверждение плана">
       <header>
-        <strong>Утверждение плана №{{ summary.id }} · {{ formatDay(summary.plan_date) }}</strong>
+        <strong>
+          {{ windowsMode ? 'Подбор окон' : 'Утверждение плана' }} №{{ summary.id }} ·
+          {{ formatDay(summary.plan_date) }}
+        </strong>
         <button class="close" title="Закрыть" @click="close">×</button>
       </header>
 
-      <p class="hint">
-        Не вошло в план: {{ summary.unassigned_count }}. Без решения их не оставляем: второй расчёт
-        предложит клиентам время, а по их ответам день пересчитается новым черновиком.
+      <p v-if="windowsMode" class="hint">
+        Второй расчёт с раскрытыми окнами разложил день заново и говорит, когда бригада сможет
+        приехать. Решения ждут: {{ waiting }}. «Принять» — решения применятся, и этот расчёт
+        останется утвердить одной кнопкой. «Отмена» — вернёмся к прежнему расчёту, его тоже
+        можно утвердить: перенести эти заявки, отменить или отметить «не дозвонились».
+      </p>
+      <p v-else class="hint">
+        Не вошло в план: {{ waiting }}. Перенесите их на другой день или отмените — расчёт
+        утвердится как есть, без пересчёта. Если хотите попробовать вместить их сегодня,
+        закройте окно и нажмите «Подобрать окна».
       </p>
 
       <PlanRunProgress v-if="searching" :run="run" @cancel="cancelRun" />
       <p v-if="searchError" class="error">{{ searchError }}</p>
+      <p v-if="preview?.notice" class="notice">{{ preview.notice }}</p>
 
       <p v-if="preview && !problems.length" class="hint">
         Звонить некому: невлезшие заявки уже не ждут планирования — закреплены за другим планом,
@@ -82,14 +139,24 @@ onBeforeUnmount(() => {
 
       <UnassignedDecisions
         v-if="problems.length"
-        :title="`Не влезли: ${problems.length} — обзвоните клиентов`"
+        :title="
+          windowsMode
+            ? `Не влезли: ${problems.length} — обзвоните клиентов`
+            : `Не влезли: ${problems.length} — решите по каждой`
+        "
         :problems="problems"
         :decisions="decisions"
         :tolerance="tolerance"
         :disabled="building"
+        :with-agree="windowsMode"
       >
-        Время подобрано с раскрытыми окнами, вошедшие в план заявки не сдвигаются. Решение нужно по
-        каждой; перенесённая войдёт в план своего дня.<template v-if="skipped">
+        <template v-if="windowsMode">
+          Время подобрано этим же расчётом: по нему бригада и приедет. Решение нужно по каждой;
+          перенесённая войдёт в план своего дня.</template
+        ><template v-else>
+          Сегодня они не влезли. Перенос и отмена только убирают работу из дня, маршруты бригад
+          от этого не меняются.</template
+        ><template v-if="skipped">
           Ещё {{ skipped }} уже не ждут планирования: закреплены за другим планом или сняты.</template
         >
       </UnassignedDecisions>
@@ -99,18 +166,32 @@ onBeforeUnmount(() => {
           v-if="problems.length"
           class="primary"
           :disabled="building || !decisionsReady"
-          @click="emit('decide', { decisions: payload() })"
+          @click="emit('decide', { planId: decidedPlanId, decisions: payload() })"
         >
-          {{ building ? 'Считаю…' : 'Учесть решения и пересчитать' }}
+          {{
+            building
+              ? 'Считаю…'
+              : windowsMode
+                ? 'Принять'
+                : 'Применить решения и утвердить'
+          }}
         </button>
         <!-- решать не по кому — утверждаем; подбор прервали или он упал — можно повторить -->
-        <button v-else-if="preview" class="primary" :disabled="building" @click="emit('approve')">
+        <button
+          v-else-if="preview"
+          class="primary"
+          :disabled="building"
+          @click="emit('approve', decidedPlanId)"
+        >
           Утвердить
         </button>
         <button v-else class="primary" :disabled="building || searching" @click="searchWindows">
-          {{ searching ? 'Подбираю…' : 'Подобрать окна' }}
+          {{ searching ? 'Читаю…' : 'Повторить' }}
         </button>
-        <button class="cancel" :disabled="building" @click="close">Отмена</button>
+        <!-- подбор уже посчитан: «Отмена» его выбрасывает, и мы возвращаемся к исходному плану -->
+        <button class="cancel" :disabled="building || dropping" @click="close">
+          {{ dropping ? 'Убираю…' : 'Отмена' }}
+        </button>
       </footer>
     </div>
   </div>
@@ -174,6 +255,15 @@ onBeforeUnmount(() => {
 .error {
   margin: 0;
   color: #b91c1c;
+  font-size: 13px;
+}
+
+.notice {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
   font-size: 13px;
 }
 </style>

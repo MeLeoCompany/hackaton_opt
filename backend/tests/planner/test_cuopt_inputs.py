@@ -97,6 +97,27 @@ def test_requests_become_orders():
     ]
 
 
+def test_equipment_becomes_capacity_dimensions():
+    instance = make_instance(
+        engineers=[
+            engineer(1, equipment={7: 3}),
+            engineer(2, equipment={7: 1}),
+        ],
+        requests=[
+            request(10, skill=1, window=("10:00", "12:00"), equipment={7: 2}),
+            request(11, skill=1, window=("13:00", "15:00"), equipment={7: 1}),
+        ],
+        skills={1: {1}, 2: {1}},
+    )
+
+    inputs = build_solver_inputs(instance, [0, 1])
+
+    demand, capacity = inputs.equipment_dimensions[7]
+    assert demand.tolist() == [2, 1]
+    assert capacity.tolist() == [3, 1]
+    assert [allowed.tolist() for allowed in inputs.order_allowed_vehicles] == [[0], [0, 1]]
+
+
 def test_matrices_per_transport():
     instance = sample_instance()
     inputs = build_solver_inputs(instance, [0, 1])

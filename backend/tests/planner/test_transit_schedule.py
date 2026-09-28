@@ -123,6 +123,61 @@ async def test_missing_r5_route_during_insertion_keeps_verified_plan():
 
 
 @pytest.mark.asyncio
+async def test_insertion_does_not_reuse_consumed_equipment():
+    loaded = loaded_day()
+    loaded.instance.engineers[0] = replace(
+        loaded.instance.engineers[0], equipment_capacity={7: 1}
+    )
+    loaded.instance.requests[0] = replace(
+        loaded.instance.requests[0], equipment_demand={7: 1}
+    )
+    loaded.instance.requests[1] = replace(
+        loaded.instance.requests[1], equipment_demand={7: 1}
+    )
+    solution = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+
+    with patch.object(transit_schedule, "build_route", AsyncMock()) as build:
+        route = await transit_schedule.inserted_route(
+            loaded,
+            solution,
+            transit_schedule.node_points(loaded),
+            {},
+            engineer_index=0,
+            position=1,
+            request_index=1,
+        )
+
+    assert route is None
+    build.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_verified_fallback_wins_when_new_solution_loses_kept_request():
+    """Раскрытое окно не должно вытеснять заявку из уже проверенного плана."""
+    loaded = loaded_day()
+    candidate = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(1, 570)]})
+    fallback = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+
+    with patch.object(
+        transit_schedule,
+        "repair_unassigned",
+        AsyncMock(side_effect=[candidate, fallback]),
+    ):
+        result = await transit_schedule.finish_solution(
+            loaded,
+            candidate,
+            transit_schedule.node_points(loaded),
+            {},
+            DEFAULT_OBJECTIVE_ORDER,
+            None,
+            {10},
+            fallback,
+        )
+
+    assert result is fallback
+
+
+@pytest.mark.asyncio
 async def test_unfixable_visit_is_left_unassigned():
     loaded = loaded_day()
     solution = cuopt_solver.DaySolution(
@@ -233,6 +288,37 @@ async def test_keeps_earlier_verified_plan_when_later_solver_drops_more_requests
 
     assert [visit.request_index for visit in result.routes[0]] == [0, 1]
     assert any("вариант попытки 1 лучше" in call.args[0] for call in note.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_unchanged_matrix_keeps_protected_requests_during_repair():
+    """На раннем выходе из итераций доразмещение не должно забывать ярус B."""
+    loaded = loaded_day()
+    solution = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+    kept = {10}
+
+    with (
+        patch.object(transit_schedule, "counted_check", AsyncMock(return_value=(None, {}))),
+        patch.object(
+            transit_schedule,
+            "check_schedule",
+            AsyncMock(return_value=(solution, {})),
+        ),
+        patch.object(
+            transit_schedule,
+            "repair_unassigned",
+            AsyncMock(return_value=solution),
+        ) as repair,
+    ):
+        result = await transit_schedule.solve_day(
+            loaded,
+            DEFAULT_OBJECTIVE_ORDER,
+            solve=AsyncMock(return_value=solution),
+            kept_request_ids=kept,
+        )
+
+    assert result is solution
+    assert repair.await_args.args[-1] == kept
 
 
 def test_checked_plan_comparison_respects_objective_order_and_override_ranks():

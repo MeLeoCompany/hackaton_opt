@@ -22,6 +22,7 @@ from src.db.session import async_session_maker
 from src.services.planner import replan_autoapply
 from src.services.system import system_service
 from src.services.travel import travel_cache
+from src.services.users import admin_account
 
 # сколько ждать базу при старте: после перезапуска Docker все контейнеры поднимаются разом,
 # и depends_on при этом не работает — бэкенд может проснуться раньше Postgres
@@ -45,6 +46,8 @@ async def load_offset_when_db_ready() -> None:
         try:
             async with async_session_maker() as session:
                 await system_service.load_offset(session)
+                # пароль администратора живёт в окружении, а не в миграции
+                await admin_account.ensure_admin_password(session)
             return
         except DB_NOT_READY as error:
             if loop.time() >= deadline:

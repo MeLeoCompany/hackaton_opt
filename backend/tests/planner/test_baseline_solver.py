@@ -71,3 +71,19 @@ def test_skips_incompatible_engineer_and_uses_next_one():
 
     assert route_request_ids(instance, solution, engineer_id=10) == []
     assert route_request_ids(instance, solution, engineer_id=20) == [100]
+
+
+def test_equipment_is_consumed_across_the_route():
+    instance = make_instance(
+        engineers=[engineer(1, equipment={7: 2}), engineer(2, equipment={7: 1})],
+        requests=[
+            request(100, skill=1, window=("10:00", "12:00"), equipment={7: 2}),
+            request(200, skill=1, window=("13:00", "15:00"), equipment={7: 1}),
+        ],
+        skills={1: {1}, 2: {1}},
+    )
+
+    solution = solve_day(instance)
+
+    assert route_request_ids(instance, solution, engineer_id=1) == [100]
+    assert route_request_ids(instance, solution, engineer_id=2) == [200]

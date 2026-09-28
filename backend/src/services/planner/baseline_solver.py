@@ -13,10 +13,16 @@ def solve_day(instance: ProblemInstance) -> DaySolution:
     routes: dict[int, list[PlannedVisit]] = {}
     available_at: list[float] = [engineer.shift_start_min for engineer in instance.engineers]
     current_node = [instance.start_node(index) for index in range(instance.n_engineers)]
+    remaining_equipment = [dict(engineer.equipment_capacity) for engineer in instance.engineers]
 
     for request_index, request in enumerate(instance.requests):
         for engineer_index, engineer in enumerate(instance.engineers):
             if not instance.compatible[request_index, engineer_index]:
+                continue
+            if any(
+                quantity > remaining_equipment[engineer_index].get(equipment_id, 0)
+                for equipment_id, quantity in request.equipment_demand.items()
+            ):
                 continue
 
             travel_minutes = float(
@@ -39,6 +45,8 @@ def solve_day(instance: ProblemInstance) -> DaySolution:
             )
             available_at[engineer_index] = work_start + request.duration_min
             current_node[engineer_index] = instance.request_node(request_index)
+            for equipment_id, quantity in request.equipment_demand.items():
+                remaining_equipment[engineer_index][equipment_id] -= quantity
             break
 
     solution = DaySolution(routes=routes)

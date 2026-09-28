@@ -1,7 +1,7 @@
 from src.models.assignment import Assignment
 from src.models.brigade import Brigade
 from src.models.engineer import Engineer, EngineerEquipment, engineer_skill
-from src.models.equipment import Equipment
+from src.models.equipment import Equipment, TransportEquipmentCapacity
 from src.models.event import Event, EventType
 from src.models.office import Office
 from src.models.plan import Plan, PlanRunType
@@ -48,6 +48,7 @@ __all__ = [
     "SolverSettings",
     "SystemTime",
     "Transport",
+    "TransportEquipmentCapacity",
     "TravelCache",
     "TravelCacheState",
     "UserRole",

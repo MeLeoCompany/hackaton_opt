@@ -14,20 +14,15 @@
 Внутри B1 и C1 порядок обычный: обещание, перенос, приоритет.
 """
 
-import copy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 
 from src.schemas.plans import SolverName
 from src.schemas.system import SolverParams
-from src.services.planner import planning_service
+from src.services.planner import planner_loader, planning_service
 from src.services.planner.objective_policy import ObjectiveCriterion
 from src.services.planner.planner_loader import LoadedDay
-from src.services.planner.planner_problem import (
-    RANK_EMERGENCY,
-    TOP_PRIORITY_LEVEL,
-    WIDENED_RANK_SHIFT,
-)
+from src.services.planner.planner_problem import round_ranks
 
 
 @dataclass(frozen=True)
@@ -39,30 +34,18 @@ class WindowSuggestion:
     engineer_name: str
 
 
-def widened_instance(loaded: LoadedDay, widened_indices: set[int]):
-    """Копия задачи, где у невлезших заявок окно раскрыто до конца самой поздней смены."""
-    instance = copy.copy(loaded.instance)
-    latest_shift_end = max(engineer.shift_end_min for engineer in instance.engineers)
-    instance.requests = [
-        replace(request, window_end_min=latest_shift_end)
-        if index in widened_indices and request.window_end_min < latest_shift_end
-        else request
-        for index, request in enumerate(instance.requests)
-    ]
-    return instance
+@dataclass(frozen=True)
+class WindowSearch:
+    """Результат второго расчёта: что предложить клиентам и сам расклад дня.
 
+    Расклад сохраняется как новый расчёт дня: клиент согласился — заявка остаётся ровно там,
+    куда её поставил этот расчёт, отказался — её вычёркивают. Считать день ещё раз незачем
+    (docs/algoV2.md, шаги 3-5).
+    """
 
-def widened_ranks(loaded: LoadedDay, widened_indices: set[int]) -> dict[int, int]:
-    """Ярусы второго расчёта: аварии сверху, влезшие выше раскрытых."""
-    ranks = {}
-    for index, request in enumerate(loaded.instance.requests):
-        if request.priority_level == TOP_PRIORITY_LEVEL:
-            ranks[index] = RANK_EMERGENCY
-        elif index in widened_indices:
-            ranks[index] = request.objective_rank + WIDENED_RANK_SHIFT
-        else:
-            ranks[index] = request.objective_rank
-    return ranks
+    suggestions: dict[int, WindowSuggestion]
+    solution: object | None = None
+    loaded: LoadedDay | None = None
 
 
 async def suggest_windows(
@@ -71,23 +54,32 @@ async def suggest_windows(
     objective_order: tuple[ObjectiveCriterion, ...],
     unassigned_request_ids: set[int],
     params: SolverParams | None = None,
-) -> dict[int, WindowSuggestion]:
-    """Предложения по номеру заявки; кого не взяли и здесь — «сегодня никак»."""
+) -> WindowSearch:
+    """Предложения по номеру заявки и расклад, которым они получены.
+
+    Кого не взяли и здесь — «сегодня никак»: такой заявке предложения не будет.
+    """
     widened_indices = {
         index
         for index, request in enumerate(loaded.instance.requests)
         if request.request_id in unassigned_request_ids
     }
     if not widened_indices or loaded.instance.n_engineers == 0:
-        return {}
+        return WindowSearch(suggestions={})
 
-    instance = widened_instance(loaded, widened_indices)
-    probe = copy.copy(loaded)
-    probe.instance = instance
+    # ярус B: кто влез в первый расчёт. Их нельзя выкинуть ради раскрытой заявки —
+    # иначе появится новая жертва и новый звонок (docs/algoV2.md, шаг 3)
+    probe, kept_request_ids = planner_loader.widen_day(loaded, unassigned_request_ids)
+    instance = probe.instance
     solution = await planning_service.solve_with(
-        solver, probe, objective_order, widened_ranks(loaded, widened_indices), params=params
+        solver,
+        probe,
+        objective_order,
+        round_ranks(loaded.instance.requests, kept_request_ids),
+        params=params,
+        kept_request_ids=kept_request_ids,
     )
-    return {
+    suggestions = {
         request.request_id: WindowSuggestion(
             request_id=request.request_id,
             start=loaded.day.from_minutes(visit.work_start_minute),
@@ -97,3 +89,4 @@ async def suggest_windows(
         for visit in visits
         if (request := instance.requests[visit.request_index]).request_id in unassigned_request_ids
     }
+    return WindowSearch(suggestions=suggestions, solution=solution, loaded=probe)

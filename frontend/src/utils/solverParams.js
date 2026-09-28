@@ -39,6 +39,13 @@ export const SOLVER_FIELDS = [
     min: 0.1,
   },
   {
+    key: 'equipment_reserve',
+    label: 'Запас оборудования, шт',
+    hint: 'Сколько штук выдавать бригаде сверх того, что нужно её заявкам по плану — на замену брака и новые заявки',
+    step: 1,
+    min: 0,
+  },
+  {
     key: 'transit_attempts',
     label: 'Попыток по расписанию',
     hint: 'Сколько раз пересчитывать план общественного транспорта по фактическому расписанию R5',
@@ -66,7 +73,9 @@ export function paramText(key, value) {
 // подсказка под таблицей: сколько на самом деле будет искаться день
 export function limitHint(params) {
   const numbers = numericParams(params)
-  if (Object.values(numbers).some((value) => Number.isNaN(value))) return ''
+  // смотрим только то, из чего складывается время: запас оборудования на него не влияет
+  const timing = ['time_limit_seconds', 'seconds_per_location', 'free_locations', 'max_time_limit_seconds']
+  if (timing.some((key) => Number.isNaN(numbers[key]))) return ''
   return `День из 20 точек будет искаться ${limitFor(numbers, 20)} с, из 200 точек — ${limitFor(numbers, 200)} с`
 }
 
