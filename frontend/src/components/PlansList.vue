@@ -414,7 +414,9 @@ function originTitle(summary) {
   position: sticky;
   right: 0;
   background: #fff;
-  box-shadow: -6px 0 6px -6px rgb(15 23 42 / 25%);
+  /* Firefox заметно затемняет размытую тень у sticky-ячейки таблицы. Чёткая линия
+     одинаково отделяет закреплённые действия в Firefox, Chromium и WebKit. */
+  box-shadow: -1px 0 0 #e2e8f0;
 }
 
 .data-table thead th:last-child {
