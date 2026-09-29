@@ -126,6 +126,24 @@ async def _r5_durations(points: list[Point], departure_time: datetime) -> list[l
     «эти точки × все» и столбцы «все × эти точки». Потом — тот же досчёт изолированных
     точек, что и без кеша, и новые пары ложатся в кеш (docs/algoCachV1.md).
     """
+    # У бригад одного офиса старт часто общий. R5 не должен заново считать одну и ту же
+    # координату для каждой бригады: считаем уникальные точки и разворачиваем результат.
+    unique_points: list[Point] = []
+    unique_by_key: dict[tuple[object, object], int] = {}
+    positions: list[int] = []
+    for point in points:
+        key = travel_cache.point_key(point)
+        if key not in unique_by_key:
+            unique_by_key[key] = len(unique_points)
+            unique_points.append(point)
+        positions.append(unique_by_key[key])
+    if len(unique_points) != len(points):
+        await run_log.note(
+            f"R5: уникальных координат {len(unique_points)} из {len(points)}"
+        )
+        unique = await _r5_durations(unique_points, departure_time)
+        return [[unique[origin][destination] for destination in positions] for origin in positions]
+
     size = len(points)
     known = await travel_cache.load_matrix(points, departure_time)
     if not known:

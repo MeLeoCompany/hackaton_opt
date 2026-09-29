@@ -187,6 +187,20 @@ async def test_same_address_pairs_are_kept_as_r5_counted_them():
 
 
 @pytest.mark.asyncio
+async def test_duplicate_coordinates_are_sent_to_r5_once_and_expanded():
+    base = points_of(3)
+    points = [base[0], base[1], base[0], base[2], base[1]]
+    r5, cache = FakeR5(), FakeCache()
+
+    durations = await r5_matrix(points, r5, cache)
+
+    assert durations == expected(points)
+    assert r5.full_calls == 1
+    # В R5 ушли три уникальных адреса, а не пять узлов задачи.
+    assert len(cache.rows) == 3 * 2
+
+
+@pytest.mark.asyncio
 async def test_other_time_of_day_is_another_matrix():
     points = points_of(4)
     cache = FakeCache()
