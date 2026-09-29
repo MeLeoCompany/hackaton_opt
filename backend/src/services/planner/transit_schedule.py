@@ -46,14 +46,14 @@ class LegDurationCache:
 
     def __init__(self) -> None:
         self.values: dict[LegKey, int] = {}
-        self.in_flight: dict[LegKey, asyncio.Task[int]] = {}
+        self.in_flight: dict[LegKey, asyncio.Future[int]] = {}
 
     async def get_or_create(self, key: LegKey, factory: Callable[[], Awaitable[int]]) -> int:
         if key in self.values:
             return self.values[key]
         task = self.in_flight.get(key)
         if task is None:
-            task = asyncio.create_task(factory())
+            task = asyncio.ensure_future(factory())
             self.in_flight[key] = task
         try:
             value = await task
@@ -122,12 +122,13 @@ async def check_schedule(
         for index, visits in solution.routes.items()
         if instance.engineers[index].transport_id == TRANSIT_ID and visits
     )
-    checked_routes = 0
     if transit_routes and report:
         await run_log.note(f"R5: проверяю расписание по {transit_routes} маршрутам")
 
     async def check_route(
-        engineer_index: int, visits: list[cuopt_solver.PlannedVisit]
+        route_number: int,
+        engineer_index: int,
+        visits: list[cuopt_solver.PlannedVisit],
     ) -> tuple[
         int,
         list[cuopt_solver.PlannedVisit],
@@ -135,7 +136,6 @@ async def check_schedule(
         list[str],
         int,
     ]:
-        nonlocal checked_routes
         engineer = instance.engineers[engineer_index]
         available = engineer.shift_start_min
         previous = instance.start_node(engineer_index)
@@ -173,11 +173,10 @@ async def check_schedule(
             actual_visits.append(cuopt_solver.PlannedVisit(visit.request_index, start))
             available = start + request.duration_min
             previous = next_node
-        checked_routes += 1
         if report:
             await run_log.check_cancelled()
             await run_log.note(
-                f"R5: маршрут {checked_routes} из {transit_routes} — бригада {engineer.name}"
+                f"R5: маршрут {route_number} из {transit_routes} — бригада {engineer.name}"
             )
         return (
             engineer_index,
@@ -187,10 +186,14 @@ async def check_schedule(
             route_skipped,
         )
 
-    operations = [
-        check_route(engineer_index, visits)
+    transit_items = [
+        (engineer_index, visits)
         for engineer_index, visits in solution.routes.items()
         if instance.engineers[engineer_index].transport_id == TRANSIT_ID and visits
+    ]
+    operations = [
+        check_route(route_number, engineer_index, visits)
+        for route_number, (engineer_index, visits) in enumerate(transit_items, start=1)
     ]
     results = await gather_strict(operations)
     broken: list[str] = []

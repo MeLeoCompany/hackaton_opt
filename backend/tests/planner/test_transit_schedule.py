@@ -66,17 +66,28 @@ async def test_independent_team_routes_are_checked_concurrently():
         active -= 1
         return SimpleNamespace(duration_min=10)
 
-    with patch.object(transit_schedule, "build_route", side_effect=route):
+    with (
+        patch.object(transit_schedule, "build_route", side_effect=route),
+        patch.object(transit_schedule.run_log, "note", AsyncMock()) as note,
+    ):
         checked, _ = await transit_schedule.check_schedule(
             loaded,
             solution,
             transit_schedule.node_points(loaded),
             transit_schedule.LegDurationCache(),
-            report=False,
         )
 
     assert checked == solution
     assert maximum_active == 2
+    progress = [
+        call.args[0]
+        for call in note.await_args_list
+        if call.args[0].startswith("R5: маршрут ")
+    ]
+    assert sorted(line.split(" — ")[0] for line in progress) == [
+        "R5: маршрут 1 из 2",
+        "R5: маршрут 2 из 2",
+    ]
 
 
 @pytest.mark.asyncio
