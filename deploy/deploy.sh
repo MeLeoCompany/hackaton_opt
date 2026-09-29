@@ -76,6 +76,11 @@ DEPLOY_PATH="${DEPLOY_PATH:-~/routing}"
 SERVER_PORT="${SERVER_PORT:-22}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH:-~/.ssh/routing_deploy}"
+# «~» в deploy.env раскрывает наш же шелл при чтении файла — и на сервер уезжает домашний
+# каталог этой машины. Возвращаем путям вид «~/…», чтобы их развернул уже сервер: там
+# домашний каталог другой (обычно /root), и ключ по чужому пути не найдётся
+DEPLOY_PATH="${DEPLOY_PATH/#$HOME\//\~/}"
+DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH/#$HOME\//\~/}"
 TLS="${TLS:-true}"
 TRANSIT="${TRANSIT:-true}"
 GPU="${GPU:-true}"
@@ -213,8 +218,9 @@ PROFILES=""
 
 step "Готовлю сервер $TARGET"
 # Для расчёта на видеокарте серверу нужны две разные вещи, и это частая путаница:
-#   1) драйвер NVIDIA на самом сервере — его ставит администратор, нужна перезагрузка;
-#   2) nvidia-container-toolkit — прокидывает видеокарту внутрь контейнера, его ставим тут.
+#   1) драйвер NVIDIA на самом сервере — ставим его из репозитория дистрибутива, модуль
+#      собирает dkms; если модуль удаётся загрузить сразу, перезагрузка не нужна;
+#   2) nvidia-container-toolkit — прокидывает видеокарту внутрь контейнера, ставим следом.
 # CUDA Toolkit с сайта NVIDIA ставить не нужно: cuOpt со своей CUDA уже внутри образа.
 # tee: то же самое и на экран по ходу дела, и в переменную для разбора ниже
 PREP=$(on_server INSTALL_DOCKER GPU <<'REMOTE' | tee /dev/stderr
@@ -228,6 +234,16 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 fi
 
+# git на сервере нужен самому деплою: код забирается там, а не заливается отсюда.
+# В чистых образах Ubuntu его нет, и без этой проверки шаг «забираю код» падал бы
+# с «command not found», что читалось как отказ в доступе к репозиторию
+if ! command -v git >/dev/null; then
+  echo "ставлю git"
+  $SUDO apt-get update >&2
+  $SUDO apt-get install -y git >&2
+fi
+git --version
+
 if ! command -v docker >/dev/null; then
   [ "${INSTALL_DOCKER:-true}" = "true" ] || { echo "docker не установлен, а INSTALL_DOCKER=false" >&2; exit 1; }
   echo "ставлю docker"
@@ -239,11 +255,55 @@ fi
 docker --version
 
 gpu_ready=no
+# «драйвер работает» — это не наличие nvidia-smi, а то, что он отвечает: после установки
+# пакетов утилита есть, а модуля в ядре может ещё не быть
+gpu_live() { nvidia-smi -L >/dev/null 2>&1; }
+
 if [ "${GPU:-true}" = "true" ]; then
-  if ! command -v nvidia-smi >/dev/null; then
+  # Видеокарта в сервере есть, а драйвера нет — ставим сами, как советует NVIDIA для Ubuntu:
+  # пакет драйвера из репозитория дистрибутива плюс заголовки ядра, чтобы dkms собрал модуль.
+  # Готовые подписанные модули (linux-modules-nvidia-*) не берём: в архиве они регулярно
+  # отстают от версии драйвера, и apt упирается в неразрешимые зависимости.
+  if ! gpu_live && lspci 2>/dev/null | grep -qi 'nvidia'; then
+    if apt-mark showhold 2>/dev/null | grep -qE '^(nvidia|linux-(image|headers|modules))'; then
+      echo "ВНИМАНИЕ: пакеты драйвера или ядра закреплены провайдером — сам их не трогаю." >&2
+      echo "  Поставьте драйвер вручную:  ubuntu-drivers install" >&2
+    else
+      echo "видеокарта NVIDIA есть, драйвера нет — ставлю драйвер"
+      (
+        $SUDO apt-get update
+        $SUDO apt-get install -y ubuntu-drivers-common
+        # какой драйвер подходит этой видеокарте, знает сам дистрибутив
+        driver=$(ubuntu-drivers devices 2>/dev/null | awk '/recommended/ {print $3}' | head -1)
+        [ -n "$driver" ] || driver=$(apt-cache search '^nvidia-driver-[0-9]+-open$' \
+          | awk '{print $1}' | sort -V | tail -1)
+        [ -n "$driver" ] || { echo "не нашёл пакет драйвера в репозитории" >&2; exit 1; }
+        # графической оболочки на сервере нет: headless-вариант того же драйвера ставит
+        # ядро драйвера и утилиты без иксов — на несколько сотен мегабайт меньше
+        headless=$(echo "$driver" | sed 's/^nvidia-driver-/nvidia-headless-/')
+        branch=$(echo "$driver" | sed -n 's/^nvidia-driver-\([0-9]\+\).*/\1/p')
+        echo "подходит $driver, ставлю $headless"
+        # без заголовков ядра dkms молча пропускает сборку, поэтому они идут первыми
+        $SUDO apt-get install -y "linux-headers-$(uname -r)"
+        $SUDO apt-get install -y "$headless" "nvidia-utils-$branch" \
+          || $SUDO apt-get install -y "$driver"
+        $SUDO dkms autoinstall -k "$(uname -r)" || true
+        # перезагрузка не нужна, если nouveau удаётся выгрузить и модуль встаёт сразу
+        $SUDO modprobe -r nouveau 2>/dev/null || true
+        $SUDO modprobe nvidia && $SUDO modprobe nvidia_uvm
+      ) >&2 || echo "ВНИМАНИЕ: установка драйвера не удалась." >&2
+      if gpu_live; then
+        echo "драйвер поставлен и работает без перезагрузки"
+      elif command -v nvidia-smi >/dev/null; then
+        echo "ВНИМАНИЕ: драйвер установлен, но ядро его ещё не отдаёт." >&2
+        echo "  Перезагрузите сервер и запустите деплой снова:  reboot" >&2
+      fi
+    fi
+  fi
+
+  if ! gpu_live; then
     if lspci 2>/dev/null | grep -qi 'nvidia'; then
-      echo "ВНИМАНИЕ: видеокарта NVIDIA в сервере есть, но драйвера нет." >&2
-      echo "  Поставьте драйвер и перезагрузите сервер:  ubuntu-drivers install" >&2
+      echo "ВНИМАНИЕ: видеокарта NVIDIA в сервере есть, но драйвер не отвечает." >&2
       echo "  CUDA Toolkit с сайта NVIDIA не нужен — CUDA идёт внутри образа бэкенда." >&2
     else
       echo "ВНИМАНИЕ: видеокарты на сервере не видно (нет ни nvidia-smi, ни устройства)." >&2
@@ -361,6 +421,7 @@ if ! CHANGED=$(on_server DEPLOY_PATH REPO_URL REPO_BRANCH GITHUB_TOKEN DEPLOY_KE
 # git не должен ничего спрашивать: терминала нет, и вопрос обернулся бы «не могу прочитать
 # имя пользователя» вместо внятной ошибки
 export GIT_TERMINAL_PROMPT=0
+command -v git >/dev/null || { echo "на сервере нет git: apt-get install -y git" >&2; exit 1; }
 ASKPASS=""
 FETCH_URL="$REPO_URL"
 key="${DEPLOY_KEY_PATH/#\~/$HOME}"
