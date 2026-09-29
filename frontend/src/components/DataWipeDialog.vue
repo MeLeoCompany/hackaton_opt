@@ -3,7 +3,9 @@
 // Отменить нельзя, поэтому подтверждение — слово руками, а не просто вторая кнопка.
 import { computed, onMounted, ref } from 'vue'
 
-defineProps({
+// props именно переменной: в шаблоне имя видно и так, а в обработчике submit() без неё
+// получался ReferenceError — кнопка просто переставала работать
+const props = defineProps({
   // сколько чего сейчас в базе: «Заявки: 409» — чтобы видеть, что именно уйдёт
   counts: { type: Object, default: () => ({}) },
   busy: { type: Boolean, default: false },
@@ -22,7 +24,7 @@ const KEPT = 'офисы, бригады, оборудование, нормы, 
 onMounted(() => input.value?.focus())
 
 function submit() {
-  if (ready.value && !busy) emit('wipe', word.value)
+  if (ready.value && !props.busy) emit('wipe', word.value)
 }
 </script>
 
