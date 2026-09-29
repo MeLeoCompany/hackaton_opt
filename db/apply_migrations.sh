@@ -21,7 +21,10 @@ INIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/init"
 CONTAINER="${DB_CONTAINER:-routing_db}"
 DATABASE="${PGDATABASE:-routing}"
 USERNAME="${PGUSER:-routing}"
-BOOTSTRAP_FILES="001_schema.sql 002_seed.sql 003_mock_data.sql"
+# Эти файлы скрипт не выполняет, а только отмечает применёнными:
+# 001-003 — схема, справочники и демоданные, их выполняет сам контейнер при первом старте;
+# 999 — отметка о том, что контейнер прогнал весь каталог (см. сам файл).
+BOOTSTRAP_FILES="001_schema.sql 002_seed.sql 003_mock_data.sql 999_bootstrap_ledger.sql"
 
 # Выполняет psql: в контейнере, если он поднят, иначе локально.
 # client_min_messages=warning убирает «already exists, skipping» — при повторном прогоне
