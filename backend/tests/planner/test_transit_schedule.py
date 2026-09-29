@@ -1,5 +1,6 @@
 """План ОТ проверяется по реальному времени выезда, а не по утренней матрице."""
 
+import asyncio
 from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
@@ -38,6 +39,44 @@ def loaded_day():
         skill_names={},
         transport_names={},
     )
+
+
+@pytest.mark.asyncio
+async def test_independent_team_routes_are_checked_concurrently():
+    loaded = loaded_day()
+    loaded.instance.engineers.append(EngineerSpec(2, "Вторая", 4, 540, 700))
+    loaded.engineers.append(SimpleNamespace(start_latitude=55.7, start_longitude=37.6))
+    loaded.instance.travel_min[4] = np.full((4, 4), 10, dtype=np.int32)
+    loaded.instance.distance_km[4] = np.ones((4, 4))
+    loaded.instance.compatible = np.ones((2, 2), dtype=bool)
+    solution = cuopt_solver.DaySolution(
+        {
+            0: [cuopt_solver.PlannedVisit(0, 550)],
+            1: [cuopt_solver.PlannedVisit(1, 570)],
+        }
+    )
+    active = 0
+    maximum_active = 0
+
+    async def route(*args, **kwargs):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return SimpleNamespace(duration_min=10)
+
+    with patch.object(transit_schedule, "build_route", side_effect=route):
+        checked, _ = await transit_schedule.check_schedule(
+            loaded,
+            solution,
+            transit_schedule.node_points(loaded),
+            {},
+            report=False,
+        )
+
+    assert checked == solution
+    assert maximum_active == 2
 
 
 @pytest.mark.asyncio
@@ -125,15 +164,9 @@ async def test_missing_r5_route_during_insertion_keeps_verified_plan():
 @pytest.mark.asyncio
 async def test_insertion_does_not_reuse_consumed_equipment():
     loaded = loaded_day()
-    loaded.instance.engineers[0] = replace(
-        loaded.instance.engineers[0], equipment_capacity={7: 1}
-    )
-    loaded.instance.requests[0] = replace(
-        loaded.instance.requests[0], equipment_demand={7: 1}
-    )
-    loaded.instance.requests[1] = replace(
-        loaded.instance.requests[1], equipment_demand={7: 1}
-    )
+    loaded.instance.engineers[0] = replace(loaded.instance.engineers[0], equipment_capacity={7: 1})
+    loaded.instance.requests[0] = replace(loaded.instance.requests[0], equipment_demand={7: 1})
+    loaded.instance.requests[1] = replace(loaded.instance.requests[1], equipment_demand={7: 1})
     solution = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
 
     with patch.object(transit_schedule, "build_route", AsyncMock()) as build:

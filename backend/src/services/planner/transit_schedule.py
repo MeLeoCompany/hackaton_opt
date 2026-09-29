@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable
 import httpx
 import numpy as np
 
+from src.core.async_utils import gather_strict
 from src.core.errors import ExternalServiceError
 from src.schemas.system import SolverParams
 from src.schemas.travel import Point, TransportKind
@@ -44,7 +45,7 @@ def node_points(loaded: LoadedDay) -> list[Point]:
 async def leg_duration(
     loaded: LoadedDay,
     points: list[Point],
-    cache: dict[tuple[int, int, int], int],
+    cache: dict[tuple[int, int, float], int],
     engineer_index: int,
     previous: int,
     next_node: int,
@@ -73,7 +74,7 @@ async def check_schedule(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, int], int],
+    cache: dict[tuple[int, int, float], int],
     *,
     skip_infeasible: bool = False,
     report: bool = True,
@@ -82,38 +83,46 @@ async def check_schedule(
     instance = loaded.instance
     routes = dict(solution.routes)
     observations: dict[tuple[int, int], int] = {}
-    valid = True
-    skipped = 0
     transit_routes = sum(
         1
         for index, visits in solution.routes.items()
         if instance.engineers[index].transport_id == TRANSIT_ID and visits
     )
     checked_routes = 0
-    broken: list[str] = []
     if transit_routes and report:
         await run_log.note(f"R5: проверяю расписание по {transit_routes} маршрутам")
-    for engineer_index, visits in solution.routes.items():
+
+    async def check_route(
+        engineer_index: int, visits: list[cuopt_solver.PlannedVisit]
+    ) -> tuple[
+        int,
+        list[cuopt_solver.PlannedVisit],
+        dict[tuple[int, int], int],
+        list[str],
+        int,
+    ]:
+        nonlocal checked_routes
         engineer = instance.engineers[engineer_index]
-        if engineer.transport_id != TRANSIT_ID or not visits:
-            continue
         available = engineer.shift_start_min
         previous = instance.start_node(engineer_index)
-        actual_visits = []
+        actual_visits: list[cuopt_solver.PlannedVisit] = []
+        route_observations: dict[tuple[int, int], int] = {}
+        route_broken: list[str] = []
+        route_skipped = 0
         for visit in visits:
             next_node = instance.request_node(visit.request_index)
             duration = await leg_duration(
                 loaded, points, cache, engineer_index, previous, next_node, available
             )
-            observations[previous, next_node] = max(
-                observations.get((previous, next_node), 0), duration
+            route_observations[previous, next_node] = max(
+                route_observations.get((previous, next_node), 0), duration
             )
             request = instance.requests[visit.request_index]
             start = max(available + duration, request.window_start_min)
             late_for_window = start > request.window_end_min
             out_of_shift = start + request.duration_min > engineer.shift_end_min
             if late_for_window or out_of_shift:
-                broken.append(
+                route_broken.append(
                     f"№{request.request_id} у бригады {engineer.name}: "
                     + (
                         f"приедет в {hhmm(start)}, окно до {hhmm(request.window_end_min)}"
@@ -123,21 +132,41 @@ async def check_schedule(
                     )
                 )
                 if skip_infeasible:
-                    skipped += 1
+                    route_skipped += 1
                     # Следующее плечо строится от последней выполненной заявки,
                     # а не от пропущенного адреса.
                     continue
-                valid = False
             actual_visits.append(cuopt_solver.PlannedVisit(visit.request_index, start))
             available = start + request.duration_min
             previous = next_node
-        routes[engineer_index] = actual_visits
         checked_routes += 1
         if report:
             await run_log.check_cancelled()
             await run_log.note(
                 f"R5: маршрут {checked_routes} из {transit_routes} — бригада {engineer.name}"
             )
+        return (
+            engineer_index,
+            actual_visits,
+            route_observations,
+            route_broken,
+            route_skipped,
+        )
+
+    operations = [
+        check_route(engineer_index, visits)
+        for engineer_index, visits in solution.routes.items()
+        if instance.engineers[engineer_index].transport_id == TRANSIT_ID and visits
+    ]
+    results = await gather_strict(operations)
+    broken: list[str] = []
+    skipped = 0
+    for engineer_index, actual_visits, measured, route_broken, route_skipped in results:
+        routes[engineer_index] = actual_visits
+        for pair, duration in measured.items():
+            observations[pair] = max(observations.get(pair, 0), duration)
+        broken.extend(route_broken)
+        skipped += route_skipped
     if broken and report:
         # видно, из-за чего план отвергнут: время из матрицы было оптимистичнее расписания
         await run_log.note(
@@ -153,6 +182,7 @@ async def check_schedule(
             f"Проверенный вариант без визитов, к которым не успеть: снято {skipped}",
             level="warning",
         )
+    valid = not broken or skip_infeasible
     return (cuopt_solver.DaySolution(routes) if valid else None), observations
 
 
@@ -160,7 +190,7 @@ async def counted_check(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, int], int],
+    cache: dict[tuple[int, int, float], int],
     *,
     skip_infeasible: bool,
 ) -> tuple[cuopt_solver.DaySolution | None, dict[tuple[int, int], int]]:
@@ -278,7 +308,7 @@ async def inserted_route(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, int], int],
+    cache: dict[tuple[int, int, float], int],
     engineer_index: int,
     position: int,
     request_index: int,
@@ -329,7 +359,7 @@ async def repair_unassigned(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, int], int],
+    cache: dict[tuple[int, int, float], int],
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None,
     kept_request_ids: set[int] | None = None,
@@ -401,7 +431,7 @@ async def finish_solution(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, int], int],
+    cache: dict[tuple[int, int, float], int],
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None,
     kept_request_ids: set[int] | None,
@@ -423,9 +453,7 @@ async def finish_solution(
         loaded.instance.route_fits_equipment(
             engineer_index, [visit.request_index for visit in visits]
         )
-        and all(
-            loaded.instance.compatible[visit.request_index, engineer_index] for visit in visits
-        )
+        and all(loaded.instance.compatible[visit.request_index, engineer_index] for visit in visits)
         for engineer_index, visits in fallback_solution.routes.items()
     )
     if not fallback_is_compatible:
@@ -514,7 +542,7 @@ async def solve_day(
         if fallback_solution is None:
             return solution
         points = node_points(loaded)
-        cache: dict[tuple[int, int, int], int] = {}
+        cache: dict[tuple[int, int, float], int] = {}
         return await finish_solution(
             loaded,
             solution,

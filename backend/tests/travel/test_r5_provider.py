@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from zipfile import ZipFile
@@ -113,6 +114,47 @@ async def test_large_matrix_is_assembled_from_rectangular_blocks():
     assert result[2] == [20, 21, 0, 23, None]
     assert result[4] == [40, 41, 42, 43, 0]
     assert client.__aenter__.return_value.post.await_count == 8
+
+
+@pytest.mark.asyncio
+async def test_matrix_blocks_respect_client_concurrency_limit():
+    points = [Point(latitude=55.7 + index * 0.01, longitude=37.6) for index in range(4)]
+    active = 0
+    maximum_active = 0
+
+    async def post(path, *, json):
+        nonlocal active, maximum_active
+        assert path == "/matrix-block"
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        origins = [point["id"] for point in json["origins"]]
+        destinations = [point["id"] for point in json["destinations"]]
+        return FakeResponse(
+            {
+                "origin_ids": origins,
+                "destination_ids": destinations,
+                "durations_seconds": [
+                    [0 if origin == destination else 60 for destination in destinations]
+                    for origin in origins
+                ],
+            }
+        )
+
+    client = AsyncMock()
+    client.__aenter__.return_value.post = AsyncMock(side_effect=post)
+    with (
+        patch.object(r5_provider.httpx, "AsyncClient", return_value=client),
+        patch.object(r5_provider.settings, "r5_matrix_single_max_points", 2),
+        patch.object(r5_provider.settings, "r5_matrix_block_origins", 1),
+        patch.object(r5_provider.settings, "r5_matrix_block_max_pairs", 1),
+        patch.object(r5_provider.settings, "r5_client_concurrency", 2),
+    ):
+        result = await r5_provider.build_duration_matrix(points, DEPARTURE)
+
+    assert result == [[0 if i == j else 1 for j in range(4)] for i in range(4)]
+    assert maximum_active == 2
 
 
 @pytest.mark.asyncio

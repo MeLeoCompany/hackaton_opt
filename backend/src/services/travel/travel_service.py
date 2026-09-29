@@ -6,6 +6,7 @@ from itertools import pairwise
 import httpx
 
 from src.core import clock
+from src.core.async_utils import gather_strict
 from src.core.local_day import local_timezone
 from src.schemas.travel import (
     Point,
@@ -138,9 +139,7 @@ async def _r5_durations(points: list[Point], departure_time: datetime) -> list[l
             unique_points.append(point)
         positions.append(unique_by_key[key])
     if len(unique_points) != len(points):
-        await run_log.note(
-            f"R5: уникальных координат {len(unique_points)} из {len(points)}"
-        )
+        await run_log.note(f"R5: уникальных координат {len(unique_points)} из {len(points)}")
         unique = await _r5_durations(unique_points, departure_time)
         return [[unique[origin][destination] for destination in positions] for origin in positions]
 
@@ -148,15 +147,17 @@ async def _r5_durations(points: list[Point], departure_time: datetime) -> list[l
     known = await travel_cache.load_matrix(points, departure_time)
     if not known:
         await run_log.note(f"R5: в кеше пар нет — считаю матрицу целиком ({size * (size - 1)} пар)")
-        durations = await r5_provider.build_duration_matrix(points, departure_time)
-        durations = await r5_access.repair_duration_matrix(points, departure_time, durations)
+        full_durations = await r5_provider.build_duration_matrix(points, departure_time)
+        full_durations = await r5_access.repair_duration_matrix(
+            points, departure_time, full_durations
+        )
         await travel_cache.save_matrix(
             points,
             departure_time,
-            durations,
+            full_durations,
             ((i, j) for i in range(size) for j in range(size) if i != j),
         )
-        return durations
+        return full_durations
 
     durations: list[list[float | None]] = [
         [0.0 if i == j else known.get((i, j)) for j in range(size)] for i in range(size)
@@ -265,17 +266,27 @@ async def _r5_route(
         if any(value.tzinfo is None for value in leg_departure_times):
             raise ValueError("время каждого отправления должно содержать часовой пояс")
 
-    current_departure = departure_time
-    results = []
-    for index, (origin, destination) in enumerate(pairwise(points)):
-        if leg_departure_times is not None:
-            current_departure = leg_departure_times[index]
-        # одно и то же плечо с той же минутой выезда R5 считает одинаково — берём из кеша
-        result = await travel_cache.cached_route(
-            origin, destination, current_departure, r5_access.route
+    if leg_departure_times is not None:
+        # В готовом плане времена выезда уже известны: плечи независимы и могут уйти
+        # разным процессам R5. Порядок результата сохраняет gather_strict.
+        results = await gather_strict(
+            [
+                travel_cache.cached_route(
+                    origin, destination, leg_departure_times[index], r5_access.route
+                )
+                for index, (origin, destination) in enumerate(pairwise(points))
+            ]
         )
-        results.append(result)
-        current_departure += timedelta(minutes=result.total_duration_min)
+    else:
+        # Без плановых времён следующее отправление зависит от длительности предыдущего плеча.
+        current_departure = departure_time
+        results = []
+        for origin, destination in pairwise(points):
+            result = await travel_cache.cached_route(
+                origin, destination, current_departure, r5_access.route
+            )
+            results.append(result)
+            current_departure += timedelta(minutes=result.total_duration_min)
 
     legs = [
         leg.model_copy(update={"visit_index": index})

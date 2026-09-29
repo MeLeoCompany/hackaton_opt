@@ -85,6 +85,14 @@ TLS="${TLS:-true}"
 TRANSIT="${TRANSIT:-true}"
 GPU="${GPU:-true}"
 INSTALL_DOCKER="${INSTALL_DOCKER:-true}"
+R5_WORKERS="${R5_WORKERS:-3}"
+R5_MAX_MEMORY="${R5_MAX_MEMORY:-6G}"
+R5_CLIENT_CONCURRENCY="${R5_CLIENT_CONCURRENCY:-$R5_WORKERS}"
+[[ "$R5_WORKERS" =~ ^[1-9][0-9]*$ ]] || die "R5_WORKERS должен быть положительным целым"
+[[ "$R5_CLIENT_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || \
+  die "R5_CLIENT_CONCURRENCY должен быть положительным целым"
+[ "$R5_CLIENT_CONCURRENCY" -le "$R5_WORKERS" ] || \
+  die "R5_CLIENT_CONCURRENCY не должен превышать R5_WORKERS"
 DOMAIN="${DOMAIN:-$SERVER_HOST}"
 [ "$TLS" = "true" ] && : "${ACME_EMAIL:?для TLS укажите ACME_EMAIL}"
 [ "$TLS" = "true" ] && [ "$DOMAIN" = "$SERVER_HOST" ] && die "для TLS нужен DOMAIN, а не адрес"
@@ -562,6 +570,7 @@ ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
 # ждёт её. Часа хватает с запасом; локально по умолчанию 15 минут
 R5_SOURCE_WAIT_SECONDS=${R5_SOURCE_WAIT_SECONDS:-3600}"
 for name in R5_WALKING_SPEED_KMH R5_TIMEOUT_SECONDS R5_MATRIX_MAX_POINTS \
+            R5_WORKERS R5_MAX_MEMORY R5_CLIENT_CONCURRENCY R5_SKIP_WHEN_WALK_MINUTES \
             CUOPT_TIME_LIMIT_SECONDS CUOPT_MAX_TIME_LIMIT_SECONDS CUOPT_DISTANCE_WEIGHT; do
   value="${!name-}"
   [ -n "$value" ] && SERVER_ENV="$SERVER_ENV

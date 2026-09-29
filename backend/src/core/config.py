@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     r5_matrix_block_origins: int = Field(default=5, ge=1, le=1000)
     r5_matrix_block_max_pairs: int = Field(default=500, ge=1, le=100_000)
     r5_matrix_single_max_points: int = Field(default=100, ge=2, le=1000)
+    # Не больше числа процессов R5: лишние запросы только копятся в очереди и занимают память.
+    r5_client_concurrency: int = Field(default=1, ge=1, le=16)
     # Короткое плечо пешком: общественный транспорт на нём всё равно не выигрывает, а вызов
     # R5 стоит секунды. На данных стенда (611 плеч) при пороге 12 минут отсекается четверть
     # всех вызовов, и лишь у 19 плеч из 276 «транспортных» пеший путь оказался короче порога —

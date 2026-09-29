@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -187,8 +188,52 @@ async def test_public_transport_route_uses_each_planned_departure():
     assert route.waiting_duration_min == 4
     assert route.geometry == ["shape", "shape"]
     assert [leg.visit_index for leg in route.legs] == [0, 1]
-    assert r5_route.await_args_list[0].args == (points[0], points[1], first_departure)
-    assert r5_route.await_args_list[1].args == (points[1], points[2], second_departure)
+    calls = [call.args for call in r5_route.await_args_list]
+    assert (points[0], points[1], first_departure) in calls
+    assert (points[1], points[2], second_departure) in calls
+
+
+@pytest.mark.asyncio
+async def test_public_transport_route_preserves_leg_order_when_requests_finish_out_of_order():
+    points = [*POINTS, Point(latitude=55.75, longitude=37.61)]
+
+    def route_result(name: str, duration: float) -> travel_service.r5_provider.RouteResult:
+        return travel_service.r5_provider.RouteResult(
+            legs=[
+                TravelLeg(
+                    distance_km=1,
+                    duration_min=duration,
+                    mode=TravelMode.BUS,
+                    geometry=name,
+                )
+            ],
+            total_duration_min=duration,
+            walking_duration_min=0,
+            waiting_duration_min=0,
+            transit_duration_min=duration,
+            entry_exit_penalty_min=0,
+            reliability_buffer_min=0,
+            transfers=0,
+        )
+
+    async def cached_route(origin: Point, destination: Point, departure: datetime, build):
+        del destination, departure, build
+        if origin == points[0]:
+            await asyncio.sleep(0.02)
+            return route_result("first", 10)
+        return route_result("second", 20)
+
+    with patch.object(travel_service.travel_cache, "cached_route", side_effect=cached_route):
+        route = await travel_service.build_route(
+            points,
+            TransportKind.PUBLIC_TRANSPORT,
+            leg_departure_times=[DEPARTURE, DEPARTURE],
+            allow_fallback=False,
+        )
+
+    assert route.geometry == ["first", "second"]
+    assert [leg.visit_index for leg in route.legs] == [0, 1]
+    assert route.duration_min == 30
 
 
 @pytest.mark.asyncio

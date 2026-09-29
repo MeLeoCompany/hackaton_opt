@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from itertools import pairwise
 from pathlib import Path
+from weakref import WeakKeyDictionary
 from zipfile import BadZipFile, ZipFile
 
 import httpx
 
+from src.core.async_utils import gather_strict
 from src.core.config import settings
 from src.schemas.travel import Point, TravelLeg, TravelMode, TravelProvider
 from src.services.planner import run_log
@@ -23,6 +27,30 @@ from src.services.travel.polyline import encode
 
 logger = logging.getLogger(__name__)
 HEX_COLOR = re.compile(r"[0-9A-Fa-f]{6}\Z")
+
+# В production у FastAPI один event loop. WeakKeyDictionary сохраняет корректность тестов,
+# где pytest создаёт новый loop для каждого случая: asyncio.Semaphore нельзя переносить
+# между циклами событий.
+_request_limiters: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    WeakKeyDictionary()
+)
+
+
+def _request_limiter() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    limiter = _request_limiters.get(loop)
+    if limiter is None:
+        limiter = asyncio.Semaphore(settings.r5_client_concurrency)
+        _request_limiters[loop] = limiter
+    return limiter
+
+
+async def _post(
+    client: httpx.AsyncClient, path: str, payload: Mapping[str, object]
+) -> httpx.Response:
+    """Один тяжёлый запрос с общим пределом для матриц и подробных маршрутов."""
+    async with _request_limiter():
+        return await client.post(path, json=payload)
 
 
 @lru_cache(maxsize=2)
@@ -143,7 +171,7 @@ async def build_duration_matrix(
     if departure_time.tzinfo is None:
         raise ValueError("для матрицы R5 требуется время с часовым поясом")
 
-    request_points = [
+    request_points: list[dict[str, object]] = [
         {"id": _point_id(index), "lat": point.latitude, "lon": point.longitude}
         for index, point in enumerate(points)
     ]
@@ -158,8 +186,8 @@ async def build_duration_matrix(
             and len(points) ** 2 <= settings.r5_matrix_block_max_pairs
         ):
             await run_log.note(f"R5 считает матрицу целиком: {len(points)} точек")
-            response = await client.post(
-                "/matrix", json={"points": request_points, "departure_time": departure}
+            response = await _post(
+                client, "/matrix", {"points": request_points, "departure_time": departure}
             )
             response.raise_for_status()
             return _parse_durations(response.json(), len(points))
@@ -173,6 +201,7 @@ async def build_duration_matrix(
         )
         blocks_done = 0
         await run_log.note(f"R5 считает матрицу блоками: всего {blocks_total}")
+        operations = []
         for origin_start in range(0, size, origin_size):
             origins = request_points[origin_start : origin_start + origin_size]
             destination_size = min(1000, settings.r5_matrix_block_max_pairs // len(origins))
@@ -180,28 +209,40 @@ async def build_duration_matrix(
                 destinations = request_points[
                     destination_start : destination_start + destination_size
                 ]
-                response = await client.post(
-                    "/matrix-block",
-                    json={
-                        "origins": origins,
-                        "destinations": destinations,
-                        "departure_time": departure,
-                    },
-                )
-                response.raise_for_status()
-                block = _parse_block_durations(
-                    response.json(),
-                    [point["id"] for point in origins],
-                    [point["id"] for point in destinations],
-                )
-                for row_index, row in enumerate(block, start=origin_start):
-                    result[row_index][destination_start : destination_start + len(row)] = row
-                blocks_done += 1
-                await run_log.check_cancelled()
-                await run_log.note(
-                    f"R5: блок {blocks_done} из {blocks_total}",
-                    fraction=blocks_done / max(blocks_total, 1),
-                )
+
+                async def calculate_block(
+                    origin_start: int = origin_start,
+                    destination_start: int = destination_start,
+                    origins: list[dict[str, object]] = origins,
+                    destinations: list[dict[str, object]] = destinations,
+                ) -> None:
+                    nonlocal blocks_done
+                    response = await _post(
+                        client,
+                        "/matrix-block",
+                        {
+                            "origins": origins,
+                            "destinations": destinations,
+                            "departure_time": departure,
+                        },
+                    )
+                    response.raise_for_status()
+                    block = _parse_block_durations(
+                        response.json(),
+                        [str(point["id"]) for point in origins],
+                        [str(point["id"]) for point in destinations],
+                    )
+                    for row_index, row in enumerate(block, start=origin_start):
+                        result[row_index][destination_start : destination_start + len(row)] = row
+                    blocks_done += 1
+                    await run_log.check_cancelled()
+                    await run_log.note(
+                        f"R5: блок {blocks_done} из {blocks_total}",
+                        fraction=blocks_done / max(blocks_total, 1),
+                    )
+
+                operations.append(calculate_block())
+        await gather_strict(operations)
         return result
 
 
@@ -218,7 +259,7 @@ async def build_duration_block(
     """
     if departure_time.tzinfo is None:
         raise ValueError("для матрицы R5 требуется время с часовым поясом")
-    request_points = [
+    request_points: list[dict[str, object]] = [
         {"id": _point_id(index), "lat": point.latitude, "lon": point.longitude}
         for index, point in enumerate(points)
     ]
@@ -235,6 +276,7 @@ async def build_duration_block(
     async with httpx.AsyncClient(
         base_url=settings.r5_url, timeout=settings.r5_timeout_seconds
     ) as client:
+        operations = []
         for origin_start in range(0, len(origin_indices), origin_size):
             origins = [
                 request_points[index]
@@ -247,30 +289,42 @@ async def build_duration_block(
                         destination_start : destination_start + destination_size
                     ]
                 ]
-                response = await client.post(
-                    "/matrix-block",
-                    json={
-                        "origins": origins,
-                        "destinations": destinations,
-                        "departure_time": departure,
-                    },
-                )
-                response.raise_for_status()
-                block = _parse_block_durations(
-                    response.json(),
-                    [point["id"] for point in origins],
-                    [point["id"] for point in destinations],
-                )
-                for row_offset, row in enumerate(block):
-                    result[origin_start + row_offset][
-                        destination_start : destination_start + len(row)
-                    ] = row
-                blocks_done += 1
-                await run_log.check_cancelled()
-                await run_log.note(
-                    f"R5: досчёт, блок {blocks_done} из {blocks_total}",
-                    fraction=blocks_done / max(blocks_total, 1),
-                )
+
+                async def calculate_block(
+                    origin_start: int = origin_start,
+                    destination_start: int = destination_start,
+                    origins: list[dict[str, object]] = origins,
+                    destinations: list[dict[str, object]] = destinations,
+                ) -> None:
+                    nonlocal blocks_done
+                    response = await _post(
+                        client,
+                        "/matrix-block",
+                        {
+                            "origins": origins,
+                            "destinations": destinations,
+                            "departure_time": departure,
+                        },
+                    )
+                    response.raise_for_status()
+                    block = _parse_block_durations(
+                        response.json(),
+                        [str(point["id"]) for point in origins],
+                        [str(point["id"]) for point in destinations],
+                    )
+                    for row_offset, row in enumerate(block):
+                        result[origin_start + row_offset][
+                            destination_start : destination_start + len(row)
+                        ] = row
+                    blocks_done += 1
+                    await run_log.check_cancelled()
+                    await run_log.note(
+                        f"R5: досчёт, блок {blocks_done} из {blocks_total}",
+                        fraction=blocks_done / max(blocks_total, 1),
+                    )
+
+                operations.append(calculate_block())
+        await gather_strict(operations)
     return result
 
 
@@ -409,6 +463,6 @@ async def build_route(origin: Point, destination: Point, departure_time: datetim
     async with httpx.AsyncClient(
         base_url=settings.r5_url, timeout=settings.r5_timeout_seconds
     ) as client:
-        response = await client.post("/route", json=request)
+        response = await _post(client, "/route", request)
         response.raise_for_status()
     return _parse_route(response.json())

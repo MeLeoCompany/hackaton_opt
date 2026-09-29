@@ -53,6 +53,8 @@ services:
       R5_MATRIX_BLOCK_ORIGINS: ${R5_MATRIX_BLOCK_ORIGINS:-5}
       R5_MATRIX_BLOCK_MAX_PAIRS: ${R5_MATRIX_BLOCK_MAX_PAIRS:-500}
       R5_MATRIX_SINGLE_MAX_POINTS: ${R5_MATRIX_MAX_POINTS:-100}
+      # Ровно по числу процессов R5: каждый процесс получает не больше одной тяжёлой задачи.
+      R5_CLIENT_CONCURRENCY: ${R5_CLIENT_CONCURRENCY:-3}
       # короткое плечо пешком считается без R5: см. комментарий в src/core/config.py
       R5_SKIP_WHEN_WALK_MINUTES: ${R5_SKIP_WHEN_WALK_MINUTES:-12}
       CUOPT_TIME_LIMIT_SECONDS: ${CUOPT_TIME_LIMIT_SECONDS:-1.0}
