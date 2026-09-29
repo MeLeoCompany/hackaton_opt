@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     r5_matrix_block_origins: int = Field(default=5, ge=1, le=1000)
     r5_matrix_block_max_pairs: int = Field(default=500, ge=1, le=100_000)
     r5_matrix_single_max_points: int = Field(default=100, ge=2, le=1000)
+    # Короткое плечо пешком: общественный транспорт на нём всё равно не выигрывает, а вызов
+    # R5 стоит секунды. На данных стенда (611 плеч) при пороге 12 минут отсекается четверть
+    # всех вызовов, и лишь у 19 плеч из 276 «транспортных» пеший путь оказался короче порога —
+    # там проигрыш в среднем 0.1 минуты, худший 0.8. Ноль отключает отсечение
+    r5_skip_when_walk_minutes: float = Field(default=12.0, ge=0.0, le=120.0)
     # кеш ответов R5 в базе (docs/algoCachV1.md); в тестах без базы выключается
     travel_cache_enabled: bool = True
     # сколько дней хранится ответ R5; чистка идёт раз в сутки

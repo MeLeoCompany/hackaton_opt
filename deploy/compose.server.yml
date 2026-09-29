@@ -24,6 +24,14 @@ services:
 
   r5:
     ports: !override []
+    environment:
+      # Поиск маршрута однопоточный, поэтому параллелизм — процессами: три процесса
+      # на восьмиядерном сервере. Каждый держит свою копию транспортной сети, отсюда
+      # и явная куча: 3 × 6 ГБ на 31 ГБ памяти, остальное — Valhalla, база и файловый кеш.
+      # Контейнер считается здоровым, как только ответил первый готовый процесс;
+      # остальные догружаются следом, за время, пока деплой доходит до конца
+      R5_WORKERS: ${R5_WORKERS:-3}
+      R5_MAX_MEMORY: ${R5_MAX_MEMORY:-6G}
 
   backend:
     ports: !override []
@@ -45,6 +53,8 @@ services:
       R5_MATRIX_BLOCK_ORIGINS: ${R5_MATRIX_BLOCK_ORIGINS:-5}
       R5_MATRIX_BLOCK_MAX_PAIRS: ${R5_MATRIX_BLOCK_MAX_PAIRS:-500}
       R5_MATRIX_SINGLE_MAX_POINTS: ${R5_MATRIX_MAX_POINTS:-100}
+      # короткое плечо пешком считается без R5: см. комментарий в src/core/config.py
+      R5_SKIP_WHEN_WALK_MINUTES: ${R5_SKIP_WHEN_WALK_MINUTES:-12}
       CUOPT_TIME_LIMIT_SECONDS: ${CUOPT_TIME_LIMIT_SECONDS:-1.0}
       CUOPT_MAX_TIME_LIMIT_SECONDS: ${CUOPT_MAX_TIME_LIMIT_SECONDS:-120.0}
       CUOPT_DISTANCE_WEIGHT: ${CUOPT_DISTANCE_WEIGHT:-1.0}

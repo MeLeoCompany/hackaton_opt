@@ -209,7 +209,9 @@ async def test_public_transport_zero_length_leg_has_no_wait_or_route_request():
 
 @pytest.mark.asyncio
 async def test_public_transport_route_fallback_is_marked_explicitly():
-    estimated_leg = TravelLeg(distance_km=1, duration_min=10, geometry="shape")
+    # Плечо длиной в 40 минут пешком: на коротких R5 не спрашивают вовсе
+    # (r5_skip_when_walk_minutes), и подмены расписания оценкой не случилось бы
+    estimated_leg = TravelLeg(distance_km=3, duration_min=40, geometry="shape")
     with (
         patch.object(
             travel_service.r5_provider,

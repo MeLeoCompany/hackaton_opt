@@ -66,6 +66,38 @@ async def test_direct_walking_wins_when_transit_is_slower():
 
 
 @pytest.mark.asyncio
+async def test_short_walk_skips_r5_entirely():
+    """Идти недалеко — расписание не спрашиваем: вызов R5 стоит секунды, выигрыш минуты."""
+    walk = TravelLeg(distance_km=0.6, duration_min=8, geometry="shape", mode=TravelMode.WALK)
+    r5_route = AsyncMock(return_value=result())
+    with (
+        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_provider, "build_route", r5_route),
+    ):
+        route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
+
+    r5_route.assert_not_awaited()
+    assert route.provider is TravelProvider.VALHALLA
+    assert route.legs == [walk]
+
+
+@pytest.mark.asyncio
+async def test_long_walk_still_asks_r5():
+    """Длинное плечо — наоборот: пешком далеко, и транспорт надо проверить по расписанию."""
+    walk = TravelLeg(distance_km=4, duration_min=50, geometry="shape", mode=TravelMode.WALK)
+    r5_route = AsyncMock(return_value=result())
+    with (
+        patch.object(r5_access, "_walk", AsyncMock(return_value=walk)),
+        patch.object(r5_provider, "build_route", r5_route),
+    ):
+        route = await r5_access.route(ORIGIN, DESTINATION, DEPARTURE)
+
+    r5_route.assert_awaited_once()
+    assert route.provider is TravelProvider.R5
+    assert route.total_duration_min == 15
+
+
+@pytest.mark.asyncio
 async def test_direct_walking_survives_r5_not_found():
     walk = TravelLeg(distance_km=0.6, duration_min=8, geometry="shape", mode=TravelMode.WALK)
     with (

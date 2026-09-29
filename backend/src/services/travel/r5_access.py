@@ -122,6 +122,29 @@ async def route(origin: Point, destination: Point, departure: datetime) -> r5_pr
             reliability_buffer_min=0,
             transfers=0,
         )
+    options: list[r5_provider.RouteResult] = []
+    # На коротком плече остановка может быть вовсе не нужна. Valhalla использует
+    # тот же профиль пешехода, что и отдельный режим «Пешеход».
+    # Пеший путь считается первым: он занимает десятки миллисекунд против секунд у R5,
+    # и когда идти совсем недалеко, спрашивать расписание уже незачем
+    direct_walk = await _walk(origin, destination, max_distance_km=math.inf)
+    if (
+        direct_walk is not None
+        and settings.r5_skip_when_walk_minutes
+        and direct_walk.duration_min <= settings.r5_skip_when_walk_minutes
+    ):
+        return r5_provider.RouteResult(
+            legs=[direct_walk],
+            total_duration_min=direct_walk.duration_min,
+            walking_duration_min=direct_walk.duration_min,
+            waiting_duration_min=0,
+            transit_duration_min=0,
+            entry_exit_penalty_min=0,
+            reliability_buffer_min=0,
+            transfers=0,
+            provider=TravelProvider.VALHALLA,
+        )
+
     try:
         direct_result = await r5_provider.build_route(origin, destination, departure)
     except httpx.HTTPStatusError as error:
@@ -130,10 +153,6 @@ async def route(origin: Point, destination: Point, departure: datetime) -> r5_pr
         original_error = error
         direct_result = None
 
-    options: list[r5_provider.RouteResult] = []
-    # На коротком плече остановка может быть вовсе не нужна. Valhalla использует
-    # тот же профиль пешехода, что и отдельный режим «Пешеход».
-    direct_walk = await _walk(origin, destination, max_distance_km=math.inf)
     if direct_walk is not None:
         options.append(
             r5_provider.RouteResult(

@@ -16,6 +16,7 @@ RUN python3 -m pip install --no-cache-dir -r requirements.txt
 RUN python3 -c "import r5py; print(r5py.__version__)"
 
 COPY app ./app
+COPY entrypoint.sh /entrypoint.sh
 
 EXPOSE 8003
-CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["/entrypoint.sh"]
