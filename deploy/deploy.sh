@@ -91,6 +91,9 @@ R5_CLIENT_CONCURRENCY="${R5_CLIENT_CONCURRENCY:-$R5_WORKERS}"
 [[ "$R5_WORKERS" =~ ^[1-9][0-9]*$ ]] || die "R5_WORKERS должен быть положительным целым"
 [[ "$R5_CLIENT_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || \
   die "R5_CLIENT_CONCURRENCY должен быть положительным целым"
+[ "$R5_WORKERS" -le 16 ] || die "R5_WORKERS не должен превышать 16"
+[ "$R5_CLIENT_CONCURRENCY" -le 16 ] || \
+  die "R5_CLIENT_CONCURRENCY не должен превышать 16"
 [ "$R5_CLIENT_CONCURRENCY" -le "$R5_WORKERS" ] || \
   die "R5_CLIENT_CONCURRENCY не должен превышать R5_WORKERS"
 DOMAIN="${DOMAIN:-$SERVER_HOST}"
