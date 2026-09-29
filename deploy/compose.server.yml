@@ -21,6 +21,9 @@ services:
 
   valhalla:
     ports: !override []
+    environment:
+      # На сервере 8 vCPU Valhalla не должна вытеснять три процесса R5 и решатель.
+      server_threads: ${VALHALLA_SERVER_THREADS:-4}
 
   r5:
     ports: !override []
@@ -32,6 +35,7 @@ services:
       # остальные догружаются следом, за время, пока деплой доходит до конца
       R5_WORKERS: ${R5_WORKERS:-3}
       R5_MAX_MEMORY: ${R5_MAX_MEMORY:-6G}
+      R5_WORKER_HEALTHCHECK_SECONDS: ${R5_WORKER_HEALTHCHECK_SECONDS:-180}
 
   backend:
     ports: !override []

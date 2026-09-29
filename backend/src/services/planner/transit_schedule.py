@@ -1,8 +1,10 @@
 """Проверка маршрутов ОТ по времени фактического выезда между заявками."""
 
+import asyncio
 import copy
 import logging
 import math
+import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
 
@@ -30,6 +32,37 @@ logger = logging.getLogger(__name__)
 MAX_INSERTION_CHECKS_PER_REQUEST = 24
 MAX_INSERTION_CHECKS_PER_PLAN = 120
 
+LegKey = tuple[int, int, float]
+
+
+class LegDurationCache:
+    """Кеш точных плеч с объединением одинаковых одновременных запросов к R5.
+
+    При параллельной проверке нескольких вставок их общие префиксы совпадают. Без
+    single-flight каждый кандидат отдельно спрашивал бы один и тот же маршрут у R5.
+    Завершённые значения живут весь расчёт, незавершённую задачу совместно ожидают все
+    потребители. Ошибка не кешируется: следующий независимый вызов сможет повториться.
+    """
+
+    def __init__(self) -> None:
+        self.values: dict[LegKey, int] = {}
+        self.in_flight: dict[LegKey, asyncio.Task[int]] = {}
+
+    async def get_or_create(self, key: LegKey, factory: Callable[[], Awaitable[int]]) -> int:
+        if key in self.values:
+            return self.values[key]
+        task = self.in_flight.get(key)
+        if task is None:
+            task = asyncio.create_task(factory())
+            self.in_flight[key] = task
+        try:
+            value = await task
+        finally:
+            if task.done() and self.in_flight.get(key) is task:
+                self.in_flight.pop(key, None)
+        self.values[key] = value
+        return value
+
 
 def node_points(loaded: LoadedDay) -> list[Point]:
     starts = loaded.start_points or [
@@ -45,7 +78,7 @@ def node_points(loaded: LoadedDay) -> list[Point]:
 async def leg_duration(
     loaded: LoadedDay,
     points: list[Point],
-    cache: dict[tuple[int, int, float], int],
+    cache: LegDurationCache,
     engineer_index: int,
     previous: int,
     next_node: int,
@@ -56,7 +89,7 @@ async def leg_duration(
     if engineer.transport_id != TRANSIT_ID:
         return int(loaded.instance.travel_min[engineer.transport_id][previous, next_node])
     key = (previous, next_node, available)
-    if key not in cache:
+    async def fetch() -> int:
         try:
             route = await build_route(
                 [points[previous], points[next_node]],
@@ -66,15 +99,16 @@ async def leg_duration(
             )
         except (httpx.HTTPError, KeyError, ValueError) as error:
             raise ExternalServiceError(f"R5 не смог проверить расписание плана: {error}") from error
-        cache[key] = math.ceil(route.duration_min - 1e-9)
-    return cache[key]
+        return math.ceil(route.duration_min - 1e-9)
+
+    return await cache.get_or_create(key, fetch)
 
 
 async def check_schedule(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, float], int],
+    cache: LegDurationCache,
     *,
     skip_infeasible: bool = False,
     report: bool = True,
@@ -190,7 +224,7 @@ async def counted_check(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, float], int],
+    cache: LegDurationCache,
     *,
     skip_infeasible: bool,
 ) -> tuple[cuopt_solver.DaySolution | None, dict[tuple[int, int], int]]:
@@ -308,7 +342,7 @@ async def inserted_route(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, float], int],
+    cache: LegDurationCache,
     engineer_index: int,
     position: int,
     request_index: int,
@@ -359,7 +393,7 @@ async def repair_unassigned(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, float], int],
+    cache: LegDurationCache,
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None,
     kept_request_ids: set[int] | None = None,
@@ -395,14 +429,39 @@ async def repair_unassigned(
         must_keep = instance.requests[request_index].request_id in kept
         winner = None
         winner_score = current_score
-        for engineer_index, position in insertion_positions(instance, current, request_index):
-            if checks >= MAX_INSERTION_CHECKS_PER_PLAN and not must_keep:
-                break
-            await run_log.check_cancelled()
-            checks += 1
-            route = await inserted_route(
-                loaded, current, points, cache, engineer_index, position, request_index
-            )
+        positions = insertion_positions(instance, current, request_index)
+        if not must_keep:
+            positions = positions[: max(0, MAX_INSERTION_CHECKS_PER_PLAN - checks)]
+        if not positions:
+            break
+        await run_log.check_cancelled()
+        started = time.perf_counter()
+        await run_log.note(
+            f"№{instance.requests[request_index].request_id}: проверяю "
+            f"{len(positions)} вариантов вставки параллельно"
+        )
+        routes = await gather_strict(
+            [
+                inserted_route(
+                    loaded,
+                    current,
+                    points,
+                    cache,
+                    engineer_index,
+                    position,
+                    request_index,
+                )
+                for engineer_index, position in positions
+            ]
+        )
+        checks += len(positions)
+        await run_log.note(
+            f"№{instance.requests[request_index].request_id}: варианты проверены за "
+            f"{time.perf_counter() - started:.1f} с"
+        )
+        # gather_strict возвращает результаты в порядке входа. Строгое сравнение ниже
+        # сохраняет прежнее правило: при равных оценках выигрывает первый кандидат.
+        for (engineer_index, _), route in zip(positions, routes, strict=True):
             if route is None:
                 continue
             candidate = cuopt_solver.DaySolution({**current.routes, engineer_index: route})
@@ -431,7 +490,7 @@ async def finish_solution(
     loaded: LoadedDay,
     solution: cuopt_solver.DaySolution,
     points: list[Point],
-    cache: dict[tuple[int, int, float], int],
+    cache: LegDurationCache,
     objective_order: tuple[ObjectiveCriterion, ...],
     ranks: dict[int, int] | None,
     kept_request_ids: set[int] | None,
@@ -542,7 +601,7 @@ async def solve_day(
         if fallback_solution is None:
             return solution
         points = node_points(loaded)
-        cache: dict[tuple[int, int, float], int] = {}
+        cache = LegDurationCache()
         return await finish_solution(
             loaded,
             solution,
@@ -555,7 +614,7 @@ async def solve_day(
         )
 
     points = node_points(loaded)
-    cache = {}
+    cache = LegDurationCache()
     instance: ProblemInstance = loaded.instance
     best: cuopt_solver.DaySolution | None = None
     best_score: tuple[float, ...] | None = None
@@ -566,12 +625,21 @@ async def solve_day(
             f"Попытка {attempt + 1} из {params.transit_attempts}: решаю и сверяю с расписанием",
             fraction=attempt / params.transit_attempts,
         )
+        solver_started = time.perf_counter()
         solution = await solve(
             instance, objective_order=objective_order, ranks=ranks, params=params
         )
+        await run_log.note(
+            f"Решатель завершил попытку {attempt + 1} за "
+            f"{time.perf_counter() - solver_started:.1f} с"
+        )
         last_attempt = attempt + 1 == params.transit_attempts
+        check_started = time.perf_counter()
         checked, observations = await counted_check(
             loaded, solution, points, cache, skip_infeasible=last_attempt
+        )
+        await run_log.note(
+            f"Точная проверка R5 завершена за {time.perf_counter() - check_started:.1f} с"
         )
         if checked is not None:
             score = checked_solution_score(

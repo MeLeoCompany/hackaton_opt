@@ -71,12 +71,76 @@ async def test_independent_team_routes_are_checked_concurrently():
             loaded,
             solution,
             transit_schedule.node_points(loaded),
-            {},
+            transit_schedule.LegDurationCache(),
             report=False,
         )
 
     assert checked == solution
     assert maximum_active == 2
+
+
+@pytest.mark.asyncio
+async def test_identical_concurrent_legs_share_one_r5_request():
+    loaded = loaded_day()
+    points = transit_schedule.node_points(loaded)
+    cache = transit_schedule.LegDurationCache()
+    release = asyncio.Event()
+
+    async def route(*args, **kwargs):
+        await release.wait()
+        return SimpleNamespace(duration_min=10)
+
+    with patch.object(transit_schedule, "build_route", side_effect=route) as build:
+        first = asyncio.create_task(
+            transit_schedule.leg_duration(loaded, points, cache, 0, 0, 1, 540)
+        )
+        second = asyncio.create_task(
+            transit_schedule.leg_duration(loaded, points, cache, 0, 0, 1, 540)
+        )
+        await asyncio.sleep(0)
+        release.set()
+        assert await asyncio.gather(first, second) == [10, 10]
+
+    build.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_insertion_candidates_are_checked_concurrently_in_stable_order():
+    loaded = loaded_day()
+    loaded.instance.engineers.append(EngineerSpec(2, "Вторая", 4, 540, 700))
+    loaded.engineers.append(SimpleNamespace(start_latitude=55.7, start_longitude=37.6))
+    loaded.instance.travel_min[4] = np.full((4, 4), 10, dtype=np.int32)
+    loaded.instance.distance_km[4] = np.ones((4, 4))
+    loaded.instance.compatible = np.ones((2, 2), dtype=bool)
+    original = cuopt_solver.DaySolution({0: [cuopt_solver.PlannedVisit(0, 550)]})
+    active = 0
+    maximum_active = 0
+
+    async def insert(loaded, solution, points, cache, engineer_index, position, request_index):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        # Обратный порядок завершения не должен менять выбор при равной оценке.
+        await asyncio.sleep(0.02 if engineer_index == 0 else 0.01)
+        active -= 1
+        return [
+            *solution.routes.get(engineer_index, []),
+            cuopt_solver.PlannedVisit(request_index, 580),
+        ]
+
+    with patch.object(transit_schedule, "inserted_route", side_effect=insert):
+        result = await transit_schedule.repair_unassigned(
+            loaded,
+            original,
+            transit_schedule.node_points(loaded),
+            transit_schedule.LegDurationCache(),
+            DEFAULT_OBJECTIVE_ORDER,
+            None,
+        )
+
+    assert maximum_active > 1
+    assert [visit.request_index for visit in result.routes[0]] == [0, 1]
+    assert 1 not in result.routes
 
 
 @pytest.mark.asyncio
@@ -128,7 +192,12 @@ async def test_repair_respects_dispatcher_preference_for_fewer_brigades():
         transit_schedule, "build_route", AsyncMock(return_value=SimpleNamespace(duration_min=10))
     ):
         result = await transit_schedule.repair_unassigned(
-            loaded, original, transit_schedule.node_points(loaded), {}, prefer_fewer_brigades, None
+            loaded,
+            original,
+            transit_schedule.node_points(loaded),
+            transit_schedule.LegDurationCache(),
+            prefer_fewer_brigades,
+            None,
         )
 
     assert result is original
@@ -153,7 +222,7 @@ async def test_missing_r5_route_during_insertion_keeps_verified_plan():
             loaded,
             original,
             transit_schedule.node_points(loaded),
-            {},
+            transit_schedule.LegDurationCache(),
             DEFAULT_OBJECTIVE_ORDER,
             None,
         )
@@ -174,7 +243,7 @@ async def test_insertion_does_not_reuse_consumed_equipment():
             loaded,
             solution,
             transit_schedule.node_points(loaded),
-            {},
+            transit_schedule.LegDurationCache(),
             engineer_index=0,
             position=1,
             request_index=1,
@@ -200,7 +269,7 @@ async def test_verified_fallback_wins_when_new_solution_loses_kept_request():
             loaded,
             candidate,
             transit_schedule.node_points(loaded),
-            {},
+            transit_schedule.LegDurationCache(),
             DEFAULT_OBJECTIVE_ORDER,
             None,
             {10},

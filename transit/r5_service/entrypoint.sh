@@ -15,4 +15,5 @@ printf 'max-memory: %s\n' "${R5_MAX_MEMORY:-80%}" > /etc/r5py.yml
 
 exec python3 -m uvicorn app.main:app \
     --host 0.0.0.0 --port 8003 \
-    --workers "${R5_WORKERS:-1}"
+    --workers "${R5_WORKERS:-1}" \
+    --timeout-worker-healthcheck "${R5_WORKER_HEALTHCHECK_SECONDS:-180}"

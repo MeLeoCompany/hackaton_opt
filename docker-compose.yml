@@ -32,7 +32,7 @@ services:
     environment:
       # Москва + область: в данных есть Домодедово, компактный экстракт по городу его не покрывает
       tile_urls: https://download.geofabrik.de/russia/central-fed-district-latest.osm.pbf
-      server_threads: 12
+      server_threads: ${VALHALLA_SERVER_THREADS:-12}
       # тайлы собираются один раз и переиспользуются при следующих стартах
       use_tiles_ignore_pbf: "True"
       force_rebuild: "False"
@@ -88,6 +88,9 @@ services:
       # Куча JVM на один процесс. По умолчанию r5py берёт 80% всей памяти машины —
       # для нескольких процессов это надо ограничивать явно
       R5_MAX_MEMORY: ${R5_MAX_MEMORY:-80%}
+      # Подробный расчёт может надолго занять GIL; не убиваем исправный worker
+      # из-за стандартного пятисекундного окна ответа супервизору uvicorn.
+      R5_WORKER_HEALTHCHECK_SECONDS: ${R5_WORKER_HEALTHCHECK_SECONDS:-180}
     ports:
       - "8003:8003"
     volumes:
