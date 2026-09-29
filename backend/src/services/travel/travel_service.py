@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -248,33 +247,17 @@ async def _r5_route(
         if any(value.tzinfo is None for value in leg_departure_times):
             raise ValueError("время каждого отправления должно содержать часовой пояс")
 
-    legs_of_route = list(pairwise(points))
-
-    # одно и то же плечо с той же минутой выезда R5 считает одинаково — берём из кеша
-    def ask(origin, destination, moment):
-        return travel_cache.cached_route(origin, destination, moment, r5_access.route)
-
-    if leg_departure_times is not None:
-        # Времена выезда известны из плана — плечи не зависят друг от друга и считаются
-        # разом. R5 ищет маршрут в один поток, зато держит несколько поисков сразу,
-        # поэтому весь маршрут бригады обходится примерно во столько же, сколько одно плечо
-        results = list(
-            await asyncio.gather(
-                *(
-                    ask(origin, destination, leg_departure_times[index])
-                    for index, (origin, destination) in enumerate(legs_of_route)
-                )
-            )
+    current_departure = departure_time
+    results = []
+    for index, (origin, destination) in enumerate(pairwise(points)):
+        if leg_departure_times is not None:
+            current_departure = leg_departure_times[index]
+        # одно и то же плечо с той же минутой выезда R5 считает одинаково — берём из кеша
+        result = await travel_cache.cached_route(
+            origin, destination, current_departure, r5_access.route
         )
-    else:
-        # Времени выезда нет: каждое следующее плечо начинается, когда закончилось
-        # предыдущее, — считать наперёд нечего
-        current_departure = departure_time
-        results = []
-        for origin, destination in legs_of_route:
-            result = await ask(origin, destination, current_departure)
-            results.append(result)
-            current_departure += timedelta(minutes=result.total_duration_min)
+        results.append(result)
+        current_departure += timedelta(minutes=result.total_duration_min)
 
     legs = [
         leg.model_copy(update={"visit_index": index})
