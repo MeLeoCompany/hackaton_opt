@@ -30,6 +30,25 @@ app_body() {
         proxy_send_timeout 600s;
     }
 
+    # Файлы сборки уникальны по хешу в имени — их можно кешировать надолго.
+    # А вот index.html кешировать нельзя: ссылки на скрипты лежат внутри него, и браузер
+    # с закешированной страницей продолжает исполнять старую сборку, не замечая обновления
+    location ~* ^/(assets|mobile/assets)/ {
+        root /usr/share/nginx/html;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        root /usr/share/nginx/html;
+        add_header Cache-Control "no-cache";
+    }
+
+    location = /mobile/index.html {
+        alias /usr/share/nginx/html/mobile/index.html;
+        add_header Cache-Control "no-cache";
+    }
+
     location /mobile/ {
         alias /usr/share/nginx/html/mobile/;
         try_files $uri $uri/ /mobile/index.html;
