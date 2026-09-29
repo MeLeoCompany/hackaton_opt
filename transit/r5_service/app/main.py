@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -45,7 +46,18 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.network = None
     app.state.load_error = None
-    app.state.routing_lock = asyncio.Lock()
+    # Раньше здесь был один замок: R5 считал строго по одному запросу за раз, и при
+    # расчёте плана сотни поездок выстраивались в очередь на одном ядре из восьми.
+    # Теперь мест столько же, сколько ядер: поездки считаются параллельно.
+    # Матрицу R5 внутри себя уже раскладывает по всем ядрам, поэтому она забирает
+    # все места разом — иначе матрица и поездки дерутся за процессор и обе тормозят.
+    app.state.slots = asyncio.Semaphore(settings.max_concurrency)
+    app.state.matrix_turn = asyncio.Lock()
+    # asyncio.to_thread берёт общий пул на min(32, ядра+4) потоков: если мест заказали
+    # больше, лишние поездки ждали бы не процессор, а свободный поток
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=settings.max_concurrency + 1, thread_name_prefix="r5")
+    )
     try:
         app.state.network = await asyncio.to_thread(_load_network, settings)
     # Во время загрузки R5 библиотека JPype может вернуть разные исключения
@@ -76,6 +88,25 @@ async def health(request: Request) -> HealthResponse:
     )
 
 
+@asynccontextmanager
+async def _whole_service(state):
+    """Занять сервис целиком: матрица сама раскладывается по всем ядрам.
+
+    Места забираются под отдельным замком: без него две матрицы разобрали бы их
+    пополам и ждали друг друга бесконечно.
+    """
+    async with state.matrix_turn:
+        taken = 0
+        try:
+            for _ in range(state.settings.max_concurrency):
+                await state.slots.acquire()
+                taken += 1
+            yield
+        finally:
+            for _ in range(taken):
+                state.slots.release()
+
+
 @app.post("/route", response_model=RouteResponse)
 async def public_transport_route(
     payload: RouteRequest, request: Request
@@ -84,7 +115,7 @@ async def public_transport_route(
     if network is None:
         raise HTTPException(status_code=503, detail="транспортный граф R5 не загружен")
     try:
-        async with request.app.state.routing_lock:
+        async with request.app.state.slots:
             return await asyncio.to_thread(
                 route,
                 network,
@@ -116,7 +147,7 @@ async def public_transport_matrix(
             ),
         )
     try:
-        async with request.app.state.routing_lock:
+        async with _whole_service(request.app.state):
             return await asyncio.to_thread(
                 travel_time_matrix,
                 network,
@@ -143,7 +174,7 @@ async def public_transport_matrix_block(
             detail=f"блок содержит {pairs} пар, разрешено не более {settings.matrix_block_max_pairs}",
         )
     try:
-        async with request.app.state.routing_lock:
+        async with _whole_service(request.app.state):
             return await asyncio.to_thread(
                 travel_time_matrix_block,
                 network,

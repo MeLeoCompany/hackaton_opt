@@ -19,6 +19,7 @@ class Settings:
     matrix_block_max_pairs: int
     matrix_time_window_minutes: int
     max_travel_minutes: int
+    max_concurrency: int
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -45,7 +46,14 @@ class Settings:
                 os.getenv("R5_MATRIX_TIME_WINDOW_MINUTES", "10")
             ),
             max_travel_minutes=int(os.getenv("R5_MAX_TRAVEL_MINUTES", "240")),
+            # по умолчанию — по числу ядер: поиск маршрута однопоточный, и на восьми
+            # ядрах восемь поездок считаются за то же время, что раньше одна
+            max_concurrency=int(
+                os.getenv("R5_MAX_CONCURRENCY", str(os.cpu_count() or 4))
+            ),
         )
+        if settings.max_concurrency < 1:
+            raise ValueError("R5_MAX_CONCURRENCY должен быть не меньше 1")
         if settings.source_wait_seconds < 0:
             raise ValueError("R5_SOURCE_WAIT_SECONDS не может быть отрицательным")
         if settings.metro_entry_seconds < 0 or settings.metro_exit_seconds < 0:
